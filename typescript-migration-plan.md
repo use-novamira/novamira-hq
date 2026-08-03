@@ -16,7 +16,7 @@ Three decisions land at once:
    discovery/execution, site skills, upload, doctor. HQ's `internal/site`
    package predates it and uses Application Passwords over Basic auth — a
    different, now-obsolete auth model.
-2. **HQ stops proxying sites.** HQ's job ends at *provisioning*: create and
+2. **HQ stops proxying sites.** HQ's job ends at _provisioning_: create and
    operate hosting resources, install and configure the Novamira plugin so a
    site becomes CLI-ready. Agents then talk to the site through `novamira`
    directly. HQ is never in that path.
@@ -25,15 +25,15 @@ Three decisions land at once:
 
 ## 2. Target shape
 
-| | Today (Go) | After |
-| --- | --- | --- |
-| Language | Go 1.26 | TypeScript (strict), Node 22+ ESM, Bun toolchain |
-| Repo | `use-novamira/novamira-hub` | new `use-novamira/novamira-hq` |
-| Surfaces | CLI + local web dashboard + Wails desktop | CLI + local web dashboard |
-| Site access | `internal/site` (Application Password, Basic auth) | **removed** — `@novamira/cli` owns it |
-| Config | `config.toml` (hosting + site profiles + deploy paths) | HQ-namespaced `config.json` (hosting profiles + deploy paths) |
-| Packaging | goreleaser: npm, Homebrew, DMG, deb, Windows installer | npm only + `install.sh` / `install.ps1` |
-| Skills | `core`, `hosting`, `site` | `core`, `hosting` |
+|             | Today (Go)                                             | After                                                         |
+| ----------- | ------------------------------------------------------ | ------------------------------------------------------------- |
+| Language    | Go 1.26                                                | TypeScript (strict), Node 22+ ESM, Bun toolchain              |
+| Repo        | `use-novamira/novamira-hub`                            | new `use-novamira/novamira-hq`                                |
+| Surfaces    | CLI + local web dashboard + Wails desktop              | CLI + local web dashboard                                     |
+| Site access | `internal/site` (Application Password, Basic auth)     | **removed** — `@novamira/cli` owns it                         |
+| Config      | `config.toml` (hosting + site profiles + deploy paths) | HQ-namespaced `config.json` (hosting profiles + deploy paths) |
+| Packaging   | goreleaser: npm, Homebrew, DMG, deb, Windows installer | npm only + `install.sh` / `install.ps1`                       |
+| Skills      | `core`, `hosting`, `site`                              | `core`, `hosting`                                             |
 
 The rewrite follows **novamira-cli's architecture and practices wherever they
 apply**, not HQ's — it is the better-considered codebase and the one already in
@@ -48,31 +48,31 @@ Everything below follows from that rule.
 
 ## 3. What is deleted outright
 
-| Removed | Lines (src+test) | Reason |
-| --- | --- | --- |
-| `internal/site/` | 209 | Superseded by `@novamira/cli` |
-| `internal/cli/site.go` + `payloads.go` site paths | ~400 | No `site` subcommand |
-| `internal/desktop/` (4 files, Wails) | ~200 | No GUI app |
-| `internal/cli/desktop.go` | 36 | ditto |
-| `packaging/macos`, `windows`, `linux`, `homebrew` | — | npm-only distribution |
-| `.goreleaser.yaml`, 3 workflows (release, Windows installer, macOS test build) | — | Replaced by npm publish workflow |
-| `internal/skills/data/skills/site/` | — | Site guidance ships with the CLI |
-| `site_profiles` in config | — | Schema drops it |
-| `kinsta-openapi.yaml` (260 KB) | — | Reference-only, keep out of the new repo |
+| Removed                                                                        | Lines (src+test) | Reason                                   |
+| ------------------------------------------------------------------------------ | ---------------- | ---------------------------------------- |
+| `internal/site/`                                                               | 209              | Superseded by `@novamira/cli`            |
+| `internal/cli/site.go` + `payloads.go` site paths                              | ~400             | No `site` subcommand                     |
+| `internal/desktop/` (4 files, Wails)                                           | ~200             | No GUI app                               |
+| `internal/cli/desktop.go`                                                      | 36               | ditto                                    |
+| `packaging/macos`, `windows`, `linux`, `homebrew`                              | —                | npm-only distribution                    |
+| `.goreleaser.yaml`, 3 workflows (release, Windows installer, macOS test build) | —                | Replaced by npm publish workflow         |
+| `internal/skills/data/skills/site/`                                            | —                | Site guidance ships with the CLI         |
+| `site_profiles` in config                                                      | —                | Schema drops it                          |
+| `kinsta-openapi.yaml` (260 KB)                                                 | —                | Reference-only, keep out of the new repo |
 
 That removes about 1,000 of 18,550 Go source lines (~6%), plus all desktop,
 packaging, and release infrastructure, before a line is ported.
 
 ## 4. What is ported
 
-| Area | Go LOC (src) | Notes |
-| --- | --- | --- |
-| `internal/providers/` (8 providers + neutral types) | ~7,300 | Largest chunk; mechanical but wide |
-| `internal/cli/hosting*.go`, `access.go`, `flagtypes.go`, `helpers.go`, `payloads.go`, `print.go`, `output.go` | ~4,200 | ~110 subcommands → commander |
-| `internal/dashboard/` (server + views + types) | ~3,850 | Datastar/SSE preserved; renderer swapped |
-| `internal/config/` | 412 | TOML → JSON, drop site profiles |
-| `internal/update/`, `doctor/`, `setup/`, `skills/`, `phpcompat/`, `jsonutil/` | ~1,100 | Update logic largely replaced by CLI's `update/` modules |
-| Static assets (`datastar.js`, `app.css`, `relative-time.js`, `sites-filter.js`, logo, 2 fonts) | — | Copied verbatim |
+| Area                                                                                                          | Go LOC (src) | Notes                                                    |
+| ------------------------------------------------------------------------------------------------------------- | ------------ | -------------------------------------------------------- |
+| `internal/providers/` (8 providers + neutral types)                                                           | ~7,300       | Largest chunk; mechanical but wide                       |
+| `internal/cli/hosting*.go`, `access.go`, `flagtypes.go`, `helpers.go`, `payloads.go`, `print.go`, `output.go` | ~4,200       | ~110 subcommands → commander                             |
+| `internal/dashboard/` (server + views + types)                                                                | ~3,850       | Datastar/SSE preserved; renderer swapped                 |
+| `internal/config/`                                                                                            | 412          | TOML → JSON, drop site profiles                          |
+| `internal/update/`, `doctor/`, `setup/`, `skills/`, `phpcompat/`, `jsonutil/`                                 | ~1,100       | Update logic largely replaced by CLI's `update/` modules |
+| Static assets (`datastar.js`, `app.css`, `relative-time.js`, `sites-filter.js`, logo, 2 fonts)                | —            | Copied verbatim                                          |
 
 Go tests total ~6,400 lines. They are the specification for the port.
 CLI-facing tests become `node:test` contract tests against compiled `dist/`,
@@ -136,7 +136,7 @@ Go's sealed-interface `ReadRequest` / `ActionRequest` pattern
 (`internal/providers/providers.go`) exists to emulate a sum type. TypeScript has
 them natively: discriminated unions on a `kind` field, with `switch` exhaustiveness
 enforced by `noFallthroughCasesInSwitch` plus a `never` default. This is one of
-the few places the port should *improve* on the Go rather than transliterate it.
+the few places the port should _improve_ on the Go rather than transliterate it.
 
 Each provider is an independent, separately reviewable unit of work. Port with
 its Go tests converted first, then the implementation. Live provider calls stay
@@ -260,9 +260,9 @@ mapping.
 the dashboard's job runner) does:
 
 1. PHP version preflight → 2. install + activate the plugin over provider WP-CLI
-→ 3. `wp option update novamira_ai_abilities_enabled 1` and `..._domain <host>`
-→ 4. **`wp user application-password create <user> "Novamira CLI" --porcelain`**
-→ 5. write a `site_profiles` entry in HQ's config.
+   → 3. `wp option update novamira_ai_abilities_enabled 1` and `..._domain <host>`
+   → 4. **`wp user application-password create <user> "Novamira CLI" --porcelain`**
+   → 5. write a `site_profiles` entry in HQ's config.
 
 Steps 4 and 5 are deleted. The new flow ends at step 3 and emits a handoff:
 
@@ -337,16 +337,16 @@ on failure, show a bounded diagnostic and keep the copyable command as fallback.
 Each phase leaves the repo green and shippable. Providers and views are the two
 wide phases and parallelize across contributors.
 
-| # | Phase | Content | Rough size |
-| --- | --- | --- | --- |
-| 0 | Bootstrap | New repo, package.json, tsconfig, eslint, prettier, CI, AGENTS.md, LICENSE, SPDX script, `docs/v1-contract.md` skeleton | small |
-| 1 | Foundations | `errors`, `output/`, HQ-namespaced `config/*`, config schema, keychain-backed provider credentials, HTTP client with retry/diagnostics | medium |
-| 2 | Hosting core | Neutral types, `ProviderClient` interface, request unions, `ClientFromProfile` | small |
-| 3 | Providers | 8 clients, tests first, one PR each | **large** |
-| 4 | CLI | commander program, ~110 hosting subcommands, payload/flag helpers, output envelope | large |
-| 5 | Provisioning | plugin install, phpcompat, compatibility preflight, handoff | medium |
-| 6 | Web | server, routes, SSE, token/loopback guards, views port, static assets | **large** |
-| 7 | Periphery | skills (core+hosting), doctor (incl. "is `novamira` installed?"), update, `install.sh`/`install.ps1`, npm release workflow, README, contract doc | medium |
+| #   | Phase        | Content                                                                                                                                          | Rough size |
+| --- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| 0   | Bootstrap    | New repo, package.json, tsconfig, eslint, prettier, CI, AGENTS.md, LICENSE, SPDX script, `docs/v1-contract.md` skeleton                          | small      |
+| 1   | Foundations  | `errors`, `output/`, HQ-namespaced `config/*`, config schema, keychain-backed provider credentials, HTTP client with retry/diagnostics           | medium     |
+| 2   | Hosting core | Neutral types, `ProviderClient` interface, request unions, `ClientFromProfile`                                                                   | small      |
+| 3   | Providers    | 8 clients, tests first, one PR each                                                                                                              | **large**  |
+| 4   | CLI          | commander program, ~110 hosting subcommands, payload/flag helpers, output envelope                                                               | large      |
+| 5   | Provisioning | plugin install, phpcompat, compatibility preflight, handoff                                                                                      | medium     |
+| 6   | Web          | server, routes, SSE, token/loopback guards, views port, static assets                                                                            | **large**  |
+| 7   | Periphery    | skills (core+hosting), doctor (incl. "is `novamira` installed?"), update, `install.sh`/`install.ps1`, npm release workflow, README, contract doc | medium     |
 
 Phases 3 and 4 can overlap per provider. Phase 6 depends on Phases 1–3 and the
 provisioning service from Phase 5.
@@ -358,7 +358,7 @@ provisioning service from Phase 5.
    the new repository. "HQ" is the product name; `novamira-hq` avoids colliding
    with the shipped `novamira` site CLI. Do not carry the `hub` name forward.
 2. **Connected-state detection:** invoke `novamira --json --timeout <ms>
-   sites list` to find origin-matching profiles, then
+sites list` to find origin-matching profiles, then
    `novamira --json --timeout <ms> --site <name> auth status` for matched
    candidates, as specified in §6. Profile presence means
    configured, not connected. This couples HQ only to the CLI's public v1

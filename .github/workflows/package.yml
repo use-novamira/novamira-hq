@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+name: Package acceptance
+
+# CI never talks to a hosting provider. No job here may define provider
+# credentials or set the environment variables that gate live provider calls;
+# every provider test that runs in CI is a recorded or offline test.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: ${{ matrix.os }} / Node ${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.19
+      - run: npm config set ignore-scripts true
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run check
+      - run: bun run pack:inspect
+
+  # The contract tests hardcode UnixFileSecurity and assert POSIX modes, so they
+  # cannot run on Windows. The Windows ACL path in src/config/file-security.ts
+  # is exercised by its own acceptance run once that script lands; until then
+  # Windows is limited to the checks that are platform independent.
+  package-windows:
+    name: windows-latest / Node ${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.19
+      - run: npm config set ignore-scripts true
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run lint
+      - run: bun run format:check
+      - run: bun run pack:inspect
