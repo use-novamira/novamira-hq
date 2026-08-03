@@ -16,6 +16,11 @@ import { defaultFileSecurity } from "./config/file-security.js";
 import { ProfileLockManager } from "./config/lock.js";
 import { platformPaths, type PathEnvironment } from "./config/paths.js";
 import { ConfigStore } from "./config/profiles.js";
+import {
+  createCredentialStore,
+  type CredentialStore,
+} from "./credentials/store.js";
+import { resolveCredential } from "./credentials/resolve.js";
 import { asCliError, CliError } from "./errors.js";
 import {
   createHostingClientFactory,
@@ -132,6 +137,20 @@ export async function main(
     const locks = new ProfileLockManager(paths.stateDir, security);
     const store = new ConfigStore(paths.configFile, locks, security);
 
+    // The credential store, built at most once per process and only when a
+    // `stored` reference is actually resolved: constructing it probes the OS
+    // keychain, and `--version`, `config path` and every `env`/`file`
+    // credential must not pay for a subprocess they never use.
+    let pendingCredentials: Promise<CredentialStore> | undefined;
+    const credentialStore = (): Promise<CredentialStore> => {
+      pendingCredentials ??= createCredentialStore(
+        paths.credentialsDir,
+        security,
+        { onWarning: (message) => renderer?.warn(message) },
+      );
+      return pendingCredentials;
+    };
+
     // Exactly one hosting client factory per process, over the complete
     // provider registry. Diagnostics are routed to the renderer that the first
     // command created; before that there is nothing to write to, and an HTTP
@@ -140,6 +159,16 @@ export async function main(
       store,
       registry: overrides.registry ?? PROVIDER_REGISTRY,
       env: environment,
+      resolver: {
+        resolve: async (ref) =>
+          resolveCredential(ref, {
+            env: environment,
+            security,
+            ...(ref.type === "stored"
+              ? { store: await credentialStore() }
+              : {}),
+          }),
+      },
       http: {
         onDiagnostic: (diagnostic) => renderer?.diagnostic("http", diagnostic),
       },
@@ -152,10 +181,6 @@ export async function main(
       hosting,
       rendererFor,
     });
-
-    // PHASE 4: build the credential store and pass its resolver into
-    // `createHostingClientFactory` so `stored` credential references resolve
-    // through the OS keychain rather than the env-only default resolver.
 
     program = createProgram(VERSION, handlers);
     configureOutput(program, streams);

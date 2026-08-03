@@ -3,6 +3,10 @@
 
 import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { CliError } from "../errors.js";
+import {
+  registerHostingCommands,
+  type HostingCommandHandlers,
+} from "./hosting/index.js";
 
 /** Executable name; also the name every usage message tells the user to run. */
 export const PROGRAM_NAME = "novamira-hq";
@@ -19,6 +23,12 @@ export const DEFAULT_OPERATION_TIMEOUT_MS = 30_000;
  * there is no `--site` and no `--max-output`.
  */
 export interface GlobalOptions {
+  /**
+   * `--profile <name>`: the hosting profile to operate through. Optional here
+   * because the local commands (`--version`, `config path`) need none; the
+   * hosting shell in `hosting-command.ts` fails closed when one is required.
+   */
+  readonly profile?: string;
   /** `--json`: emit exactly one JSON envelope on stdout. */
   readonly json: boolean;
   /** `--quiet`: suppress nonessential diagnostics. */
@@ -40,7 +50,7 @@ export interface GlobalOptions {
  * the option grammar; `commands.ts` knows how to satisfy it. Phase 4 adds the
  * hosting handlers here and nothing else in this file changes shape.
  */
-export interface CommandHandlers {
+export interface CommandHandlers extends HostingCommandHandlers {
   version(version: string, options: GlobalOptions): void | Promise<void>;
   configPath(options: GlobalOptions): void | Promise<void>;
 }
@@ -63,6 +73,7 @@ export function createProgram(
     .description("Hosting provisioning CLI and local dashboard for Novamira")
     .showSuggestionAfterError()
     .exitOverride()
+    .option("--profile <name>", "hosting profile to operate through")
     .option("--json", "emit exactly one JSON value on stdout", false)
     .option(
       "--timeout <ms>",
@@ -102,20 +113,13 @@ export function createProgram(
       handlers.configPath(optionsFor(values)),
     );
 
-  // ---------------------------------------------------------------------------
-  // PHASE 4 REGISTRATION POINT
-  //
-  // The hosting command tree (`hosting sites`, `hosting env`, `hosting deploy`,
-  // ~110 subcommands ported from internal/cli) attaches here, e.g.
-  //
-  //   registerHostingCommands(program, handlers, optionsFor);
-  //
-  // from a new `src/cli/hosting.ts`. Add the corresponding method signatures to
-  // `CommandHandlers` above and implement them in `commands.ts`; `main.ts` needs
-  // no change. Keep using `optionsFor(values)` so subcommand options inherit the
-  // globals, and remember the boundary rule: no WordPress site tokens, no
+  // The hosting command tree: the `hosting` parent and every group under it,
+  // plus the hosting-profile subcommands that extend the `config` command
+  // created just above. `optionsFor` is handed through so a subcommand's
+  // options are merged over the globals by the same reader the local commands
+  // use. The boundary rule holds across all of it: no WordPress site tokens, no
   // Application Passwords, no Ability proxying.
-  // ---------------------------------------------------------------------------
+  registerHostingCommands(program, handlers, optionsFor);
 
   program.action(async () => {
     if (program.opts<{ readonly version: boolean }>().version) {

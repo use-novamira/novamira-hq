@@ -9,6 +9,7 @@ import type {
   InvocationWarning,
   Renderer,
 } from "../output/render.js";
+import { createHostingCommandHandlers } from "./hosting/index.js";
 import type { CommandHandlers, GlobalOptions } from "./program.js";
 
 /** What a command produces; the renderer decides how it reaches the user. */
@@ -71,6 +72,12 @@ export function createCommandHandlers(
   };
 
   return {
+    // The ~100 hosting handlers, built over the same dependencies. They render
+    // through `runHostingCommand`/`runLocalCommand`, which call the very
+    // `rendererFor` below, so hosting and local commands share one renderer,
+    // one `requestId` and one envelope.
+    ...createHostingCommandHandlers(dependencies),
+
     version: (programVersion, options) =>
       execute(options, () => ({
         data: { version: programVersion },
@@ -91,15 +98,5 @@ export function createCommandHandlers(
         };
         return { data, human: humanReport(data) };
       }),
-
-    // -------------------------------------------------------------------------
-    // PHASE 4 REGISTRATION POINT
-    //
-    // Hosting handlers land here, each one `execute(options, async () => ...)`
-    // over a `ProviderClient` obtained from the `HostingClientFactory` that
-    // `main.ts` injects into `CommandDependencies`. Render domain objects
-    // through `src/hosting/types.ts`'s `serialize*` helpers so the JSON payload
-    // keeps the Go wire names.
-    // -------------------------------------------------------------------------
   };
 }

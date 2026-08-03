@@ -65,15 +65,22 @@ calls just to test.
 - `src/credentials/` resolves env/file/stored credential references and backs
   `stored` with the OS keychain plus an owner-only file fallback.
 - `src/hosting/` holds the shared HTTP client, provider-neutral types, the
-  `ProviderClient` request unions, and the profile-to-client factory.
+  `ProviderClient` request unions, the profile-to-client factory, and the eight
+  provider clients under `src/hosting/providers/`.
 - `src/index.ts`, `src/main.ts`, and `src/cli/` are the entry point, the
   composition root, and the commander program plus its handlers.
+- `src/cli/hosting/` is one module per command group; `src/cli/hosting/index.ts`
+  composes them into the `hosting` tree and extends the existing `config`
+  command. `program.ts` owns the grammar and the globals, `commands.ts` builds
+  every handler from `CommandDependencies`. A global option name is reserved
+  across the whole tree, because a parent command consumes a matching option
+  anywhere in argv.
 - `test/*-contract.test.mjs` runs offline against `dist/`; every suite isolates
   itself under `NOVAMIRA_HQ_HOME` in a temporary directory.
 - `scripts/` and `.github/workflows/` cover SPDX headers, packaging, and
   releases.
-- Still to land per the plan: `src/hosting/providers/`, `src/provisioning/`,
-  `src/web/`, `src/skills/`, `src/doctor/`, and `src/update/`.
+- Still to land per the plan: `src/provisioning/`, `src/web/`, `src/skills/`,
+  `src/doctor/`, and `src/update/`.
 
 ## Making changes
 

@@ -267,13 +267,135 @@ secrets. Live provider API calls are explicitly gated and never run in CI.
 
 ## Hosting commands
 
-**RESERVED.** The provider-neutral command grammar — profile management,
-inventory, environment, backup, domain, DNS, cache, plugin/theme, WP-CLI, SSH,
-and SFTP operations, and deploy paths — is ported from the Go implementation and
-is not yet frozen here. The provider-neutral request surface exists in the code
-(24 read requests and 33 action requests over eight providers), but the command
-names, flags, and payload shapes are not contractual until this section is
-filled in.
+The command surface has exactly two top-level groups: `config`, for local HQ
+configuration and hosting profiles, and `hosting`, for provider resources. There
+is no `site` group and no command that reaches a configured WordPress site.
+
+### Grammar conventions
+
+Global options are accepted at any position, before or after a subcommand.
+Because a parent command consumes a matching option anywhere in the argument
+list, every global option name is reserved across the whole tree, and no
+subcommand may declare one. `--version` is the reason the version-valued options
+are spelled `--php-version`, `--update-version`, and `--plugin-version`.
+
+Options are long-form only; v1 declares no short option except `-h`.
+
+`--from-json <path>` reads the entire request body from a JSON file, or from
+standard input when the path is `-`. It supersedes every option that would
+otherwise contribute a body field; an option required only as a body field is
+therefore not required alongside it. A malformed document is a `usage_error`.
+
+An option naming a resource that becomes part of the provider request path
+rather than of its body — `--env` and `--target-env` on the commands addressed
+per environment, `--domain` on the DNS record commands, and `--site` where a
+command requires it — must be non-empty even with `--from-json`, because no body
+can supply it. Omitting one is a `usage_error` naming the flag in
+`details.flag`, raised before any provider request. Missing body fields are
+reported the same way.
+
+A secret is always named and never given: a command that needs one registers
+`--<name>-env <variable>`, `--<name>-stdin`, and `--<name>-file <path>`, and
+exactly one must be supplied. No option anywhere accepts a secret value, so no
+secret enters argv. Trailing newlines are trimmed from the stdin and file
+sources; an absent or empty secret is `credential_missing`. `hosting access ssh
+password` writes the provider-generated password to an owner-only file and
+reports only `{ "path": …, "value": "********" }`.
+
+Repeatable options accumulate: `--domain-id`, `--value`, `--add-value`,
+`--remove-value`, `--ip`, `--file`, and `--name` on the `update-all` commands.
+Boolean options default to false unless documented otherwise, and a
+true-defaulting boolean also registers its `--no-` form.
+
+A command that polls a provider operation takes `--interval-seconds` (default 5,
+must be greater than zero) and `--timeout-seconds` (default 300). An exhausted
+budget is a retryable `timeout`; an operation the provider reports as failed is
+a `provider_error`.
+
+An invalid enumeration value, a non-numeric numeric option, a missing positional
+argument, an unknown option, and an unknown subcommand are all `usage_error` at
+exit 2, and none of them reaches a provider.
+
+### `config`
+
+| Command | Purpose |
+| --- | --- |
+| `config path` | print the resolved configuration, state, cache, lock, and credential paths |
+| `config add <provider>` | add a hosting profile; `--profile` names it and defaults to the provider kind |
+| `config list` | list hosting profiles with their provider, credential rendering, and company |
+| `config show` | print the configuration document, or one profile with `--profile` |
+| `config remove <profile>` | remove a hosting profile and the `stored` secret it owned |
+
+`config add` takes `--company <id|auto|none>` (default `auto`, which asks the
+provider for the account scope), `--api-base-url <url>`, `--force`, and one
+credential source. `--credential-env <name>` and `--credential-file <path>`
+record a reference only; `--credential-stdin` reads the secret and writes it to
+the credential store, recording a `stored` reference. Naming no source records
+an `env` reference to the provider's default credential variable. The credential
+write, the company probe, and the configuration save are one critical section
+under the profile's lock, and a failure rolls the credential back. No command in
+this group prompts: HQ's interactive surface is the dashboard.
+
+### `hosting`
+
+Every `hosting` command operates through one hosting profile and never infers
+one. `meta.profile` and `meta.provider` are present on every successful hosting
+envelope.
+
+| Group | Commands |
+| --- | --- |
+| `providers` | `validate`, `capabilities` |
+| `regions` | `list` |
+| `activity` | `list` |
+| `ops` | `get <operation_id>`, `wait <operation_id>` |
+| `sites` | `list`, `get <site_id>`, `create`, `create-plain`, `clone`, `reset <site_id>` |
+| `envs` | `list`, `get <env_id>`, `create`, `create-plain`, `clone`, `push`, `delete <env_id>` |
+| `domains` | `list`, `add`, `delete`, `verify <site_domain_id>`, `primary` |
+| `dns` | `domains list`, `records list`, `records create`, `records update`, `records delete` |
+| `backups` | `list`, `downloadable`, `create`, `restore`, `delete <backup_id>` |
+| `cache` | `clear` |
+| `php` | `restart`, `set-version` |
+| `redirects` | `list`, `apply` |
+| `denied-ips` | `list`, `set` |
+| `wp` | `plugins list`, `plugins install`, `plugins update`, `plugins update-all`, `themes list`, `themes update`, `themes update-all` |
+| `wp-cli` | `run` |
+| `logs` | `get` |
+| `analytics` | `usage`, `env` |
+| `access` | `ssh status`, `ssh set-status`, `ssh allowlist`, `ssh set-allowlist`, `ssh config`, `ssh generate-password`, `ssh password`, `ssh set-password-status`, `ssh change-expiration`, `sftp list`, `sftp toggle`, `sftp add`, `sftp remove <sftp_account_id>` |
+
+Fixed value sets:
+
+| Option | Values |
+| --- | --- |
+| `hosting cache clear --kind` | `site`, `edge`, `cdn` |
+| `hosting domains add --setup-type` | `quick`, `avoid_downtime` |
+| `hosting logs get --file` | `error` (default), `access`, `kinsta-cache-perf` |
+| `hosting analytics usage --metric` | `visits`, `bandwidth`, `cdn-bandwidth` |
+| `hosting analytics env --metric` | `cdn-bandwidth`, `visits`, `bandwidth`, `diskspace`, `top-countries`, `top-cities`, `top-client-ips`, `visits-dispersion`, `response-codes` |
+
+Other defaults fixed by v1: `--wp-language` is `en_US`, `hosting activity list`
+always sends `--limit` (10) and `--offset` (0), `hosting analytics env
+--time-span` is `7_days` and the `diskspace` metric sends `time_zone` `00:00`
+when none is given, and `hosting wp plugins install --source novamira-latest`
+resolves to the newest published Novamira plugin zip. `hosting activity list
+--api-key` names a provider-side API key **identifier**, never a key value.
+
+Read commands render the provider response unchanged under `data`; action
+commands render the provider's action result; `hosting providers capabilities`
+renders the provider's capability list with `sites.delete` forced to unsupported.
+
+### Not in the v1 command surface
+
+- **`hosting sites delete` is not registered.** HQ reports `sites.delete` as an
+  unsupported capability for every provider, and offers no command that deletes
+  a site. The provider-neutral delete request still exists for the dashboard's
+  future use, but no CLI grammar reaches it.
+- No command prompts, and no command reads standard input except through
+  `--from-json -`, `--command-stdin`, and the `-stdin` secret sources.
+- Deploy-path commands are not shipped. `deployPaths` is reserved in the
+  configuration schema and no v1 command reads or writes it.
+- No `site` group, no Application Password option, and no Ability proxying, per
+  the boundary above.
 
 ## Provisioning and handoff
 

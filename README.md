@@ -86,6 +86,29 @@ Storage locations, which are deliberately disjoint from the site CLI's:
 `NOVAMIRA_HQ_HOME` relocates the whole tree and `NOVAMIRA_HQ_CONFIG` overrides
 the config file path. The site CLI's `NOVAMIRA_HOME` is ignored.
 
+## Commands
+
+Two top-level groups: `config` manages HQ's own configuration and its hosting
+profiles, `hosting` operates provider resources through one profile.
+
+```sh
+novamira-hq config add kinsta --credential-env KINSTA_API_KEY
+novamira-hq config list
+
+novamira-hq --profile kinsta hosting providers validate
+novamira-hq --profile kinsta hosting sites list --include-envs
+novamira-hq --profile kinsta hosting backups create --env <env-id> --tag nightly
+novamira-hq --profile kinsta hosting wp plugins install --env <env-id> \
+  --source novamira-latest
+```
+
+`hosting` covers provider inventory and capabilities, sites and environments,
+domains and DNS, backups, cache, PHP, redirects, denied IPs, WordPress plugins
+and themes, WP-CLI, logs, analytics, and SSH/SFTP access. `--profile` is
+required and never inferred, and every command accepts `--json`. Run
+`novamira-hq hosting --help` for the tree, or see
+[`docs/v1-contract.md`](docs/v1-contract.md) for the normative surface.
+
 ## Handoff to the agent CLI
 
 HQ provisions; the site CLI connects. After HQ installs and activates the plugin
