@@ -78,6 +78,13 @@ export class SpawnCommandExecutor implements CommandExecutor {
         if (error.code === "ENOENT") reject(new BackendUnavailableError());
         else reject(new Error("Credential backend command failed to start."));
       });
+      // A child that exits — or is killed by the timeout above — before it
+      // reads its stdin makes the write fail with EPIPE. That is the child's
+      // outcome to report, not a failure of the executor, so the error is
+      // swallowed and the `exit` handler below decides. Without a listener the
+      // socket's error would surface as an unhandled exception and take the
+      // process down mid-transaction.
+      child.stdin.on("error", () => undefined);
       child.once("exit", (code, signal) => {
         clearTimeout(timer);
         // A killed child MUST NOT look like a normal exit status. Reporting a

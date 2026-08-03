@@ -316,8 +316,11 @@ class ProviderHttpClient implements HttpClient {
   constructor(options: HttpClientOptions) {
     this.base = strictHttpUrl(options.baseUrl);
     this.base.search = "";
-    this.base.pathname = this.base.pathname.replace(/\/+$/, "");
-    this.baseUrl = this.base.origin + this.base.pathname;
+    // The trailing slash must be stripped from the *string*, never through the
+    // URL: `pathname = ""` on an http(s) URL normalizes straight back to "/",
+    // so a base URL with no path (`https://api.pantheon.io`) would keep its
+    // slash and every request would be sent to `https://api.pantheon.io//v0/…`.
+    this.baseUrl = this.base.origin + this.base.pathname.replace(/\/+$/, "");
     this.providerLabel = options.providerLabel ?? "provider";
     this.auth = options.auth;
     this.defaultHeaders = lowerCaseHeaders({

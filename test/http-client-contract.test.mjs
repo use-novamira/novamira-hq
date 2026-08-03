@@ -205,3 +205,48 @@ test("a fourth redirect is refused rather than followed", async () => {
     await server.close();
   }
 });
+
+// A URL's pathname cannot be assigned "": http(s) normalizes it back to "/".
+// Stripping the trailing slash through the URL object therefore left every
+// request against a path-less base URL — Pantheon, Rocket.net and Hostinger all
+// default to a bare origin — resolving to "//path" on the wire.
+test("a base URL with no path does not double the leading slash", async () => {
+  const recorder = recordingHandler((request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end("{}");
+  });
+  const server = await startServer(recorder.handler);
+  try {
+    for (const baseUrl of [
+      server.baseUrl,
+      `${server.baseUrl}/`,
+      `${server.baseUrl}//`,
+    ]) {
+      const bare = createHttpClient({
+        baseUrl,
+        providerLabel: "Pantheon",
+        retry: { maxAttempts: 1 },
+      });
+      assert.equal(bare.baseUrl, server.baseUrl);
+      await bare.request({ path: "/v0/sites" });
+      // A path with no leading slash joins the same way.
+      await bare.request({ path: "v0/sites" });
+    }
+    assert.deepEqual(
+      recorder.seen.map((hop) => hop.url),
+      Array.from({ length: 6 }, () => "/v0/sites"),
+    );
+
+    // A base URL that does carry a prefix keeps it, with exactly one slash.
+    const prefixed = createHttpClient({
+      baseUrl: `${server.baseUrl}/api/v2/`,
+      providerLabel: "Cloudways",
+      retry: { maxAttempts: 1 },
+    });
+    assert.equal(prefixed.baseUrl, `${server.baseUrl}/api/v2`);
+    await prefixed.request({ path: "/regions" });
+    assert.equal(recorder.seen.at(-1).url, "/api/v2/regions");
+  } finally {
+    await server.close();
+  }
+});

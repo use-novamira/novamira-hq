@@ -18,6 +18,11 @@ import { platformPaths, type PathEnvironment } from "./config/paths.js";
 import { ConfigStore } from "./config/profiles.js";
 import { asCliError, CliError } from "./errors.js";
 import {
+  createHostingClientFactory,
+  type ProviderRegistry,
+} from "./hosting/factory.js";
+import { PROVIDER_REGISTRY } from "./hosting/providers/index.js";
+import {
   createRenderer,
   type OutputStreams,
   type Renderer,
@@ -28,6 +33,26 @@ export const VERSION = "0.1.0";
 
 export interface RuntimeEnvironment extends PathEnvironment {
   readonly NO_COLOR?: string;
+  /**
+   * The rest of the process environment. Credential references and the
+   * providers' identity variables are resolved from the very environment the
+   * paths were resolved from, so a test that isolates `NOVAMIRA_HQ_HOME` also
+   * isolates every credential lookup.
+   */
+  readonly [name: string]: string | undefined;
+}
+
+/**
+ * Seams the composition root exposes to tests. Production passes nothing and
+ * gets the real, complete provider registry.
+ */
+export interface MainOverrides {
+  /**
+   * The provider constructors the hosting client factory may build from.
+   * Defaults to `PROVIDER_REGISTRY`; a test injects a fake so that no
+   * invocation can reach a live provider API.
+   */
+  readonly registry?: ProviderRegistry;
 }
 
 /**
@@ -77,6 +102,7 @@ export async function main(
   argv: readonly string[],
   streams: OutputStreams = { stdout: process.stdout, stderr: process.stderr },
   environment: RuntimeEnvironment = process.env,
+  overrides: MainOverrides = {},
 ): Promise<number> {
   const requestId = randomUUID();
   let renderer: Renderer | undefined;
@@ -106,16 +132,30 @@ export async function main(
     const locks = new ProfileLockManager(paths.stateDir, security);
     const store = new ConfigStore(paths.configFile, locks, security);
 
+    // Exactly one hosting client factory per process, over the complete
+    // provider registry. Diagnostics are routed to the renderer that the first
+    // command created; before that there is nothing to write to, and an HTTP
+    // request cannot have happened yet either.
+    const hosting = createHostingClientFactory({
+      store,
+      registry: overrides.registry ?? PROVIDER_REGISTRY,
+      env: environment,
+      http: {
+        onDiagnostic: (diagnostic) => renderer?.diagnostic("http", diagnostic),
+      },
+    });
+
     const handlers = createCommandHandlers({
       version: VERSION,
       paths,
       store,
+      hosting,
       rendererFor,
     });
 
-    // PHASE 4: build the credential store, the credential resolver and the
-    // `HostingClientFactory` here (one each), wire `http.onDiagnostic` to
-    // `renderer.diagnostic`, and pass them into `createCommandHandlers`.
+    // PHASE 4: build the credential store and pass its resolver into
+    // `createHostingClientFactory` so `stored` credential references resolve
+    // through the OS keychain rather than the env-only default resolver.
 
     program = createProgram(VERSION, handlers);
     configureOutput(program, streams);

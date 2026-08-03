@@ -3,6 +3,7 @@
 
 import type { PlatformPaths } from "../config/paths.js";
 import type { ConfigStore } from "../config/profiles.js";
+import type { HostingClientFactory } from "../hosting/factory.js";
 import type {
   CommandMeta,
   InvocationWarning,
@@ -27,6 +28,13 @@ export interface CommandDependencies {
   readonly version: string;
   readonly paths: PlatformPaths;
   readonly store: ConfigStore;
+  /**
+   * Builds a `ProviderClient` from a named hosting profile, over the provider
+   * registry the composition root injected. The Phase 4 hosting handlers below
+   * are its only consumers; a test supplies a factory over a fake registry so
+   * no command can reach a live provider API.
+   */
+  readonly hosting: HostingClientFactory;
   /**
    * Resolves the process-wide renderer from the parsed global options.
    * Memoized in `main.ts`, so one renderer — and one `requestId` — serves the
