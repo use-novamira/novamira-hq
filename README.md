@@ -20,12 +20,14 @@ progress: no release has been published to npm yet, and the command surface
 described in [`docs/v1-contract.md`](docs/v1-contract.md) is being landed phase
 by phase.
 
-What exists in this repository today is the foundation: the error and exit-code
-taxonomy, the JSON output envelope, HQ's storage namespace with locking, atomic
-writes and owner-only file permissions, the `config.json` v1 schema and store,
-keychain-backed provider credentials, and the shared HTTP client with retry,
-timeout, and redacted diagnostics. The provider clients, the command line, the
-provisioning flow, and the dashboard are not wired up yet.
+What exists in this repository today: the error and exit-code taxonomy, the JSON
+output envelope, HQ's storage namespace with locking, atomic writes and
+owner-only file permissions, the `config.json` v1 schema and store,
+keychain-backed provider credentials, the shared HTTP client with retry, timeout
+and redacted diagnostics, the eight provider clients, the whole `config` and
+`hosting` command line, and the provisioning flow behind `hosting novamira
+setup`. The local dashboard, the skills bundle, doctor, and self-update are not
+wired up yet.
 
 Sections of the contract document that are not implemented are marked
 **RESERVED** rather than described as if they shipped.
@@ -83,8 +85,16 @@ Storage locations, which are deliberately disjoint from the site CLI's:
 | macOS    | `~/Library/Application Support/Novamira HQ/config.json` | `~/Library/Application Support/Novamira HQ/State` | `~/Library/Caches/Novamira HQ`     |
 | Windows  | `%APPDATA%\Novamira HQ\config.json`                     | `%LOCALAPPDATA%\Novamira HQ\State`                | `%LOCALAPPDATA%\Novamira HQ\Cache` |
 
-`NOVAMIRA_HQ_HOME` relocates the whole tree and `NOVAMIRA_HQ_CONFIG` overrides
-the config file path. The site CLI's `NOVAMIRA_HOME` is ignored.
+### Environment variables
+
+| Variable                          | Effect                                                                                       |
+| --------------------------------- | -------------------------------------------------------------------------------------------- |
+| `NOVAMIRA_HQ_HOME`                | relocate the whole tree — `config.json`, `state/`, `cache/`, `credentials/` — under one root |
+| `NOVAMIRA_HQ_CONFIG`              | override the configuration file path only                                                    |
+| `NOVAMIRA_HQ_ALLOW_INSECURE_HTTP` | set to `1` to let `hosting novamira setup` accept a plain-HTTP site URL that is not loopback |
+| `NO_COLOR`                        | disable ANSI color, like `--no-color`                                                        |
+
+The site CLI's `NOVAMIRA_HOME` and `NOVAMIRA_ALLOW_INSECURE_HTTP` are never read.
 
 ## Commands
 
@@ -109,6 +119,25 @@ required and never inferred, and every command accepts `--json`. Run
 `novamira-hq hosting --help` for the tree, or see
 [`docs/v1-contract.md`](docs/v1-contract.md) for the normative surface.
 
+## Provision a site
+
+One command installs the Novamira plugin on an environment, activates it, turns
+on the AI Abilities options, and verifies the site against the compatibility
+matrix the site CLI enforces:
+
+```sh
+novamira-hq --profile kinsta hosting novamira setup --env <env-id>
+```
+
+The plugin source defaults to `novamira-latest`, which resolves to the newest
+published release. The site URL is discovered from the site's own `home` option
+unless `--url` overrides it; `--no-ai-abilities` leaves the two options
+untouched, and `--no-compat-check` skips the verification and says so in the
+output. A site that cannot run the plugin — PHP below 8.0, WordPress below 6.9,
+a plugin build older than 1.11.1, a missing server feature — fails the command
+with `server_unsupported` and names the check that failed, rather than reporting
+a success an agent could not use.
+
 ## Handoff to the agent CLI
 
 HQ provisions; the site CLI connects. After HQ installs and activates the plugin
@@ -116,7 +145,7 @@ on a provisioned environment, it prints the next step rather than creating any
 credential of its own:
 
 ```text
-✓ Novamira installed and activated on https://example.com
+Novamira 1.11.1 installed and activated on https://example.com
   Connect your agent:  novamira auth login https://example.com
 ```
 

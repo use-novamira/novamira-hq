@@ -35,9 +35,15 @@ a runtime, package, or peer dependency.
 HQ never holds a WordPress site token, never calls a WordPress REST route on a
 configured site's behalf, and never proxies an Ability. The v1 schema has no
 site profiles, HQ issues no Application Password, and HQ never reads the site
-CLI's configuration or credential storage. The only site-directed request v1
-permits is the public, unauthenticated plugin compatibility metadata read used
-by the provisioning preflight.
+CLI's configuration or credential storage.
+
+The only site-directed request v1 permits is one
+`GET {siteUrl}/.well-known/oauth-protected-resource` per `hosting novamira
+setup` invocation: the public, unauthenticated plugin compatibility metadata the
+provisioning preflight reads. It carries `Accept` and `User-Agent` and nothing
+else — **no `Authorization` header, ever**, and no `Cookie`. No other URL on a
+configured site is requested, and a metadata field that turns out to require
+authentication is dropped from the preflight rather than fetched.
 
 ## Global options
 
@@ -81,7 +87,7 @@ Stable code and exit mapping:
 | 1 | `internal_error` |
 | 2 | `usage_error`, `config_error`, `profile_not_found` |
 | 3 | `credential_missing`, `credential_invalid` |
-| 4 | `provider_unsupported`, `provider_error`, `network_error`, `timeout`, `rate_limited`, `not_found`, `conflict`, `integration_unavailable` |
+| 4 | `provider_unsupported`, `provider_error`, `network_error`, `timeout`, `rate_limited`, `not_found`, `conflict`, `integration_unavailable`, `server_unsupported` |
 | 5 | `schema_validation_failed` |
 | 6 | `confirmation_required` |
 
@@ -90,8 +96,12 @@ meanings are fixed: `profile_not_found` is a missing local hosting profile or
 deploy path, `not_found` is a missing remote provider resource,
 `credential_invalid` covers provider 401/403 and unusable local credential
 records, `provider_unsupported` is an operation a provider deliberately does not
-implement, and `integration_unavailable` is the optional `novamira` CLI being
-absent, incompatible, or unusable.
+implement, `integration_unavailable` is the optional `novamira` CLI being
+absent, incompatible, or unusable, and `server_unsupported` is the provisioning
+preflight's verdict that the site itself cannot run the Novamira plugin — its
+PHP version, its WordPress version, the installed plugin's version, its REST
+contract, its feature flags, or its published compatibility document — so
+`novamira auth login` would fail.
 
 A request ID is a fresh lowercase UUID generated locally once per invocation and
 is safe to print. Secret values and secret-looking keys are redacted before
@@ -358,6 +368,7 @@ envelope.
 | `redirects` | `list`, `apply` |
 | `denied-ips` | `list`, `set` |
 | `wp` | `plugins list`, `plugins install`, `plugins update`, `plugins update-all`, `themes list`, `themes update`, `themes update-all` |
+| `novamira` | `setup` |
 | `wp-cli` | `run` |
 | `logs` | `get` |
 | `analytics` | `usage`, `env` |
@@ -377,8 +388,10 @@ Other defaults fixed by v1: `--wp-language` is `en_US`, `hosting activity list`
 always sends `--limit` (10) and `--offset` (0), `hosting analytics env
 --time-span` is `7_days` and the `diskspace` metric sends `time_zone` `00:00`
 when none is given, and `hosting wp plugins install --source novamira-latest`
-resolves to the newest published Novamira plugin zip. `hosting activity list
---api-key` names a provider-side API key **identifier**, never a key value.
+resolves to the newest published Novamira plugin zip. `hosting novamira setup
+--source` **defaults** to `novamira-latest`; `hosting wp plugins install
+--source` has no default and must be given. `hosting activity list --api-key`
+names a provider-side API key **identifier**, never a key value.
 
 Read commands render the provider response unchanged under `data`; action
 commands render the provider's action result; `hosting providers capabilities`
@@ -399,14 +412,258 @@ renders the provider's capability list with `sites.delete` forced to unsupported
 
 ## Provisioning and handoff
 
-**RESERVED.** The contract for plugin installation, the PHP-compatibility and
-site-CLI compatibility preflight, and the emitted handoff is not yet frozen.
-What is already decided: the flow ends after the plugin is installed, activated,
-and configured, and emits a handoff naming `novamira auth login <url>` with the
-JSON equivalent under `data`. HQ writes no site credential, stores no site
-profile, and creates no WordPress user. The compatibility preflight reads public
-unauthenticated metadata only; any field that turns out to require
-authentication is dropped from the preflight rather than fetched.
+`hosting novamira setup` installs and configures the Novamira plugin on one
+environment and then stops. It writes no site credential, stores no site
+profile, and creates no WordPress user.
+
+### Flags
+
+| Flag | Type | Default |
+| --- | --- | --- |
+| `--env <id>` | string | required |
+| `--url <url>` | string | discovered with `wp option get home` |
+| `--source <source>` | string | `novamira-latest` |
+| `--plugin-version <version>` | string | — |
+| `--force` | boolean | `false` |
+| `--activate` / `--no-activate` | boolean | `true` |
+| `--activate-network` | boolean | `false` |
+| `--ignore-requirements` | boolean | `false` |
+| `--preflight` / `--no-preflight` | boolean | `true` |
+| `--validate-source` / `--no-validate-source` | boolean | `true` |
+| `--wait` / `--no-wait` | boolean | `true` |
+| `--ai-abilities` / `--no-ai-abilities` | boolean | `true` |
+| `--compat-check` / `--no-compat-check` | boolean | `true` |
+| `--interval-seconds <seconds>` | positive integer | `5` |
+| `--timeout-seconds <seconds>` | unsigned integer | `300` |
+
+The command has no `--from-json` and no `--command-id`: it always generates its
+own request body. `--plugin-version` carries the reserved-global rename of
+`--version`. `--preflight` is the DB-backed WP-CLI probe below, never the
+compatibility preflight, which is `--compat-check`.
+
+Four flags the Go program had are permanently deleted, not renamed:
+`--username` and `--app-name` existed only to name a WordPress user and label an
+Application Password, and `--site-profile` and `--replace-profile` existed only
+to write a `site_profiles` entry. HQ does neither.
+
+### Sequence
+
+Local validation runs first and issues no provider request: `--env` must be
+non-empty, the provider must expose WP-CLI output — otherwise
+`provider_unsupported`, because HQ reads back the PHP version, the plugin's
+activation state, and the site URL — a supplied `--url` must normalize, and
+`--source` is resolved and, unless `--no-validate-source`, HEAD-checked before
+the provider is touched.
+
+The environment then runs these WP-CLI commands, in this order:
+
+| # | Command | Skipped when |
+| --- | --- | --- |
+| 1 | `wp eval 'echo PHP_VERSION;'` | never |
+| 2 | `wp option get siteurl` | `--no-preflight` |
+| 3 | `wp plugin install <resolved source>` | never |
+| 4 | `wp plugin status <slug>` | no activation is requested, or the source names no slug |
+| 5 | `wp plugin activate <slug>` | as 4, and when 4 reports the plugin already active |
+| 6 | `wp option get home` | `--url` was given |
+| 7 | `wp option update novamira_ai_abilities_enabled 1` | `--no-ai-abilities` |
+| 8 | `wp option update novamira_ai_abilities_domain <host>` | `--no-ai-abilities` |
+
+Step 1 always precedes step 3. The minimum is **PHP 8.0**; a lower major is
+`server_unsupported` and the gate exists to prevent a doomed mutation, so a
+failure there leaves the site untouched. A step-2 failure that looks like a
+socket problem carries a `DB_HOST` hint.
+
+Step 3's generated command carries no `--activate` or `--activate-network`
+whenever the plugin slug can be inferred from the source: activation is then a
+separate, observable call, because a plugin that installs but fails to activate
+inside one provider operation is indistinguishable from success. When the source
+names no slug there is nothing to pass to steps 4 and 5, and the requested
+activation flags go on the install line instead. Step 6 reads `home`, never
+`siteurl`: `home` is the front-end URL an agent connects to and the URL the
+discovery document is served under, and the two differ on a "WordPress in its
+own directory" install. Step 8's host is shell-quoted like every other generated
+argument. `--no-wait` against a provider that answers the install
+asynchronously is a `usage_error`.
+
+### Compatibility preflight
+
+The run ends with the single site-directed request the boundary permits: one
+`GET {siteUrl}/.well-known/oauth-protected-resource`, the RFC 9728 *append* form
+under the site's own path. The insert form is never used; on a subdirectory
+install it lands on a domain root the WordPress does not own.
+
+That request is a **public, unauthenticated metadata read** and nothing else.
+The plugin publishes the document from the `init` hook with no permission
+callback, before and after any authentication, so reading it is not site access:
+HQ holds no site token to send and none is required. A field that turned out to
+require authentication would be dropped from the preflight rather than fetched.
+
+| Property | Value |
+| --- | --- |
+| headers | `Accept: application/json` and `User-Agent: novamira-hq/<version>` only — no `Authorization`, ever, and no `Cookie` |
+| redirects | manual, at most 3 hops, same origin only (a scheme change is cross-origin), all inside one attempt deadline |
+| body ceiling | 256 KiB, read incrementally and abandoned past the ceiling |
+| per-attempt timeout | 10 seconds |
+| attempts | 3, with 1 s then 3 s between them |
+| retried on | transport failure, timeout, and HTTP 404, 408, 429, and 5xx |
+| cache | none; the document is read once per invocation |
+
+404 is retried because an edge cache may still be serving a pre-activation
+response for that path. Nothing else is: any other non-2xx, a disallowed
+redirect, an oversized body, and every validation failure below are final on the
+first observation.
+
+The document is checked against HQ's own copy of the site CLI's v1 compatibility
+matrix — HQ never imports `@novamira/cli` — and the **first** failing check is
+named in `details.check`:
+
+| Check | Requirement |
+| --- | --- |
+| `metadata.reachable` | 2xx, within the size ceiling, no disallowed redirect |
+| `metadata.document` | the body parses as JSON and is a non-null, non-array object |
+| `metadata.resource` | `resource` is a `http:`/`https:` URL with no userinfo whose origin is the site's |
+| `metadata.authorization_server` | `authorization_servers` is a one-element string array naming the site itself |
+| `metadata.bearer_methods` | `bearer_methods_supported` contains `header` |
+| `metadata.scopes` | `scopes_supported` contains `mcp` |
+| `compat.block` | the `novamira` block is an object carrying `plugin_version`, `wordpress_version`, and `minimum_wordpress_version` strings, a safe-integer `rest_api_version`, and a `features` object whose every value is a boolean |
+| `compat.wordpress` | `wordpress_version` is dotted-numeric and at least `6.9` |
+| `compat.wordpress_consistency` | `minimum_wordpress_version` parses and is at most `wordpress_version` |
+| `compat.plugin` | `plugin_version` is SemVer and at least `1.11.1`; a prerelease of the minimum fails |
+| `compat.rest_contract` | `rest_api_version` is exactly `1` |
+| `compat.features` | `abilities_bearer_auth`, `agent_context`, `rest_skills`, and `generalized_execution_shim` are each exactly `true` |
+
+`metadata.resource` is **deliberately narrower** than the site CLI's own check:
+HQ compares the origin only and does not require the advertised resource to
+equal `{siteUrl}/wp-json/mcp/novamira-oauth` or its plain-permalink
+`index.php?rest_route=` form, because HQ cannot know the site's permalink style
+or its `rest_url_prefix` filter, and a false "not ready" on a working site is
+worse than a missed exotic case.
+
+The tolerance rule applies throughout: a required field that is missing, wrongly
+typed, or of a disallowed value rejects the document, while any additional
+member — top level, inside `novamira`, inside `features`, or as an extra array
+element — is ignored and never rejected.
+
+**A failed preflight fails the invocation**, carrying the check id and the whole
+install record in `details`. A warning on a success envelope would still be a
+success envelope, and the command's contract is that the site is ready.
+`--no-compat-check` is the only way to proceed without the check: it skips the
+request entirely, sets `compatibility.status` to `"skipped"` and `ready` to
+`null`, and attaches a `compatibility_not_checked` warning.
+
+### The handoff URL
+
+The URL HQ advertises — from `--url` or from `wp option get home` — must be one
+`novamira auth login` accepts, or HQ would print a command that fails. It must
+use HTTPS, or plain HTTP with a loopback host, or plain HTTP with
+`NOVAMIRA_HQ_ALLOW_INSECURE_HTTP=1`, which is the only opt-in and adds an
+`insecure_http` warning. Userinfo, a query string, and a fragment are each
+refused. A bare `example.com` is read as `https://example.com`, a trailing slash
+and duplicate slashes are collapsed, and the value written to
+`novamira_ai_abilities_domain` is the bare hostname, port-stripped and with IPv6
+brackets removed.
+
+Every rejection is a `usage_error` naming `--url` in `details.flag` whatever the
+value's source, because supplying `--url` is what fixes it. No diagnostic ever
+repeats userinfo back: a rejected URL's credential is removed before the error
+is constructed. HQ never reads the site CLI's own
+`NOVAMIRA_ALLOW_INSECURE_HTTP`.
+
+### Failures
+
+| Failure | Code |
+| --- | --- |
+| `--env` missing, a site URL HQ refuses, `--no-wait` against an install the provider answered asynchronously | `usage_error` |
+| the provider cannot expose WP-CLI output | `provider_unsupported` |
+| PHP major below 8, or any compatibility check failing | `server_unsupported` |
+| the release API or a remote `--source` unreachable, and compatibility metadata still unreachable after its retries | `network_error`, retryable |
+| the release metadata is unparseable | `schema_validation_failed` |
+| the release carries no Novamira zip, or a remote `--source` is not downloadable | `not_found` |
+| a WP-CLI command, the install, the activation, or an option write that the provider reports failed | `provider_error` |
+| an operation that outlives `--timeout-seconds`, or a compatibility attempt deadline that expires on every attempt | `timeout`, retryable |
+
+The PHP gate is fatal and runs before anything is installed, so a site that
+cannot run the plugin is left untouched; the compatibility preflight is fatal and
+runs last, after the site has been mutated, because a site that is not ready
+means the command did not do its job. Every preflight failure carries the failed
+`check` plus the install record — `hostingProfile`, `env`, `siteUrl`,
+`metadataUrl`, `pluginSlug`, `pluginSource`, `aiAbilities` — and whatever the
+check observed, so a caller still learns exactly what landed. All of it is public
+metadata and all of it is redacted like every other diagnostic.
+
+### `data`
+
+```json
+{
+  "hosting_profile": "kinsta",
+  "env": "env-abc123",
+  "url": "https://example.com",
+  "plugin": {
+    "slug": "novamira",
+    "source": "https://github.com/use-novamira/novamira/releases/download/v1.11.1/novamira-1.11.1.zip",
+    "version": "1.11.1",
+    "activated": true,
+    "network_activated": false
+  },
+  "ai_abilities": { "enabled": true, "domain": "example.com" },
+  "compatibility": {
+    "status": "supported",
+    "metadata_url": "https://example.com/.well-known/oauth-protected-resource",
+    "plugin_version": "1.11.1",
+    "rest_api_version": 1,
+    "wordpress_version": "6.9",
+    "minimum_wordpress_version": "6.9",
+    "features": {
+      "abilities_bearer_auth": true,
+      "agent_context": true,
+      "rest_skills": true,
+      "generalized_execution_shim": true
+    }
+  },
+  "ready": true,
+  "next_step": {
+    "tool": "novamira",
+    "command": ["novamira", "auth", "login", "https://example.com"],
+    "command_line": "novamira auth login https://example.com"
+  }
+}
+```
+
+`compatibility.status` is `"supported"` or `"skipped"`; a failing check never
+produces a success envelope, so no other value can appear. When it is
+`"skipped"`, every other `compatibility` field is `null`, `plugin.version` is
+`null`, and `ready` is `null`; otherwise `ready` is `true`. `ai_abilities.domain`
+is `null` under `--no-ai-abilities`. `next_step.command` is argv a caller may
+spawn with no shell and `next_step.command_line` is the same command as one
+string; both are generated from one value so they cannot drift, and the command
+carries no `--name` and no `--no-open` because profile naming belongs to the
+site CLI and launching a browser belongs to the operator. There are no
+timestamps anywhere.
+
+**`site_profile`, `username`, `credential`, `rest_url`, and `config_path` are
+permanently absent.** Each existed in the Go program only because it created an
+Application Password and wrote a `site_profiles` entry; HQ does neither, and
+`config_path` in particular must never return.
+
+Human mode prints one block, unstyled and with no glyph:
+
+```text
+Novamira 1.11.1 installed and activated on https://example.com
+  Connect your agent:  novamira auth login https://example.com
+```
+
+Under `--no-compat-check` the version is unknown, because it is read from the
+metadata, and the skip is stated rather than implied:
+
+```text
+Novamira installed and activated on https://example.com
+  Compatibility not checked (--no-compat-check).
+  Connect your agent:  novamira auth login https://example.com
+```
+
+The two warnings the command can raise, `compatibility_not_checked` and
+`insecure_http`, reach stderr through the normal warning path and `meta.warnings`
+in JSON mode; the block never repeats them.
 
 ## Local dashboard
 

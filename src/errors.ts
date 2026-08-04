@@ -17,6 +17,10 @@ export const ERROR_CODES = [
   "schema_validation_failed",
   "confirmation_required",
   "integration_unavailable",
+  // The provisioning preflight's verdict that the WordPress site itself cannot
+  // run Novamira. Spelled and exited identically to the site CLI's code of the
+  // same name, so an operator sees one answer from both tools.
+  "server_unsupported",
   "internal_error",
 ] as const;
 
@@ -38,6 +42,7 @@ const EXIT_CODES: Readonly<Record<ErrorCode, number>> = {
   schema_validation_failed: 5,
   confirmation_required: 6,
   integration_unavailable: 4,
+  server_unsupported: 4,
   internal_error: 1,
 };
 

@@ -22,8 +22,12 @@ plan and is still being executed, so parts of the layout below do not exist yet.
 HQ's job ends at provisioning: create and operate hosting resources, install and
 configure the plugin, then hand off. There is no `site/` package, no Application
 Passwords, and no `site_profiles` in the schema. Do not add a code path that
-reintroduces site access; the plugin compatibility preflight is public
-unauthenticated metadata only.
+reintroduces site access.
+
+The one exception is bounded: `hosting novamira setup` issues a single
+`GET {siteUrl}/.well-known/oauth-protected-resource`, the public unauthenticated
+compatibility metadata, carrying `Accept` and `User-Agent` and no `Authorization`
+header, ever. No other URL on a configured site may be requested.
 
 ## Storage namespace
 
@@ -66,7 +70,16 @@ calls just to test.
   `stored` with the OS keychain plus an owner-only file fallback.
 - `src/hosting/` holds the shared HTTP client, provider-neutral types, the
   `ProviderClient` request unions, the profile-to-client factory, and the eight
-  provider clients under `src/hosting/providers/`.
+  provider clients under `src/hosting/providers/`. `shell.ts` builds WP-CLI
+  command lines (refusing rather than escaping anything that changes a command's
+  meaning) and `operations.ts` polls long-running provider operations; both sit
+  below the CLI so provisioning can use them. `src/json.ts` holds `asRecord` and
+  the RFC 6901 pointer lookup, for the same reason.
+- `src/provisioning/` installs and configures the Novamira plugin over provider
+  WP-CLI, checks the site against HQ's own copy of the site CLI's v1
+  compatibility matrix, and emits the `novamira auth login` handoff. It is the
+  layer Phase 6's dashboard calls directly, so it must never import from
+  `src/cli/`; `src/cli/` imports from it.
 - `src/index.ts`, `src/main.ts`, and `src/cli/` are the entry point, the
   composition root, and the commander program plus its handlers.
 - `src/cli/hosting/` is one module per command group; `src/cli/hosting/index.ts`
@@ -79,8 +92,8 @@ calls just to test.
   itself under `NOVAMIRA_HQ_HOME` in a temporary directory.
 - `scripts/` and `.github/workflows/` cover SPDX headers, packaging, and
   releases.
-- Still to land per the plan: `src/provisioning/`, `src/web/`, `src/skills/`,
-  `src/doctor/`, and `src/update/`.
+- Still to land per the plan: `src/web/`, `src/skills/`, `src/doctor/`, and
+  `src/update/`.
 
 ## Making changes
 

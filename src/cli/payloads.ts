@@ -31,6 +31,10 @@ import { CliError } from "../errors.js";
 import { assertNever } from "../hosting/client.js";
 import type { CacheKind, Query } from "../hosting/types.js";
 import {
+  pluginActivateCommand,
+  pluginInstallCommand,
+} from "../provisioning/plugin.js";
+import {
   readJsonPayload,
   readSecret,
   readStdinTrimmed,
@@ -777,67 +781,38 @@ export async function wpPluginInstallPayload(
   );
 }
 
-/** The `wp plugin install ...` command line, quoted for a provider WP-CLI API. */
+/**
+ * The `wp plugin install ...` command line, quoted for a provider WP-CLI API.
+ *
+ * The construction itself moved to `src/provisioning/plugin.ts`, which owns
+ * every step between "the operator named a plugin source" and "the plugin is
+ * active"; this wrapper keeps the CLI-shaped options type so
+ * `wpPluginInstallPayload` and its contract tests are unaffected.
+ */
 export function wpPluginInstallCommand(
   source: string,
   options: WpPluginInstallOptions,
 ): string {
-  const parts = ["wp", "plugin", "install", source];
-  // The WP-CLI flag inside the generated command line keeps its own name; only
-  // HQ's own option was renamed.
-  if (options.pluginVersion !== undefined && options.pluginVersion !== "")
-    parts.push(`--version=${options.pluginVersion}`);
-  if (options.force === true) parts.push("--force");
-  if (options.ignoreRequirements === true) parts.push("--ignore-requirements");
-  if (options.activateNetwork === true) parts.push("--activate-network");
-  else if (options.activate === true) parts.push("--activate");
-  return shellJoin(parts);
-}
-
-/** The `wp plugin activate ...` command line used after a waited install. */
-export function wpPluginActivateCommand(
-  slug: string,
-  network: boolean,
-): string {
-  const parts = ["wp", "plugin", "activate", slug];
-  if (network) parts.push("--network");
-  return shellJoin(parts);
+  return pluginInstallCommand(source, options);
 }
 
 /**
- * Quote one WP-CLI argument. This is intentionally far stricter than a real
- * shell quoter: the string is handed to a provider that runs it through a
- * shell HQ cannot see, so anything that could change the command's meaning is
- * refused rather than escaped.
+ * The `wp plugin activate ...` command line used after a waited install. Also
+ * moved to `src/provisioning/plugin.ts`; re-exported under its CLI-era name.
  */
-export function shellQuote(value: string): string {
-  if (value === "") return "''";
-  if (value.includes("'")) {
-    throw new CliError(
-      "usage_error",
-      "WP-CLI arguments cannot contain single quotes.",
-    );
-  }
-  let needsQuote = false;
-  for (const character of value) {
-    if (character === " ") {
-      needsQuote = true;
-      continue;
-    }
-    if (!/^[-_./:=@0-9A-Za-z]$/.test(character)) {
-      throw new CliError(
-        "usage_error",
-        "WP-CLI arguments can contain only letters, numbers, spaces, and - _ . / : = @",
-      );
-    }
-  }
-  return needsQuote ? `'${value}'` : value;
-}
+export const wpPluginActivateCommand = pluginActivateCommand;
 
-/** Quote and join a WP-CLI command line. */
-export function shellJoin(parts: readonly string[]): string {
-  return parts.map(shellQuote).join(" ");
-}
+/**
+ * WP-CLI command-line construction moved to `src/hosting/shell.ts`: it is
+ * provider machinery, not CLI grammar, and `src/provisioning/` builds WP-CLI
+ * lines without importing `src/cli/`. Re-exported here so every existing
+ * caller — and `test/cli-foundations-contract.test.mjs` — keeps working.
+ */
+export {
+  shellJoin,
+  shellQuote,
+  wpCliCommandPayload,
+} from "../hosting/shell.js";
 
 export interface WpCliRunOptions extends FromJsonOptions {
   readonly command?: string;
@@ -859,11 +834,6 @@ export async function wpCliPayload(
     }),
     io,
   );
-}
-
-/** The body of a bare `run-wp-cli` action, for helpers that build one. */
-export function wpCliCommandPayload(command: string): JsonRecord {
-  return { wp_command: command };
 }
 
 /* -------------------------------------------------------------------------- */

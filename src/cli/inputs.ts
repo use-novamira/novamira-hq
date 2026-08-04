@@ -353,51 +353,10 @@ export async function readSecret(
 /* JSON pointers                                                              */
 /* -------------------------------------------------------------------------- */
 
-/** RFC 6901 token decoding. Returns `undefined` for an invalid escape. */
-function decodeJsonPointerToken(token: string): string | undefined {
-  if (!token.includes("~")) return token;
-  // Iterating UTF-16 units is safe here: both escapes are ASCII and every unit
-  // is re-emitted in order, so surrogate pairs survive intact.
-  let decoded = "";
-  for (let index = 0; index < token.length; index++) {
-    const character = token.charAt(index);
-    if (character !== "~") {
-      decoded += character;
-      continue;
-    }
-    index++;
-    // `charAt` past the end is "", which is Go's "invalid trailing escape".
-    const escaped = token.charAt(index);
-    if (escaped === "0") decoded += "~";
-    else if (escaped === "1") decoded += "/";
-    else return undefined;
-  }
-  return decoded;
-}
-
 /**
- * Go's `jsonPointerLookupString`, which returned `(string, bool)`. TypeScript
- * has a better answer for "a string or nothing", so this returns
- * `string | undefined` and callers use `??` or an explicit check.
+ * `jsonPointerLookupString` now lives in `src/json.ts`, which has no CLI
+ * dependency, because `src/provisioning/` needs it and must not import
+ * `src/cli/`. It is re-exported here so every existing caller — and
+ * `test/cli-foundations-contract.test.mjs` — keeps working unchanged.
  */
-export function jsonPointerLookupString(
-  value: unknown,
-  pointer: string,
-): string | undefined {
-  if (!pointer.startsWith("/")) return undefined;
-  let current: unknown = value;
-  for (const part of pointer.slice(1).split("/")) {
-    const token = decodeJsonPointerToken(part);
-    if (token === undefined) return undefined;
-    if (
-      current === null ||
-      typeof current !== "object" ||
-      Array.isArray(current)
-    )
-      return undefined;
-    const record = current as Record<string, unknown>;
-    if (!Object.hasOwn(record, token)) return undefined;
-    current = record[token];
-  }
-  return typeof current === "string" ? current : undefined;
-}
+export { jsonPointerLookupString } from "../json.js";

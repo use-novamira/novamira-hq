@@ -32,9 +32,15 @@ import {
   type OutputStreams,
   type Renderer,
 } from "./output/render.js";
+import { VERSION } from "./version.js";
 
-/** Kept in step with `package.json`'s `version`; the release job matches them. */
-export const VERSION = "0.1.0";
+/**
+ * The version literal moved to `src/version.ts` so `src/provisioning/` can
+ * stamp it into the compatibility preflight's `User-Agent` without importing
+ * the composition root. Re-exported here because it is where every caller,
+ * including `test/cli-program-contract.test.mjs`, already looks for it.
+ */
+export { VERSION };
 
 export interface RuntimeEnvironment extends PathEnvironment {
   readonly NO_COLOR?: string;

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * The hosting command tree, assembled from the seven groups that were ported
+ * The hosting command tree, assembled from the eight groups that were ported
  * from Go's `internal/cli` one file at a time.
  *
  * Each group owns three exports — a handler interface, a factory over
@@ -22,7 +22,7 @@
  *   and its output.
  *
  * The handler interfaces are intersected rather than nested. Every method name
- * across the seven groups is distinct, so one flat object satisfies all of them,
+ * across the eight groups is distinct, so one flat object satisfies all of them,
  * `CommandHandlers` stays a flat interface, and a test can still hand
  * `createProgram` a single recording double.
  */
@@ -57,6 +57,11 @@ import {
   type MaintenanceHandlers,
 } from "./maintenance.js";
 import {
+  createNovamiraHandlers,
+  registerNovamiraCommands,
+  type NovamiraHandlers,
+} from "./novamira.js";
+import {
   createSitesHandlers,
   registerSitesCommands,
   type SitesHandlers,
@@ -68,7 +73,7 @@ export const HOSTING_COMMAND = "hosting";
 
 /**
  * Every hosting handler the program can dispatch to, as one flat object. The
- * seven groups' method names are disjoint by construction; a collision would
+ * eight groups' method names are disjoint by construction; a collision would
  * be a compile error here rather than a silently shadowed command.
  */
 export type HostingCommandHandlers = HostingInventoryHandlers &
@@ -76,6 +81,7 @@ export type HostingCommandHandlers = HostingInventoryHandlers &
   DomainsHandlers &
   MaintenanceHandlers &
   WpHandlers &
+  NovamiraHandlers &
   AccessHandlers &
   HostingConfigHandlers;
 
@@ -93,6 +99,7 @@ export function createHostingCommandHandlers(
     ...createDomainsHandlers(dependencies),
     ...createMaintenanceHandlers(dependencies),
     ...createWpHandlers(dependencies),
+    ...createNovamiraHandlers(dependencies),
     ...createAccessHandlers(dependencies),
     ...createHostingConfigHandlers(dependencies),
   };
@@ -118,6 +125,10 @@ export function registerHostingCommands(
   registerDomainsCommands(hosting, handlers, optionsFor);
   registerMaintenanceCommands(hosting, handlers, optionsFor);
   registerWpCommands(hosting, handlers, optionsFor);
+  // `novamira` sits after `wp` because it is the same machinery one level up:
+  // it installs the plugin through the very WP-CLI path `wp plugins install`
+  // uses, then configures the site and prints the site CLI handoff.
+  registerNovamiraCommands(hosting, handlers, optionsFor);
   registerAccessCommands(hosting, handlers, optionsFor);
 
   // Hosting *profiles* are local configuration, not a provider resource, so

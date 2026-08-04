@@ -33,13 +33,20 @@
  * requests HQ makes to a host that is not a hosting provider; both go through
  * the injectable `fetch` seam on {@link createWpHandlers} so contract tests stay
  * offline.
+ *
+ * Every step of that sequence that is not CLI grammar now lives one layer down,
+ * in `src/provisioning/`: source resolution and validation, the preflight and
+ * its DB_HOST hint, activation, and WP-CLI output extraction (`wpCliOutput` and
+ * the echo stripper, in `src/provisioning/wp-cli.ts`). `hosting novamira setup`
+ * runs the same machinery, and it must be callable from Phase 6's dashboard
+ * with no commander in the graph, so the shared parts moved rather than being
+ * copied. What stays here is what reads a CLI option: `pollBudget`,
+ * `installActivationPlan` (which consults `--from-json` and `--command-id`) and
+ * `preparedInstallPayload` (which needs `CommandIo`).
  */
-
-import { posix } from "node:path";
 
 import type { Command } from "commander";
 
-import { CliError, asCliError } from "../../errors.js";
 import {
   assertNever,
   wpCliResultsObservable,
@@ -48,6 +55,19 @@ import {
   type ReadRequest,
 } from "../../hosting/client.js";
 import type { OperationStatus } from "../../hosting/types.js";
+import type { HttpFetch } from "../../provisioning/http.js";
+import {
+  NOVAMIRA_LATEST_RELEASE_API,
+  NOVAMIRA_LATEST_SOURCE_ALIAS,
+  activateInstalledPlugin,
+  inferPluginSlug,
+  installPreflightApplies,
+  preflightWpCli,
+  resolvePluginSource,
+  validateRemotePluginSource,
+  type ActivationPlan,
+} from "../../provisioning/plugin.js";
+import type { PollBudget } from "../../provisioning/wp-cli.js";
 import type { CommandDependencies } from "../commands.js";
 import {
   DEFAULT_POLL_INTERVAL_SECONDS,
@@ -64,20 +84,12 @@ import {
   waitForOperationStatus,
   type HostingOptions,
 } from "../hosting-command.js";
-import {
-  jsonPointerLookupString,
-  requireOption,
-  type CommandIo,
-  type JsonValue,
-} from "../inputs.js";
+import { requireOption, type CommandIo, type JsonValue } from "../inputs.js";
 import {
   buildQuery,
-  shellJoin,
   wpAssetUpdateAllPayload,
   wpAssetUpdatePayload,
-  wpCliCommandPayload,
   wpCliPayload,
-  wpPluginActivateCommand,
   wpPluginInstallPayload,
   type WpAssetKind,
   type WpAssetUpdateAllOptions,
@@ -126,28 +138,6 @@ const DEFAULT_DISKSPACE_TIME_ZONE = "00:00";
 
 /** Go's `--time-span` default. */
 const DEFAULT_ANALYTICS_TIME_SPAN = "7_days";
-
-/** `--source` alias resolving to the newest Novamira plugin zip. */
-const NOVAMIRA_LATEST_SOURCE_ALIAS = "novamira-latest";
-
-/** The pre-alias URL, still accepted and resolved the same way. */
-const NOVAMIRA_LEGACY_ZIP_URL =
-  "https://github.com/use-novamira/novamira/releases/latest/download/novamira.zip";
-
-/** Where the alias is resolved from. Overridable so tests stay offline. */
-const NOVAMIRA_LATEST_RELEASE_API =
-  "https://api.github.com/repos/use-novamira/novamira/releases/latest";
-
-/** Asset names that count as "the Novamira plugin zip". */
-const NOVAMIRA_ZIP_ASSET = /^novamira(?:-[0-9][A-Za-z0-9._-]*)?\.zip$/;
-
-/** The WP-CLI command the preflight runs, and the one its hint runs. */
-const PREFLIGHT_COMMAND = "wp option get siteurl";
-const PREFLIGHT_HINT_COMMAND = "wp config get DB_HOST";
-
-/** The hint Go appends when a failed preflight looks like a socket problem. */
-const DB_HOST_LOCALHOST_HINT =
-  "; DB_HOST is localhost, which can make WP-CLI use a missing MySQL socket on some hosts. Set DB_HOST to 127.0.0.1 or the provider's TCP database host, then retry";
 
 /* -------------------------------------------------------------------------- */
 /* Command options                                                            */
@@ -326,297 +316,20 @@ function assetUpdateAllRequest(
 }
 
 /* -------------------------------------------------------------------------- */
-/* WP-CLI output extraction                                                   */
-/* -------------------------------------------------------------------------- */
-
-/** Where providers put the textual result of a WP-CLI run, in Go's order. */
-const WP_CLI_OUTPUT_POINTERS = [
-  "/data/result",
-  "/data/output",
-  "/data",
-  "/result/response",
-  "/result/output",
-  "/result",
-  "/output",
-  "/response",
-] as const;
-
-/** The pointers whose value may instead be a list of per-command results. */
-const WP_CLI_OUTPUT_LIST_POINTERS = ["/data", "/result"] as const;
-
-/** The keys a list entry may carry its output under. */
-const WP_CLI_OUTPUT_KEYS = ["output", "result", "response"] as const;
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    return undefined;
-  return value as Record<string, unknown>;
-}
-
-/**
- * Go's `pointerValue`, for the two list-shaped pointers only. Neither `/data`
- * nor `/result` contains an RFC 6901 escape, so token decoding — which
- * {@link jsonPointerLookupString} still performs for the string lookups — is
- * not repeated here.
- */
-function pointerValue(value: unknown, pointer: string): unknown {
-  let current: unknown = value;
-  for (const token of pointer.slice(1).split("/")) {
-    const record = asRecord(current);
-    if (record === undefined) return undefined;
-    current = record[token];
-  }
-  return current;
-}
-
-/** Go's `unwrapWpCliOutputString`: a JSON document smuggled inside a string. */
-function unwrapWpCliOutputString(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed.startsWith("{")) return value;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed) as unknown;
-  } catch {
-    return value;
-  }
-  for (const pointer of ["/data", "/output", "/response"]) {
-    const found = jsonPointerLookupString(parsed, pointer);
-    if (found !== undefined) return found;
-  }
-  return value;
-}
-
-/** Go's `wpCliOutputFromArray`. */
-function wpCliOutputFromArray(value: unknown): string {
-  if (!Array.isArray(value)) return "";
-  const entries = value as readonly unknown[];
-  const parts: string[] = [];
-  for (const entry of entries) {
-    const record = asRecord(entry);
-    if (record === undefined) continue;
-    for (const key of WP_CLI_OUTPUT_KEYS) {
-      const text = record[key];
-      if (typeof text === "string" && text.trim() !== "") {
-        parts.push(text);
-        break;
-      }
-    }
-  }
-  return parts.join("\n");
-}
-
-/**
- * Go's `wpCliOutput` (`internal/cli/hosting_novamira.go`): the textual result
- * of a WP-CLI operation, wherever the provider chose to put it. Phase 5's
- * provisioning module needs the same extraction; when it lands, this becomes
- * the obvious thing to lift into a shared module.
- */
-function wpCliOutput(raw: unknown): string {
-  for (const pointer of WP_CLI_OUTPUT_POINTERS) {
-    const found = jsonPointerLookupString(raw, pointer);
-    if (found !== undefined) return unwrapWpCliOutputString(found);
-  }
-  for (const pointer of WP_CLI_OUTPUT_LIST_POINTERS) {
-    const found = wpCliOutputFromArray(pointerValue(raw, pointer));
-    if (found !== "") return found;
-  }
-  return "";
-}
-
-/* -------------------------------------------------------------------------- */
-/* Plugin source resolution                                                   */
+/* Plugin install orchestration                                               */
 /* -------------------------------------------------------------------------- */
 
 /**
- * The subset of `fetch` the plugin-source helpers use. Declaring it locally
- * keeps the seam small enough for a test to supply a literal, and keeps the
- * helpers honest about issuing nothing but a GET and a HEAD.
+ * Seams for {@link createWpHandlers}; production supplies none. The `fetch`
+ * seam and the two source-resolution helpers behind it now live in
+ * `src/provisioning/`, which owns everything from "the operator named a source"
+ * to "the plugin is active"; this group keeps only what reads a CLI option.
  */
-type HttpFetch = (
-  input: string,
-  init?: {
-    readonly method?: string;
-    readonly headers?: Readonly<Record<string, string>>;
-  },
-) => Promise<{
-  readonly ok: boolean;
-  readonly status: number;
-  json(): Promise<unknown>;
-}>;
-
-/** Seams for {@link createWpHandlers}; production supplies none. */
 interface WpCommandOverrides {
   /** Defaults to the global `fetch`. */
   readonly fetch?: HttpFetch;
   /** Defaults to {@link NOVAMIRA_LATEST_RELEASE_API}. */
   readonly latestReleaseApi?: string;
-}
-
-function absoluteUrl(value: string): URL | undefined {
-  try {
-    const url = new URL(value);
-    // Go required both a scheme and a host; `plugin:name` has neither host nor
-    // a meaningful path, and must fall through to the plain-slug branch.
-    return url.host === "" ? undefined : url;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Go's `inferPluginInstallSlug`: the plugin slug HQ may activate after an
- * install, or `""` when the source does not identify one.
- */
-function inferPluginInstallSlug(source: string): string {
-  if (source === "") return "";
-  if (
-    source === NOVAMIRA_LATEST_SOURCE_ALIAS ||
-    source === NOVAMIRA_LEGACY_ZIP_URL
-  )
-    return "novamira";
-  if (source.includes("github.com/use-novamira/novamira/")) return "novamira";
-  const url = absoluteUrl(source);
-  if (url !== undefined)
-    return NOVAMIRA_ZIP_ASSET.test(posix.basename(url.pathname))
-      ? "novamira"
-      : "";
-  if (/[/:\\]/.test(source) || source.endsWith(".zip")) return "";
-  return source;
-}
-
-interface ReleaseAsset {
-  readonly name: string;
-  readonly url: string;
-}
-
-function releaseAssets(release: unknown): readonly ReleaseAsset[] {
-  const record = asRecord(release);
-  const raw = record?.assets;
-  if (!Array.isArray(raw)) return [];
-  const entries = raw as readonly unknown[];
-  const assets: ReleaseAsset[] = [];
-  for (const entry of entries) {
-    const asset = asRecord(entry);
-    if (asset === undefined) continue;
-    const name = asset.name;
-    const url = asset.browser_download_url;
-    if (typeof name === "string" && typeof url === "string" && url !== "")
-      assets.push({ name, url });
-  }
-  return assets;
-}
-
-function releaseTag(release: unknown): string {
-  const tag = asRecord(release)?.tag_name;
-  return typeof tag === "string" ? tag : "";
-}
-
-/** Go's `resolveNovamiraLatestZip`. */
-async function resolveNovamiraLatestZip(
-  http: HttpFetch,
-  apiUrl: string,
-): Promise<string> {
-  let response;
-  try {
-    response = await http(apiUrl, {
-      headers: { Accept: "application/vnd.github+json" },
-    });
-  } catch (error) {
-    throw new CliError(
-      "network_error",
-      `Failed to resolve the ${NOVAMIRA_LATEST_SOURCE_ALIAS} plugin source.`,
-      { retryable: true, cause: error, details: { source: apiUrl } },
-    );
-  }
-  if (!response.ok) {
-    throw new CliError(
-      "network_error",
-      `Failed to resolve the ${NOVAMIRA_LATEST_SOURCE_ALIAS} plugin source: GitHub returned ${String(response.status)}.`,
-      { retryable: true, details: { source: apiUrl, status: response.status } },
-    );
-  }
-  let release: unknown;
-  try {
-    release = await response.json();
-  } catch (error) {
-    throw new CliError(
-      "schema_validation_failed",
-      `Failed to parse the ${NOVAMIRA_LATEST_SOURCE_ALIAS} release metadata.`,
-      { cause: error, details: { source: apiUrl } },
-    );
-  }
-
-  let fallback = "";
-  for (const asset of releaseAssets(release)) {
-    if (asset.name === "novamira.zip") return asset.url;
-    if (fallback === "" && NOVAMIRA_ZIP_ASSET.test(asset.name))
-      fallback = asset.url;
-  }
-  if (fallback !== "") return fallback;
-  const tag = releaseTag(release);
-  throw new CliError(
-    "not_found",
-    tag === ""
-      ? "The latest Novamira release does not include a novamira zip asset."
-      : `The latest Novamira release ${tag} does not include a novamira zip asset.`,
-    { details: { source: apiUrl } },
-  );
-}
-
-/** Go's `resolvePluginInstallSource`. */
-async function resolvePluginInstallSource(
-  source: string,
-  http: HttpFetch,
-  apiUrl: string,
-): Promise<string> {
-  if (
-    source === NOVAMIRA_LATEST_SOURCE_ALIAS ||
-    source === NOVAMIRA_LEGACY_ZIP_URL
-  )
-    return resolveNovamiraLatestZip(http, apiUrl);
-  return source;
-}
-
-/** Go's `validateRemotePluginInstallSource`: a HEAD check, never a download. */
-async function validateRemotePluginInstallSource(
-  source: string,
-  http: HttpFetch,
-): Promise<void> {
-  if (!source.startsWith("https://") && !source.startsWith("http://")) return;
-  let response;
-  try {
-    response = await http(source, { method: "HEAD" });
-  } catch (error) {
-    throw new CliError(
-      "network_error",
-      `Failed to validate the plugin source ${source}.`,
-      { retryable: true, cause: error, details: { source } },
-    );
-  }
-  // Some hosts refuse HEAD outright; Go treated that as "not a verdict".
-  if (response.status === 405) return;
-  if (response.status < 200 || response.status >= 400) {
-    throw new CliError(
-      "not_found",
-      `The plugin source ${source} is not downloadable: HTTP ${String(response.status)}.`,
-      { details: { source, status: response.status } },
-    );
-  }
-}
-
-/* -------------------------------------------------------------------------- */
-/* Plugin install orchestration                                               */
-/* -------------------------------------------------------------------------- */
-
-interface PollBudget {
-  readonly intervalSeconds: number;
-  readonly timeoutSeconds: number;
-}
-
-/** Which plugin HQ activates in a follow-up WP-CLI call, if any. */
-interface ActivationPlan {
-  readonly slug: string;
-  readonly network: boolean;
 }
 
 function pollBudget(options: WpPluginInstallCommandOptions): PollBudget {
@@ -641,18 +354,9 @@ function installActivationPlan(
   const activate = options.activate ?? true;
   const network = options.activateNetwork ?? false;
   if (!activate && !network) return undefined;
-  const slug = inferPluginInstallSlug(options.source ?? "");
+  const slug = inferPluginSlug(options.source ?? "");
   if (slug === "") return undefined;
   return { slug, network };
-}
-
-/** Go's `wpPluginInstallPreflightApplies`. */
-function installPreflightApplies(body: JsonValue): boolean {
-  const record = asRecord(body);
-  if (record === undefined) return false;
-  return (
-    Object.hasOwn(record, "wp_command") && !Object.hasOwn(record, "command_id")
-  );
 }
 
 /**
@@ -674,167 +378,6 @@ async function preparedInstallPayload(
     io,
   );
   return activation === undefined ? { body } : { body, activation };
-}
-
-/** Re-raise `error` with `prefix` in front of its message, keeping its code. */
-function contextualize(error: unknown, prefix: string): CliError {
-  const cause = asCliError(error);
-  return new CliError(cause.code, `${prefix}: ${cause.message}`, {
-    retryable: cause.retryable,
-    cause: error,
-    ...(cause.remoteCode === undefined ? {} : { remoteCode: cause.remoteCode }),
-    ...(cause.details === undefined ? {} : { details: cause.details }),
-  });
-}
-
-/**
- * Go's `runWpCliCommandAndWait`. `undefined` means the provider answered
- * synchronously and there is no operation to poll.
- */
-async function runWpCliAndWait(
-  client: ProviderClient,
-  envId: string,
-  command: string,
-  budget: PollBudget,
-): Promise<OperationStatus | undefined> {
-  const result = await client.action({
-    kind: "run-wp-cli",
-    envId,
-    body: wpCliCommandPayload(command),
-  });
-  if (result.operationId === undefined) {
-    if (result.status >= 400) {
-      throw new CliError(
-        "provider_error",
-        `Provider returned status ${String(result.status)}: ${result.message ?? "request failed"}`,
-        { details: { provider: result.provider, status: result.status } },
-      );
-    }
-    return undefined;
-  }
-  return waitForOperationStatus(client, result.operationId, budget);
-}
-
-/** Go's `wpCliPreflightHint`: the DB_HOST tell, or nothing. */
-async function preflightHint(
-  client: ProviderClient,
-  envId: string,
-  budget: PollBudget,
-): Promise<string> {
-  let status: OperationStatus | undefined;
-  try {
-    status = await runWpCliAndWait(
-      client,
-      envId,
-      PREFLIGHT_HINT_COMMAND,
-      budget,
-    );
-  } catch {
-    return "";
-  }
-  if (status === undefined || status.failed) return "";
-  return wpCliOutput(status.raw).trim() === "localhost"
-    ? DB_HOST_LOCALHOST_HINT
-    : "";
-}
-
-/** Go's `preflightWpCliForPluginInstall`. */
-async function preflightWpCli(
-  client: ProviderClient,
-  envId: string,
-  budget: PollBudget,
-): Promise<void> {
-  let status: OperationStatus | undefined;
-  try {
-    status = await runWpCliAndWait(client, envId, PREFLIGHT_COMMAND, budget);
-  } catch (error) {
-    throw contextualize(error, "WP-CLI preflight failed before plugin install");
-  }
-  if (!status?.failed) return;
-  const hint = await preflightHint(client, envId, budget);
-  throw new CliError(
-    "provider_error",
-    `WP-CLI preflight failed before plugin install: ${status.message ?? "provider reported failure"}${hint}`,
-    {
-      details: {
-        provider: status.provider,
-        operationId: status.operationId,
-        status: status.status,
-      },
-    },
-  );
-}
-
-/** Go's `installedPluginIsActive`. */
-async function installedPluginIsActive(
-  client: ProviderClient,
-  envId: string,
-  activation: ActivationPlan,
-  budget: PollBudget,
-): Promise<boolean> {
-  const command = shellJoin(["wp", "plugin", "status", activation.slug]);
-  let status: OperationStatus | undefined;
-  try {
-    status = await runWpCliAndWait(client, envId, command, budget);
-  } catch (error) {
-    throw contextualize(error, "Failed to check plugin status after install");
-  }
-  if (status === undefined) return false;
-  if (status.failed) {
-    throw new CliError(
-      "provider_error",
-      `Plugin status operation ${status.operationId} failed after install: ${status.message ?? "provider reported failure"}`,
-      {
-        details: {
-          provider: status.provider,
-          operationId: status.operationId,
-          status: status.status,
-        },
-      },
-    );
-  }
-  const result = wpCliOutput(status.raw);
-  if (activation.network) return result.includes("Status: Network Active");
-  return (
-    result.includes("Status: Active") ||
-    result.includes("Status: Network Active")
-  );
-}
-
-/**
- * Go's `activateInstalledPluginIfNeeded`. `undefined` means no activation was
- * needed, or the provider answered synchronously and there is no operation to
- * report instead of the install's own.
- */
-async function activateInstalledPlugin(
-  client: ProviderClient,
-  envId: string,
-  activation: ActivationPlan,
-  budget: PollBudget,
-): Promise<OperationStatus | undefined> {
-  if (await installedPluginIsActive(client, envId, activation, budget))
-    return undefined;
-  const command = wpPluginActivateCommand(activation.slug, activation.network);
-  let status: OperationStatus | undefined;
-  try {
-    status = await runWpCliAndWait(client, envId, command, budget);
-  } catch (error) {
-    throw contextualize(error, "Plugin activation failed after install");
-  }
-  if (status?.failed === true) {
-    throw new CliError(
-      "provider_error",
-      `Plugin activation operation ${status.operationId} failed after install: ${status.message ?? "provider reported failure"}`,
-      {
-        details: {
-          provider: status.provider,
-          operationId: status.operationId,
-          status: status.status,
-        },
-      },
-    );
-  }
-  return status;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -859,13 +402,9 @@ export function createWpHandlers(
     // the source is reported first regardless of the other options.
     let resolved = options.source ?? "";
     if (resolved !== "") {
-      resolved = await resolvePluginInstallSource(
-        resolved,
-        http,
-        latestReleaseApi,
-      );
+      resolved = await resolvePluginSource(resolved, http, latestReleaseApi);
       if (options.validateSource ?? true)
-        await validateRemotePluginInstallSource(resolved, http);
+        await validateRemotePluginSource(resolved, http);
     }
     const effective: WpPluginInstallCommandOptions =
       resolved === "" ? options : { ...options, source: resolved };

@@ -33,6 +33,7 @@ const EXIT_CODES = {
   schema_validation_failed: 5,
   confirmation_required: 6,
   integration_unavailable: 4,
+  server_unsupported: 4,
   internal_error: 1,
 };
 
