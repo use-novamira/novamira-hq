@@ -35,7 +35,6 @@
 
 import type { Command } from "commander";
 
-import { defaultFileSecurity } from "../../config/file-security.js";
 import {
   PROVIDER_KINDS,
   credentialSource,
@@ -50,10 +49,8 @@ import {
   type ProviderKind,
 } from "../../config/schema.js";
 import {
-  createCredentialStore,
   credentialId,
   withCredentialTransaction,
-  type CredentialStore,
 } from "../../credentials/store.js";
 import { CliError } from "../../errors.js";
 import type { InvocationWarning } from "../../output/render.js";
@@ -110,16 +107,16 @@ interface ConfigAddOptions extends HostingOptions {
 }
 
 /**
- * Seams this group needs that `CommandDependencies` does not carry yet. Both
- * are optional, so the composition root can pass its `CommandDependencies`
- * unchanged; the credential store is then built on demand, only for the
- * commands that actually touch a secret.
+ * The one seam this group needs that `CommandDependencies` does not carry.
+ *
+ * The credential store used to be a second optional seam here, with its own
+ * lazy construction. Phase 6 moved that getter onto `CommandDependencies`
+ * itself — the dashboard server needs the same one — so this group now shares
+ * the composition root's single memoized store instead of building a second.
  */
 interface ConfigHandlerSeams {
   /** Defaults to `createCommandIo()` inside `runLocalCommand`. */
   readonly io?: CommandIo;
-  /** Defaults to a store over `paths.credentialsDir`. */
-  readonly credentials?: CredentialStore;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -157,22 +154,16 @@ function nonEmpty(value: string | undefined): string | undefined {
 export function createHostingConfigHandlers(
   dependencies: CommandDependencies & ConfigHandlerSeams,
 ): HostingConfigHandlers {
-  const { hosting, paths, store } = dependencies;
+  const { hosting, store } = dependencies;
 
   /**
-   * The credential store, built at most once and only when a command reaches a
-   * `stored` credential. Building it probes the OS keychain, so `config add
-   * --credential-env` must not pay for it.
+   * The credential store, built at most once per process and only when a
+   * command reaches a `stored` credential. Building it probes the OS keychain,
+   * so `config add --credential-env` must not pay for it. The memoization lives
+   * in the composition root now, which is what lets the dashboard server and
+   * these handlers share one probe.
    */
-  let pendingCredentials: Promise<CredentialStore> | undefined;
-  const credentialStore = async (): Promise<CredentialStore> => {
-    if (dependencies.credentials !== undefined) return dependencies.credentials;
-    pendingCredentials ??= createCredentialStore(
-      paths.credentialsDir,
-      defaultFileSecurity(),
-    );
-    return pendingCredentials;
-  };
+  const credentialStore = dependencies.credentials;
 
   /** The backend's own caveat (unencrypted file fallback), as a warning. */
   const backendWarnings = async (): Promise<InvocationWarning[]> => {

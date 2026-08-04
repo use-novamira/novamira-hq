@@ -1,0 +1,833 @@
+// SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+/**
+ * The dashboard server: the loopback bind guard, the mutation token, the
+ * DNS-rebinding guard, the route table, the status map, the static-asset
+ * allowlist and the app shell.
+ *
+ * Fully offline. Almost every case drives `server.dispatch`, which takes a plain
+ * request object and returns a plain response — no socket, no `node:http`
+ * objects at all. Exactly three cases bind, all on `127.0.0.1:0`, to prove the
+ * wire adapter and the listener agree with `dispatch`: the header/status case,
+ * the `Host` guard (which `fetch` cannot exercise, because `Host` is a forbidden
+ * header name in undici), and the oversized-body case.
+ */
+
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import http from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+
+import { defaultFileSecurity } from "../dist/config/file-security.js";
+import { ProfileLockManager } from "../dist/config/lock.js";
+import { platformPaths } from "../dist/config/paths.js";
+import { ConfigStore } from "../dist/config/profiles.js";
+import { CliError } from "../dist/errors.js";
+import {
+  createDashboardServer,
+  createRouteTable,
+  parseListenAddress,
+  requireLoopbackHost,
+  DEFERRED_ROUTES,
+  PAGE_ROUTE_PATHS,
+  SECURITY_HEADERS,
+  STATIC_ASSETS,
+} from "../dist/web/index.js";
+
+const TOKEN = "a".repeat(64);
+const TOKEN_HEADER = "x-novamira-dashboard-token";
+
+const CONFIG = {
+  version: 1,
+  hostingProfiles: {
+    main: {
+      provider: "kinsta",
+      credential: { type: "env", name: "KINSTA_API_KEY" },
+      companyId: "company-1",
+    },
+  },
+  deployPaths: {},
+};
+
+async function fixture(overrides = {}) {
+  const home = await mkdtemp(join(tmpdir(), "novamira-hq-web-"));
+  const environment = { NOVAMIRA_HQ_HOME: home };
+  const paths = platformPaths(environment, process.platform, home);
+  await mkdir(paths.configDir, { recursive: true });
+  await writeFile(paths.configFile, JSON.stringify(CONFIG));
+  const security = defaultFileSecurity();
+  const store = new ConfigStore(
+    paths.configFile,
+    new ProfileLockManager(paths.stateDir, security),
+    security,
+  );
+  const server = createDashboardServer({
+    version: "0.1.0-test",
+    paths,
+    store,
+    hosting: {},
+    credentials: async () => {
+      throw new Error("the dashboard must not build a credential store here");
+    },
+    environment,
+    fetch: async () => {
+      throw new Error("the dashboard must not make an outbound request here");
+    },
+    now: () => 1_700_000_000_000,
+    randomToken: () => TOKEN,
+    integration: {
+      connectionStates: async () => {
+        throw new Error("6a renders no connection state");
+      },
+    },
+    ...overrides,
+  });
+  return {
+    server,
+    paths,
+    home,
+    cleanup: async () => {
+      await server.close();
+      await rm(home, { recursive: true, force: true });
+    },
+  };
+}
+
+function request(path, options = {}) {
+  const target = new URL(path, "http://127.0.0.1:8787");
+  return {
+    method: options.method ?? "GET",
+    path: decodeURIComponent(target.pathname),
+    query: target.searchParams,
+    headers: { host: "127.0.0.1:8787", ...options.headers },
+    body: async () => options.body ?? "",
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* 1-4: the loopback guard                                                    */
+/* -------------------------------------------------------------------------- */
+
+test("requireLoopbackHost accepts every loopback spelling", () => {
+  for (const host of [
+    "",
+    "localhost",
+    "LOCALHOST",
+    "127.0.0.1",
+    "127.1.2.3",
+    "127.255.255.254",
+    "::1",
+    "[::1]",
+    "0:0:0:0:0:0:0:1",
+    "::ffff:127.0.0.1",
+    "::ffff:127.9.9.9",
+  ])
+    assert.doesNotThrow(() => requireLoopbackHost(host), host);
+});
+
+test("requireLoopbackHost rejects everything else with usage_error", () => {
+  for (const host of [
+    "0.0.0.0",
+    "::",
+    "192.168.1.10",
+    "10.0.0.1",
+    "example.com",
+    "localhost.evil.example",
+    "127.0.0.1.nip.io",
+    "::ffff:192.168.1.1",
+    "fe80::1",
+  ]) {
+    assert.throws(
+      () => requireLoopbackHost(host),
+      (error) => {
+        assert.ok(error instanceof CliError, host);
+        assert.equal(error.code, "usage_error", host);
+        assert.equal(error.details.flag, "--listen", host);
+        return true;
+      },
+      host,
+    );
+  }
+});
+
+test("parseListenAddress accepts the five shapes and rejects the rest", () => {
+  assert.deepEqual(parseListenAddress(":8787"), {
+    hostname: "127.0.0.1",
+    port: 8787,
+  });
+  assert.deepEqual(parseListenAddress("8787"), {
+    hostname: "127.0.0.1",
+    port: 8787,
+  });
+  assert.deepEqual(parseListenAddress("127.0.0.1:8787"), {
+    hostname: "127.0.0.1",
+    port: 8787,
+  });
+  assert.deepEqual(parseListenAddress("localhost:8787"), {
+    hostname: "localhost",
+    port: 8787,
+  });
+  assert.deepEqual(parseListenAddress("[::1]:8787"), {
+    hostname: "::1",
+    port: 8787,
+  });
+  assert.deepEqual(parseListenAddress("127.0.0.1:0"), {
+    hostname: "127.0.0.1",
+    port: 0,
+  });
+  for (const value of ["127.0.0.1", ":abc", ":70000", "", "   "])
+    assert.throws(() => parseListenAddress(value), CliError, value);
+});
+
+test("a --listen naming a routable host parses, then fails the loopback guard", () => {
+  // The two halves are separate on purpose: parsing does not decide policy, and
+  // the guard is a pure value check that runs again on the bound address.
+  for (const value of ["example.com:8787", "0.0.0.0:8787", "[::]:8787"]) {
+    const address = parseListenAddress(value);
+    assert.equal(address.port, 8787, value);
+    assert.throws(
+      () => requireLoopbackHost(address.hostname),
+      (error) => {
+        assert.equal(error.code, "usage_error", value);
+        assert.equal(error.details.flag, "--listen", value);
+        return true;
+      },
+      value,
+    );
+  }
+});
+
+test("a non-loopback bind is refused before any socket is opened", async () => {
+  const { server, cleanup } = await fixture();
+  try {
+    await assert.rejects(
+      () => server.listen({ hostname: "0.0.0.0", port: 0 }),
+      (error) => error.code === "usage_error",
+    );
+    // Nothing to close: `listen` threw before `createServer`.
+    await server.closed();
+  } finally {
+    await cleanup();
+  }
+});
+
+test("binding 127.0.0.1:0 reports the real port", async () => {
+  const { server, cleanup } = await fixture();
+  try {
+    const bound = await server.listen({ hostname: "127.0.0.1", port: 0 });
+    assert.equal(bound.hostname, "127.0.0.1");
+    assert.ok(bound.port > 0);
+    assert.equal(bound.url, `http://127.0.0.1:${bound.port}`);
+  } finally {
+    await cleanup();
+  }
+});
+
+/* -------------------------------------------------------------------------- */
+/* 6-10: pages, headers, 404 and 405                                          */
+/* -------------------------------------------------------------------------- */
+
+test("every routed page renders the shell with all three patch targets", async () => {
+  const { server, cleanup } = await fixture();
+  try {
+    for (const path of PAGE_ROUTE_PATHS) {
+      const response = await server.dispatch(request(path));
+      assert.equal(response.kind, "html", path);
+      assert.equal(response.status, 200, path);
+      const markup = response.body.markup;
+      for (const id of ['id="main"', 'id="nav"', 'id="toast"'])
+        assert.ok(markup.includes(id), `${path} ${id}`);
+      assert.ok(markup.startsWith("<!doctype html>"), path);
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("the nav active link follows the two page aliases", async () => {
+  const { server, cleanup } = await fixture();
+  const activeHref = (markup) =>
+    /<a class="nav-link active" href="([^"]+)"/.exec(markup)?.[1];
+  try {
+    for (const [path, href] of [
+      ["/", "/providers"],
+      ["/providers", "/providers"],
+      ["/sites", "/sites"],
+      ["/novamira-setup", "/sites"],
+      ["/deploy-paths", "/deploy-paths"],
+      ["/deploy-paths/new", "/deploy-paths"],
+      ["/diagnostics", "/diagnostics"],
+      ["/settings", "/settings"],
+    ]) {
+      const response = await server.dispatch(request(path));
+      assert.equal(activeHref(response.body.markup), href, path);
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("the sidebar's one New action is a link the stylesheet gives a box to", async () => {
+  const { server, cleanup } = await fixture();
+  try {
+    const markup = (await server.dispatch(request("/providers"))).body.markup;
+    // Go rendered a <button>, which is inline-block; HQ renders an <a>, which is
+    // inline. The pair that keeps it a full-width 38px button is this element
+    // plus `.new-button`'s `display` in app.css, so pin both together.
+    assert.match(
+      markup,
+      /<div class="new-menu"><a class="button primary new-button" href="\/providers\?new=host">/,
+    );
+    assert.ok(!markup.includes("new-pop"), "the deleted popover stays deleted");
+    const css = await readFile(
+      new URL("../src/web/static/app.css", import.meta.url),
+      "utf8",
+    );
+    const rule = /\.new-button \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    assert.match(rule, /display:\s*(flex|inline-flex|block|grid)/);
+    assert.match(rule, /width:\s*100%/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("every response carries all five security headers over the wire", async () => {
+  const { server, cleanup } = await fixture();
+  try {
+    const bound = await server.listen({ hostname: "127.0.0.1", port: 0 });
+    for (const path of ["/", "/assets/app.css", "/nope"]) {
+      const response = await fetch(bound.url + path);
+      for (const [name, value] of Object.entries(SECURITY_HEADERS))
+        assert.equal(response.headers.get(name), value, `${path} ${name}`);
+      await response.arrayBuffer();
+    }
+    const page = await fetch(bound.url + "/");
+    assert.equal(page.headers.get("content-type"), "text/html; charset=utf-8");
+    assert.equal(page.headers.get("cache-control"), "no-store");
+    await page.text();
+  } finally {
+    await cleanup();
+  }
+});
+
+test("an unknown path is a not_found failure envelope", async () => {
+  const { server, cleanup } = await fixture();
+  try {
+    const response = await server.dispatch(request("/nope"));
+    assert.equal(response.kind, "json");
+    assert.equal(response.status, 404);
+    assert.equal(response.envelope.ok, false);
+    assert.equal(response.envelope.error.code, "not_found");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("a wrong method on a known path is 405 with Allow", async () => {
+  const { server, cleanup } = await fixture();
+  try {
+    const response = await server.dispatch(
+      request("/providers", { method: "POST" }),
+    );
+    assert.equal(response.status, 405);
+    assert.equal(response.headers.Allow, "GET");
+    assert.equal(response.envelope.error.code, "usage_error");
+    const asset = await server.dispatch(
+      request("/assets/app.css", { method: "POST" }),
+    );
+    assert.equal(asset.status, 405);
+    assert.equal(asset.headers.Allow, "GET, HEAD");
+  } finally {
+    await cleanup();
+  }
+});
+
+/* -------------------------------------------------------------------------- */
+/* 11-14: the mutation token                                                  */
+/* -------------------------------------------------------------------------- */
+
+const TEST_ROUTES = [
+  {
+    method: "GET",
+    path: "/_dashboard/test/guarded",
+    auth: "token",
+    handler: () => ({
+      kind: "text",
+      status: 200,
+      contentType: "text/plain; charset=utf-8",
+      body: "reached",
+    }),
+  },
+  // The three below are deliberately NOT under `/_dashboard/`: that prefix may
+  // not carry a public row, and `createRouteTable` refuses to build a table that
+  // contains one.
+  {
+    method: "POST",
+    path: "/test/echo",
+    auth: "public",
+    handler: async (incoming) => ({
+      kind: "text",
+      status: 200,
+      contentType: "text/plain; charset=utf-8",
+      body: String((await incoming.body()).length),
+    }),
+  },
+  {
+    method: "GET",
+    path: "/test/cli-error",
+    auth: "public",
+    handler: () => {
+      throw new CliError("rate_limited", "Slow down.");
+    },
+  },
+  {
+    method: "GET",
+    path: "/test/plain-error",
+    auth: "public",
+    handler: () => {
+      throw new Error("a stack trace that must not reach the browser");
+    },
+  },
+];
+
+test("a public route under /_dashboard/ is refused when the table is built", () => {
+  for (const auth of ["public", undefined]) {
+    assert.throws(
+      () =>
+        createRouteTable(
+          {
+            loadConfigView: async () => ({}),
+            extraRoutes: [
+              {
+                method: "POST",
+                path: "/_dashboard/providers/save",
+                auth,
+                handler: () => ({ kind: "text", status: 200, body: "" }),
+              },
+            ],
+          },
+          TOKEN,
+        ),
+      (error) => {
+        assert.equal(error.code, "internal_error");
+        assert.match(error.message, /must require the mutation token/);
+        return true;
+      },
+      String(auth),
+    );
+  }
+  // Every shipped row keeps the invariant: nothing under the prefix is public.
+  for (const route of createRouteTable(
+    { loadConfigView: async () => ({}) },
+    TOKEN,
+  ))
+    if (route.path.startsWith("/_dashboard/"))
+      assert.equal(route.auth, "token", route.path);
+});
+
+test("a token route refuses a missing, short, long or wrong token", async () => {
+  const { server, cleanup } = await fixture({ extraRoutes: TEST_ROUTES });
+  try {
+    for (const headers of [
+      {},
+      { [TOKEN_HEADER]: "" },
+      { [TOKEN_HEADER]: "b".repeat(63) },
+      { [TOKEN_HEADER]: "b".repeat(65) },
+      { [TOKEN_HEADER]: "b".repeat(64) },
+    ]) {
+      const response = await server.dispatch(
+        request("/_dashboard/test/guarded", { headers }),
+      );
+      assert.equal(response.status, 403, JSON.stringify(headers));
+      assert.equal(response.envelope.error.code, "usage_error");
+      assert.equal(
+        response.envelope.error.message,
+        "The dashboard mutation token is missing or invalid.",
+      );
+      assert.equal(response.envelope.error.details, undefined);
+      const body = JSON.stringify(response.envelope);
+      assert.ok(!body.includes(TOKEN));
+      assert.ok(!body.includes("b".repeat(63)));
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("the correct token reaches the handler", async () => {
+  const { server, cleanup } = await fixture({ extraRoutes: TEST_ROUTES });
+  try {
+    assert.equal(server.token, TOKEN);
+    const response = await server.dispatch(
+      request("/_dashboard/test/guarded", {
+        headers: { [TOKEN_HEADER]: TOKEN },
+      }),
+    );
+    assert.equal(response.status, 200);
+    assert.equal(response.body, "reached");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("the token appears exactly once, inside the root data-signals", async () => {
+  const { server, cleanup } = await fixture();
+  try {
+    const bound = await server.listen({ hostname: "127.0.0.1", port: 0 });
+    const response = await fetch(bound.url + "/");
+    for (const [, value] of response.headers)
+      assert.ok(!value.includes(TOKEN), "no header may carry the token");
+    const markup = await response.text();
+    assert.equal(markup.split(TOKEN).length - 1, 1);
+    const signals = /<div class="shell" data-signals="([^"]*)"/.exec(markup);
+    assert.ok(signals, "the shell carries the root signal object");
+    const parsed = JSON.parse(unescapeHtml(signals[1]));
+    assert.equal(parsed.token, server.token);
+    assert.deepEqual(Object.keys(parsed).sort(), [
+      "deployForm",
+      "diagnostics",
+      "providerForm",
+      "setup",
+      "sites",
+      "token",
+      "updates",
+    ]);
+    assert.ok(!("siteForm" in parsed));
+  } finally {
+    await cleanup();
+  }
+});
+
+function unescapeHtml(value) {
+  return value
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+}
+
+/* -------------------------------------------------------------------------- */
+/* 15-17: the DNS-rebinding guard                                             */
+/* -------------------------------------------------------------------------- */
+
+function rawRequest(port, path, headers) {
+  return new Promise((resolve, reject) => {
+    const message = http.request(
+      { host: "127.0.0.1", port, path, method: "GET", headers },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () =>
+          resolve({
+            status: response.statusCode,
+            headers: response.headers,
+            body: Buffer.concat(chunks).toString("utf8"),
+          }),
+        );
+      },
+    );
+    message.on("error", reject);
+    message.end();
+  });
+}
+
+test("the Host guard refuses a rebound name and a mismatched port", async () => {
+  const { server, cleanup } = await fixture();
+  try {
+    const bound = await server.listen({ hostname: "127.0.0.1", port: 0 });
+    for (const host of [
+      "evil.example",
+      `evil.example:${bound.port}`,
+      "127.0.0.1:1",
+      "localhost.evil.example",
+      // An omitted host component is a malformed authority, not the "omitted
+      // means loopback" spelling a *listen address* is allowed.
+      `:${bound.port}`,
+    ]) {
+      const response = await rawRequest(bound.port, "/", { host });
+      assert.equal(response.status, 403, host);
+      assert.equal(
+        JSON.parse(response.body).error.message,
+        "The dashboard accepts loopback requests only.",
+      );
+    }
+    for (const host of [
+      `127.0.0.1:${bound.port}`,
+      `localhost:${bound.port}`,
+      `[::1]:${bound.port}`,
+      "localhost",
+    ]) {
+      const response = await rawRequest(bound.port, "/", { host });
+      assert.equal(response.status, 200, host);
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("the Origin and Sec-Fetch-Site guards", async () => {
+  const { server, cleanup } = await fixture();
+  try {
+    const bound = await server.listen({ hostname: "127.0.0.1", port: 0 });
+    const forbidden = [
+      { origin: "http://evil.example" },
+      { origin: `https://127.0.0.1:${bound.port}` },
+      { origin: `http://127.0.0.1:${bound.port + 1}` },
+      // The opaque origin: what a sandboxed iframe, a `data:`/`srcdoc`
+      // document, or a request that followed a cross-origin redirect sends. It
+      // is a present Origin that is not a loopback origin, so it is refused —
+      // the guard has no exemption for it.
+      { origin: "null" },
+      { origin: "file://" },
+      { "sec-fetch-site": "cross-site" },
+      { "sec-fetch-site": "same-site" },
+    ];
+    for (const headers of forbidden) {
+      const response = await rawRequest(bound.port, "/", {
+        host: `127.0.0.1:${bound.port}`,
+        ...headers,
+      });
+      assert.equal(response.status, 403, JSON.stringify(headers));
+    }
+    const allowed = [
+      {},
+      { origin: `http://127.0.0.1:${bound.port}` },
+      { origin: `http://localhost:${bound.port}` },
+      { "sec-fetch-site": "same-origin" },
+      { "sec-fetch-site": "none" },
+    ];
+    for (const headers of allowed) {
+      const response = await rawRequest(bound.port, "/", {
+        host: `127.0.0.1:${bound.port}`,
+        ...headers,
+      });
+      assert.equal(response.status, 200, JSON.stringify(headers));
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+/* -------------------------------------------------------------------------- */
+/* 18-23: static assets                                                       */
+/* -------------------------------------------------------------------------- */
+
+test("all nine assets are served with their content types", async () => {
+  const { server, cleanup } = await fixture();
+  try {
+    for (const asset of STATIC_ASSETS) {
+      const response = await server.dispatch(request(`/assets/${asset.path}`));
+      assert.equal(response.kind, "asset", asset.path);
+      assert.equal(response.status, 200, asset.path);
+      assert.equal(response.contentType, asset.contentType, asset.path);
+      assert.equal(response.cacheControl, "no-cache", asset.path);
+      assert.ok(response.contentLength > 0, asset.path);
+      const source = await readFile(
+        new URL(`../src/web/static/${asset.path}`, import.meta.url),
+      );
+      assert.deepEqual(Buffer.from(response.body), source, asset.path);
+      assert.equal(
+        response.etag,
+        `"${createHash("sha256").update(source).digest("hex").slice(0, 16)}"`,
+        asset.path,
+      );
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("HEAD keeps the headers and drops the body; If-None-Match is 304", async () => {
+  const { server, cleanup } = await fixture();
+  try {
+    const get = await server.dispatch(request("/assets/app.css"));
+    const head = await server.dispatch(
+      request("/assets/app.css", { method: "HEAD" }),
+    );
+    assert.equal(head.status, 200);
+    assert.equal(head.contentType, get.contentType);
+    assert.equal(head.contentLength, get.contentLength);
+    assert.equal(head.etag, get.etag);
+    assert.equal(head.body, undefined);
+
+    const cached = await server.dispatch(
+      request("/assets/app.css", { headers: { "if-none-match": get.etag } }),
+    );
+    assert.equal(cached.status, 304);
+    assert.equal(cached.body, undefined);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("traversal and off-allowlist asset paths are 404", async () => {
+  const { server, cleanup } = await fixture();
+  try {
+    for (const path of [
+      "/assets/../../package.json",
+      "/assets/..%2f..%2fpackage.json",
+      "/assets/%2e%2e/%2e%2e/package.json",
+      "/assets/fonts/../../../etc/passwd",
+      "/assets/app.css%00.png",
+      "/assets/nope.js",
+      "/assets/",
+      "/assets/.hidden",
+    ]) {
+      const response = await server.dispatch(request(path));
+      assert.equal(response.kind, "json", path);
+      assert.equal(response.status, 404, path);
+      assert.equal(response.envelope.error.code, "not_found", path);
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("the build ships all nine assets under dist/web/static", async () => {
+  for (const asset of STATIC_ASSETS) {
+    const bytes = await readFile(
+      new URL(`../dist/web/static/${asset.path}`, import.meta.url),
+    );
+    assert.ok(bytes.byteLength > 0, asset.path);
+  }
+  for (const licence of [
+    "fonts/montserrat-OFL.txt",
+    "fonts/jetbrains-mono-OFL.txt",
+  ]) {
+    const text = await readFile(
+      new URL(`../dist/web/static/${licence}`, import.meta.url),
+      "utf8",
+    );
+    assert.match(text, /SIL OPEN FONT LICENSE/i, licence);
+  }
+});
+
+/* -------------------------------------------------------------------------- */
+/* 24-28: deferred routes, error mapping, the body cap, adapter agreement     */
+/* -------------------------------------------------------------------------- */
+
+test("the deferred routes are declared, not stubbed, and 404 in 6a", async () => {
+  assert.deepEqual(
+    DEFERRED_ROUTES.map((entry) => `${entry.phase} ${entry.path}`),
+    [
+      "6b /_dashboard/providers/save",
+      "6b /_dashboard/providers/remove",
+      "6b /_dashboard/providers/validate",
+      "6b /_dashboard/sites",
+      "6b /_dashboard/deploy-paths/save",
+      "6b /_dashboard/deploy-paths/remove",
+      "6b /_dashboard/setup/start",
+      "6b /_dashboard/setup/jobs/",
+      "6b /_dashboard/connect",
+      "7 /_dashboard/diagnostics/doctor",
+      "7 /_dashboard/diagnostics/capabilities",
+      "7 /_dashboard/updates/check",
+      "7 /_dashboard/updates/install",
+    ],
+  );
+  const { server, cleanup } = await fixture();
+  try {
+    for (const entry of DEFERRED_ROUTES) {
+      const response = await server.dispatch(
+        request(entry.path, {
+          headers: { [TOKEN_HEADER]: TOKEN },
+        }),
+      );
+      assert.equal(response.status, 404, entry.path);
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("the deleted site-profile routes exist nowhere", async () => {
+  assert.equal(
+    DEFERRED_ROUTES.some((entry) =>
+      entry.path.startsWith("/_dashboard/sites/"),
+    ),
+    false,
+  );
+  const { server, cleanup } = await fixture();
+  try {
+    for (const path of ["/_dashboard/sites/save", "/_dashboard/sites/remove"]) {
+      const get = await server.dispatch(request(path));
+      assert.equal(get.status, 404, path);
+      const post = await server.dispatch(request(path, { method: "POST" }));
+      assert.equal(post.status, 404, path);
+    }
+    const page = await server.dispatch(request("/sites"));
+    assert.ok(!page.body.markup.includes("/_dashboard/sites/save"));
+    assert.ok(!page.body.markup.includes("/_dashboard/sites/remove"));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("a handler failure becomes the mapped status and a redacted envelope", async () => {
+  const { server, cleanup } = await fixture({ extraRoutes: TEST_ROUTES });
+  try {
+    const mapped = await server.dispatch(request("/test/cli-error"));
+    assert.equal(mapped.status, 429);
+    assert.equal(mapped.envelope.error.code, "rate_limited");
+
+    const plain = await server.dispatch(request("/test/plain-error"));
+    assert.equal(plain.status, 500);
+    assert.equal(plain.envelope.error.code, "internal_error");
+    const body = JSON.stringify(plain.envelope);
+    assert.ok(!body.includes("stack trace"));
+    assert.ok(!body.includes("web-server-contract"));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("a request body over 256 KiB is 413", async () => {
+  const { server, cleanup } = await fixture({ extraRoutes: TEST_ROUTES });
+  try {
+    const bound = await server.listen({ hostname: "127.0.0.1", port: 0 });
+    const small = await fetch(bound.url + "/test/echo", {
+      method: "POST",
+      body: "x".repeat(1024),
+    });
+    assert.equal(small.status, 200);
+    assert.equal(await small.text(), "1024");
+
+    // The refusal must be *observable*: the server stops reading at the cap but
+    // does not tear the connection down before the response is written, so the
+    // client sees the documented status rather than a connection reset.
+    const big = await fetch(bound.url + "/test/echo", {
+      method: "POST",
+      body: "x".repeat(300_000),
+    });
+    assert.equal(big.status, 413);
+    assert.equal(JSON.parse(await big.text()).error.code, "usage_error");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("dispatch and the node:http adapter agree", async () => {
+  const { server, cleanup } = await fixture();
+  try {
+    const bound = await server.listen({ hostname: "127.0.0.1", port: 0 });
+    for (const path of ["/settings", "/nope"]) {
+      // The server is bound, so the Host guard now checks the port too; the
+      // hand-built request must name the same one the socket did.
+      const direct = await server.dispatch(
+        request(path, { headers: { host: `127.0.0.1:${bound.port}` } }),
+      );
+      const overWire = await fetch(bound.url + path);
+      assert.equal(overWire.status, direct.status, path);
+      const text = await overWire.text();
+      if (direct.kind === "html") assert.equal(text, direct.body.markup, path);
+      else assert.equal(text, `${JSON.stringify(direct.envelope)}\n`, path);
+    }
+  } finally {
+    await cleanup();
+  }
+});

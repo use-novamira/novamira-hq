@@ -188,7 +188,10 @@ async function harness(root, options = {}) {
     paths,
     store,
     hosting,
-    credentials,
+    // Phase 6 moved the credential store onto `CommandDependencies` as the
+    // lazy getter the dashboard server also takes, so the group now receives a
+    // function rather than a store.
+    credentials: async () => credentials,
     io,
     rendererFor: () => renderer,
   });

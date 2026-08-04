@@ -80,6 +80,26 @@ calls just to test.
   compatibility matrix, and emits the `novamira auth login` handoff. It is the
   layer Phase 6's dashboard calls directly, so it must never import from
   `src/cli/`; `src/cli/` imports from it.
+- `src/web/` is the local dashboard: `html.ts`'s branded tagged template and
+  `Attr`/`Url` constructors, `expr.ts` and `datastar.ts` (one helper per
+  Datastar attribute — a hand-written `data-…` string is a review failure),
+  `signals.ts`'s one root signal object, `patches.ts`'s SSE fragment catalog,
+  `sse.ts` (the only module that may import `@starfederation/datastar-sdk`),
+  `request.ts`/`responses.ts`/`routes.ts`/`static.ts`, `server.ts` with the
+  loopback bind guard and the per-process mutation token, and `views/`. It is a
+  **peer of `src/cli/`, never a consumer**: nothing under `src/web/` may import
+  `src/cli/`, and `src/cli/dashboard.ts` imports `src/web/index.ts`.
+- `src/integration/` is the site CLI connected-state service and the **only**
+  place HQ runs `novamira`: an injectable spawn seam (`shell: false`, an argv
+  array, bounded output, a per-child timeout plus a shared refresh deadline),
+  executable resolution, total origin normalization, and the two-stage
+  `sites list` then `auth status` algorithm behind the four states
+  `not_configured` / `connected` / `reconnect_required` / `unavailable`. Every
+  failure mode is a state, never a hosting error; `@novamira/cli` is never
+  imported and never a dependency of any kind; the site CLI's config,
+  credential storage and `NOVAMIRA_HOME` are never read; child output is never
+  persisted or logged. It is a peer of `src/web/` and `src/cli/` and imports
+  neither.
 - `src/index.ts`, `src/main.ts`, and `src/cli/` are the entry point, the
   composition root, and the commander program plus its handlers.
 - `src/cli/hosting/` is one module per command group; `src/cli/hosting/index.ts`
@@ -92,8 +112,13 @@ calls just to test.
   itself under `NOVAMIRA_HQ_HOME` in a temporary directory.
 - `scripts/` and `.github/workflows/` cover SPDX headers, packaging, and
   releases.
-- Still to land per the plan: `src/web/`, `src/skills/`, `src/doctor/`, and
-  `src/update/`.
+- `src/web/static/` holds the nine browser assets, copied verbatim from the Go
+  program: a vendored MIT Datastar build, two SIL OFL fonts with their licence
+  texts, and three files of ours. They are excluded from ESLint, Prettier and
+  the SPDX header script, and `scripts/copy-static.mjs` copies them into
+  `dist/` as part of `bun run build`. Do not reformat them.
+- Still to land per the plan: the dashboard's page views and `/_dashboard/*`
+  handlers, `src/skills/`, `src/doctor/`, and `src/update/`.
 
 ## Making changes
 

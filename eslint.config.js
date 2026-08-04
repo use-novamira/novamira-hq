@@ -11,6 +11,11 @@ export default tseslint.config(
       "node_modules/**",
       ".ralph/**",
       "test/**",
+      // The dashboard's browser bundles: a vendored MIT Datastar build and two
+      // small scripts of ours, copied verbatim from the Go program. They are
+      // not HQ TypeScript, they target the browser globals, and reformatting or
+      // "fixing" them would break the vendoring.
+      "src/web/static/**",
       "eslint.config.js",
     ],
   },

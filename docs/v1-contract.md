@@ -278,8 +278,9 @@ secrets. Live provider API calls are explicitly gated and never run in CI.
 ## Hosting commands
 
 The command surface has exactly two top-level groups: `config`, for local HQ
-configuration and hosting profiles, and `hosting`, for provider resources. There
-is no `site` group and no command that reaches a configured WordPress site.
+configuration and hosting profiles, and `hosting`, for provider resources, plus
+the single top-level command `dashboard`. There is no `site` group and no
+command that reaches a configured WordPress site.
 
 ### Grammar conventions
 
@@ -667,14 +668,166 @@ in JSON mode; the block never repeats them.
 
 ## Local dashboard
 
-**RESERVED.** The dashboard's routes, SSE patch contract, and view surface are
-not yet frozen. What is already decided: it binds to loopback only, requires a
-per-process mutation token, reuses the same JSON envelope for its JSON
-responses, and uses Datastar with the official SDK for SSE. Connected-state
-detection and the Connect action spawn the `novamira` executable directly with an
-argv array and no shell, under bounded timeouts, and are disabled with an install
-hint when the CLI is absent or incompatible; every other dashboard capability
-works without it.
+`novamira-hq dashboard` serves a local web dashboard. Its transport, security
+and route surface are frozen below. **The view surface — the rendered pages,
+their forms, and their SSE fragments beyond the app shell — remains RESERVED.**
+
+### Binding
+
+`--listen <address>` (default `127.0.0.1:8787`) accepts `:PORT`, `PORT`,
+`HOST:PORT` and `[IPv6]:PORT`. The host must be loopback: an omitted host, the
+literal name `localhost` (never resolved), any IPv4 literal in `127.0.0.0/8`,
+the IPv6 literal `::1` with or without brackets, or an IPv4-mapped IPv6
+loopback. Everything else — `0.0.0.0`, `::`, any other address or name — is a
+`usage_error` naming `--listen` in `details.flag`, raised before any socket is
+opened. The check is repeated against the address the listener actually reports;
+a mismatch is `internal_error`. Port `0` is accepted and the reported URL and
+JSON `port` carry the port the kernel assigned. `EADDRINUSE` is `conflict`,
+`EACCES` is `usage_error`, and both name `--listen`.
+
+### The mutation token
+
+One token per process: 32 random bytes, hex-encoded, held only in memory. It is
+never written to disk, never logged, never placed in a URL, a query string, an
+SSE frame, an error, or a diagnostic. It reaches the page in exactly one place,
+the root `data-signals` object of a rendered document, and it travels back in
+exactly one place, the request header `X-Novamira-Dashboard-Token`. There is no
+request-body form of the token, and no `GET` the dashboard renders includes it in
+the signal scope it sends, because a `GET`'s signals are serialized into the
+query string. Verification is a constant-time comparison over
+equal-length values and runs on **every** `/_dashboard/*` route regardless of
+method, before the handler. A missing or invalid token is HTTP `403` with the
+failure envelope, code `usage_error`, the fixed message
+`The dashboard mutation token is missing or invalid.` and no `details`.
+
+### The loopback request guard
+
+On every request, whatever the route: `Host` must be present and name one of the
+accepted loopback hosts — a `Host` with no host component, such as `:8787`, is a
+malformed authority and is refused — and its port, when present, must equal the
+bound port; an `Origin`, when present, must be `http://` one of the same hosts on
+the bound port, with no exemption for the opaque value `null`;
+`Sec-Fetch-Site`, when present, must be `same-origin` or `none`. A
+violation is HTTP `403` with the failure envelope, code `usage_error`, the fixed
+message `The dashboard accepts loopback requests only.` and no `details`.
+Neither rejection ever echoes what the caller sent.
+
+### Security headers
+
+Applied to every response — pages, JSON, assets, errors and SSE:
+
+```
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'
+X-Frame-Options: DENY
+Cross-Origin-Resource-Policy: same-origin
+```
+
+`'unsafe-eval'` is required because Datastar evaluates its expressions;
+`'unsafe-inline'` is never present, so the dashboard emits no inline script and
+no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
+
+### Routes
+
+| Path | Method | Token |
+| --- | --- | --- |
+| `/assets/…` | GET, HEAD | no |
+| `/` | GET | no |
+| `/providers` | GET | no |
+| `/sites` | GET | no |
+| `/deploy-paths` | GET | no |
+| `/deploy-paths/new` | GET | no |
+| `/novamira-setup` | GET | no |
+| `/diagnostics` | GET | no |
+| `/settings` | GET | no |
+
+`/` renders the providers page. An unknown path is `404` with a `not_found`
+failure envelope; a known path with the wrong method is `405` with an `Allow`
+header and a `usage_error` envelope; a request body over 256 KiB is `413`.
+
+Deferred, and answering `404` until they ship: `/_dashboard/providers/{save,
+remove,validate}`, `/_dashboard/sites`, `/_dashboard/deploy-paths/{save,remove}`,
+`/_dashboard/setup/start`, `/_dashboard/setup/jobs/…`, `/_dashboard/connect`,
+`/_dashboard/diagnostics/{doctor,capabilities}` and
+`/_dashboard/updates/{check,install}`. Every one of them requires the token when
+it ships: a route under `/_dashboard/` that does not require it is refused when
+the table is built, not left to a reviewer to notice.
+
+**`/_dashboard/sites/save` and `/_dashboard/sites/remove` are deleted, not
+deferred.** They wrote WordPress site profiles; HQ holds no site credential and
+has no site profiles, so the paths do not exist and never will.
+
+### Assets
+
+Nine files under `/assets/`, served from a fixed allowlist rather than from a
+directory: `app.css`, `datastar.js`, `relative-time.js`, `sites-filter.js`,
+`novamira-hq-logo-white.svg`, and under `/assets/fonts/`
+`montserrat-var.woff2`, `montserrat-OFL.txt`, `jetbrains-mono-var.woff2`,
+`jetbrains-mono-OFL.txt`. Any other path is `404` before any filesystem access.
+Assets carry `Cache-Control: no-cache` and a strong content `ETag`; a matching
+`If-None-Match` is `304` with no body. `HEAD` returns identical headers,
+`Content-Length` included, with no body.
+
+### JSON responses and the status map
+
+The dashboard's JSON responses are the CLI's success and failure envelopes,
+unchanged, with the same redaction. The taxonomy code maps to an HTTP status:
+
+| Code | HTTP |
+| --- | --- |
+| `usage_error`, `credential_missing`, `credential_invalid` | 400 |
+| `profile_not_found`, `not_found` | 404 |
+| `conflict`, `confirmation_required` | 409 |
+| `schema_validation_failed` | 422 |
+| `rate_limited` | 429 |
+| `config_error`, `internal_error` | 500 |
+| `provider_unsupported` | 501 |
+| `provider_error`, `network_error`, `server_unsupported` | 502 |
+| `integration_unavailable` | 503 |
+| `timeout` | 504 |
+
+Route-level statuses are set by the dispatcher and override the map: `403` for a
+token or loopback rejection, `405` for a wrong method, `413` for an oversized
+body, `304` for an `ETag` match.
+
+### Connected-state detection
+
+The dashboard reports one of four states for a hosting environment:
+`not_configured` (no site-CLI profile matches its origin), `connected` (a
+matching profile holds a usable credential and its REST surface is reachable),
+`reconnect_required` (every matching profile reports an absent, invalid or
+expired credential, or an authentication error), and `unavailable` (the site CLI
+is missing or incompatible, a child timed out, its output was malformed, or
+reachability could not be established). A profile alone is never a connection.
+
+Detection runs `novamira --json --quiet --timeout <ms> sites list` once, matches
+normalized origins against hosting environments, and then runs
+`novamira --json --quiet --timeout <ms> --site <name> auth status` for the
+matched profiles only, with bounded concurrency. The executable is run directly
+with an argv array and never through a shell; each child has its own timeout and
+shares one overall refresh deadline, and captured output is capped and discarded
+after parsing. HQ never reads the site CLI's configuration, profile store,
+credential storage, keychain records, or `NOVAMIRA_HOME`. Integration failure is
+always a connection state and never a hosting error, so every other dashboard
+capability works with `novamira` absent.
+
+### The `dashboard` command
+
+`novamira-hq dashboard [--listen <address>] [--open]`. It declares no
+`--timeout`: the name is a reserved global and a long-running server has no
+operation deadline. The command binds first, then emits exactly one envelope —
+`data` is `{ "url", "host", "port", "configFile" }` in JSON mode, and two lines
+in human mode:
+
+```
+Novamira HQ dashboard: http://127.0.0.1:8787
+Config: /home/…/.config/novamira-hq/config.json
+```
+
+Nothing is written to stdout for the rest of the run. `--open` launches the
+platform URL opener with an argv array and no shell; a failure is a warning,
+never fatal. `SIGINT` and `SIGTERM` stop the listener and the command exits 0.
 
 ## Doctor and update
 

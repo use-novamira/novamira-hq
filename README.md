@@ -98,8 +98,9 @@ The site CLI's `NOVAMIRA_HOME` and `NOVAMIRA_ALLOW_INSECURE_HTTP` are never read
 
 ## Commands
 
-Two top-level groups: `config` manages HQ's own configuration and its hosting
-profiles, `hosting` operates provider resources through one profile.
+Two top-level groups plus one command: `config` manages HQ's own configuration
+and its hosting profiles, `hosting` operates provider resources through one
+profile, and `dashboard` serves the local web UI.
 
 ```sh
 novamira-hq config add kinsta --credential-env KINSTA_API_KEY
@@ -118,6 +119,30 @@ and themes, WP-CLI, logs, analytics, and SSH/SFTP access. `--profile` is
 required and never inferred, and every command accepts `--json`. Run
 `novamira-hq hosting --help` for the tree, or see
 [`docs/v1-contract.md`](docs/v1-contract.md) for the normative surface.
+
+## Dashboard
+
+```sh
+novamira-hq dashboard                          # http://127.0.0.1:8787
+novamira-hq dashboard --listen localhost:9000 --open
+```
+
+The dashboard is HQ's interactive surface — it is what the CLI has instead of
+prompts. It binds to **loopback only**: `--listen` accepts `:PORT`, `PORT`,
+`HOST:PORT` or `[IPv6]:PORT`, and the host must be `localhost`, an address in
+`127.0.0.0/8`, or `::1`. Anything else is refused before a socket is opened, so
+the dashboard cannot be exposed to a network by accident. Every mutating route
+additionally requires a per-process token that only the served page carries, and
+every request is checked against a loopback `Host` and `Origin`, so a page on
+another site cannot drive it.
+
+Stop it with Ctrl-C. `--open` launches your default browser and is never fatal
+if it cannot.
+
+Connected-state detection — whether a provisioned site is actually connected to
+your agent — needs `@novamira/cli` installed alongside HQ. Without it that one
+panel reports "unavailable" with an install hint; provider inventory, deploy
+paths, provisioning and everything else are unaffected.
 
 ## Provision a site
 

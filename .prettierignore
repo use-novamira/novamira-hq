@@ -3,3 +3,4 @@ dist
 docs
 fixtures
 LICENSE
+src/web/static

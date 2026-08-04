@@ -185,6 +185,10 @@ export async function main(
       paths,
       store,
       hosting,
+      // The same memoized getter the credential resolver above uses, so the
+      // dashboard server and every `stored` credential lookup share one store
+      // and one keychain probe.
+      credentials: credentialStore,
       rendererFor,
     });
 

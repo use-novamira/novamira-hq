@@ -4,6 +4,10 @@
 import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { CliError } from "../errors.js";
 import {
+  registerDashboardCommands,
+  type DashboardHandlers,
+} from "./dashboard.js";
+import {
   registerHostingCommands,
   type HostingCommandHandlers,
 } from "./hosting/index.js";
@@ -50,7 +54,8 @@ export interface GlobalOptions {
  * the option grammar; `commands.ts` knows how to satisfy it. Phase 4 adds the
  * hosting handlers here and nothing else in this file changes shape.
  */
-export interface CommandHandlers extends HostingCommandHandlers {
+export interface CommandHandlers
+  extends HostingCommandHandlers, DashboardHandlers {
   version(version: string, options: GlobalOptions): void | Promise<void>;
   configPath(options: GlobalOptions): void | Promise<void>;
 }
@@ -120,6 +125,12 @@ export function createProgram(
   // use. The boundary rule holds across all of it: no WordPress site tokens, no
   // Application Passwords, no Ability proxying.
   registerHostingCommands(program, handlers, optionsFor);
+
+  // `dashboard` is a top-level command, like Go's. It is registered after the
+  // hosting tree only so that `--help` lists it last; nothing depends on the
+  // order, and registration never dereferences `handlers` outside its action —
+  // `createProgram("test", {})` is a supported call in the contract tests.
+  registerDashboardCommands(program, handlers, optionsFor);
 
   program.action(async () => {
     if (program.opts<{ readonly version: boolean }>().version) {

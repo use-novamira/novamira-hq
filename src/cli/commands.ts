@@ -3,12 +3,14 @@
 
 import type { PlatformPaths } from "../config/paths.js";
 import type { ConfigStore } from "../config/profiles.js";
+import type { CredentialStore } from "../credentials/store.js";
 import type { HostingClientFactory } from "../hosting/factory.js";
 import type {
   CommandMeta,
   InvocationWarning,
   Renderer,
 } from "../output/render.js";
+import { createDashboardHandlers } from "./dashboard.js";
 import { createHostingCommandHandlers } from "./hosting/index.js";
 import type { CommandHandlers, GlobalOptions } from "./program.js";
 
@@ -36,6 +38,14 @@ export interface CommandDependencies {
    * no command can reach a live provider API.
    */
   readonly hosting: HostingClientFactory;
+  /**
+   * The credential store, resolved lazily and at most once per process:
+   * constructing it probes the OS keychain, and a command that resolves only
+   * `env`/`file` references must not pay for a subprocess it never uses. The
+   * dashboard server takes the getter rather than the store for exactly that
+   * reason — it is built at startup and may never touch a `stored` credential.
+   */
+  readonly credentials: () => Promise<CredentialStore>;
   /**
    * Resolves the process-wide renderer from the parsed global options.
    * Memoized in `main.ts`, so one renderer — and one `requestId` — serves the
@@ -77,6 +87,11 @@ export function createCommandHandlers(
     // `rendererFor` below, so hosting and local commands share one renderer,
     // one `requestId` and one envelope.
     ...createHostingCommandHandlers(dependencies),
+
+    // The `dashboard` command. It is a top-level peer of `hosting`, and its
+    // handler is the only one that does not return: it binds, renders the one
+    // envelope, and then blocks until the listener stops.
+    ...createDashboardHandlers(dependencies),
 
     version: (programVersion, options) =>
       execute(options, () => ({
