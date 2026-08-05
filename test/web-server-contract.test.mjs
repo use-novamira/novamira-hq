@@ -81,7 +81,21 @@ async function fixture(overrides = {}) {
     randomToken: () => TOKEN,
     integration: {
       connectionStates: async () => {
-        throw new Error("6a renders no connection state");
+        throw new Error("this suite renders no connection state");
+      },
+      connect: async () => {
+        throw new Error("this suite runs no site CLI");
+      },
+    },
+    doctor: async () => {
+      throw new Error("this suite runs no doctor report");
+    },
+    updates: {
+      check: async () => {
+        throw new Error("this suite must not reach a package registry");
+      },
+      install: async () => {
+        throw new Error("this suite must not run a package manager");
       },
     },
     ...overrides,
@@ -104,7 +118,73 @@ function request(path, options = {}) {
     path: decodeURIComponent(target.pathname),
     query: target.searchParams,
     headers: { host: "127.0.0.1:8787", ...options.headers },
+    // Required rather than optional, so a looping handler cannot forget it; a
+    // synthesized request passes a signal that simply never aborts.
+    signal: new AbortController().signal,
     body: async () => options.body ?? "",
+  };
+}
+
+/**
+ * The minimum `RouteContext`. 6b moved the token onto the context and added the
+ * service record, so building a table means supplying both.
+ */
+function routeContext(overrides = {}) {
+  return {
+    loadConfigView: async () => ({
+      profiles: [],
+      deployPaths: [],
+      version: "0.0.0-test",
+      configFile: "/dev/null",
+    }),
+    token: TOKEN,
+    now: () => 1_700_000_000_000,
+    providers: {
+      upsert: async () => ({ name: "x" }),
+      remove: async () => ({ name: "x" }),
+      validate: async () => ({}),
+      recordChecked: () => undefined,
+      clearChecked: () => undefined,
+      lastChecked: () => null,
+    },
+    sites: {
+      list: async () => ({
+        profile: "__all__",
+        includeEnvs: true,
+        cached: false,
+        storedAt: null,
+        expiresAt: null,
+        groups: [],
+        connections: null,
+      }),
+      warm: () => undefined,
+      invalidate: () => undefined,
+      envResolver: () => (envId) => ({ name: envId, domain: "" }),
+      resolveSite: () => undefined,
+      refreshConnections: async () => null,
+    },
+    deployPaths: { upsert: async () => "x", remove: async () => "x" },
+    integration: {
+      connectionStates: async () => {
+        throw new Error("this suite renders no connection state");
+      },
+      connect: async () => {
+        throw new Error("this suite runs no site CLI");
+      },
+    },
+    doctor: async () => {
+      throw new Error("this suite runs no doctor report");
+    },
+    updates: {
+      check: async () => {
+        throw new Error("this suite must not reach a package registry");
+      },
+      install: async () => {
+        throw new Error("this suite must not run a package manager");
+      },
+    },
+    environment: {},
+    ...overrides,
   };
 }
 
@@ -246,6 +326,35 @@ test("every routed page renders the shell with all three patch targets", async (
   } finally {
     await cleanup();
   }
+});
+
+test("#main carries its per-page class, and renderPlaceholderBody is gone", async () => {
+  const { server, cleanup } = await fixture();
+  try {
+    for (const [path, page] of [
+      ["/", "providers"],
+      ["/providers", "providers"],
+      ["/sites", "sites"],
+      ["/deploy-paths", "deploy-paths"],
+      ["/deploy-paths/new", "deploy-path-new"],
+      ["/novamira-setup", "novamira-setup"],
+      ["/diagnostics", "diagnostics"],
+      ["/settings", "settings"],
+    ]) {
+      const markup = (await server.dispatch(request(path))).body.markup;
+      assert.ok(
+        markup.includes(`<main id="main" class="main main-${page}">`),
+        `${path} is missing its per-page #main class`,
+      );
+    }
+  } finally {
+    await cleanup();
+  }
+  // 6a's empty body is deleted, not deprecated: `views/pages.ts` replaced it.
+  const layout = await import("../dist/web/views/layout.js");
+  assert.equal(layout.renderPlaceholderBody, undefined);
+  const barrel = await import("../dist/web/index.js");
+  assert.equal(barrel.renderPlaceholderBody, undefined);
 });
 
 test("the nav active link follows the two page aliases", async () => {
@@ -399,18 +508,16 @@ test("a public route under /_dashboard/ is refused when the table is built", () 
     assert.throws(
       () =>
         createRouteTable(
-          {
-            loadConfigView: async () => ({}),
+          routeContext({
             extraRoutes: [
               {
                 method: "POST",
-                path: "/_dashboard/providers/save",
+                path: "/_dashboard/test/public",
                 auth,
                 handler: () => ({ kind: "text", status: 200, body: "" }),
               },
             ],
-          },
-          TOKEN,
+          }),
         ),
       (error) => {
         assert.equal(error.code, "internal_error");
@@ -421,12 +528,20 @@ test("a public route under /_dashboard/ is refused when the table is built", () 
     );
   }
   // Every shipped row keeps the invariant: nothing under the prefix is public.
-  for (const route of createRouteTable(
-    { loadConfigView: async () => ({}) },
-    TOKEN,
-  ))
+  const table = createRouteTable(routeContext());
+  for (const route of table)
     if (route.path.startsWith("/_dashboard/"))
       assert.equal(route.auth, "token", route.path);
+  // And the three credential-touching rows 6b-1 shipped are in it.
+  for (const path of [
+    "/_dashboard/providers/save",
+    "/_dashboard/providers/remove",
+    "/_dashboard/providers/validate",
+  ])
+    assert.ok(
+      table.some((route) => route.path === path && route.auth === "token"),
+      path,
+    );
 });
 
 test("a token route refuses a missing, short, long or wrong token", async () => {
@@ -711,35 +826,89 @@ test("the build ships all nine assets under dist/web/static", async () => {
 /* 24-28: deferred routes, error mapping, the body cap, adapter agreement     */
 /* -------------------------------------------------------------------------- */
 
-test("the deferred routes are declared, not stubbed, and 404 in 6a", async () => {
-  assert.deepEqual(
-    DEFERRED_ROUTES.map((entry) => `${entry.phase} ${entry.path}`),
-    [
-      "6b /_dashboard/providers/save",
-      "6b /_dashboard/providers/remove",
-      "6b /_dashboard/providers/validate",
-      "6b /_dashboard/sites",
-      "6b /_dashboard/deploy-paths/save",
-      "6b /_dashboard/deploy-paths/remove",
-      "6b /_dashboard/setup/start",
-      "6b /_dashboard/setup/jobs/",
-      "6b /_dashboard/connect",
-      "7 /_dashboard/diagnostics/doctor",
-      "7 /_dashboard/diagnostics/capabilities",
-      "7 /_dashboard/updates/check",
-      "7 /_dashboard/updates/install",
-    ],
-  );
+/**
+ * The shipped route surface, exactly as `docs/v1-contract.md`'s Routes table
+ * lists it. This is what replaces the old "the deferred rows still 404"
+ * assertion now that `DEFERRED_ROUTES` is empty: with nothing left to defer, the
+ * property worth pinning is the *positive* one — the dashboard answers these
+ * paths and no others — so a route added without a contract row, a test row and
+ * a reviewer's attention fails here.
+ */
+const SHIPPED_ROUTES = [
+  "GET /",
+  "GET /_dashboard/connect",
+  "GET /_dashboard/deploy-paths/remove",
+  "GET /_dashboard/deploy-paths/save",
+  "GET /_dashboard/diagnostics/capabilities",
+  "GET /_dashboard/diagnostics/doctor",
+  "GET /_dashboard/providers/remove",
+  "GET /_dashboard/providers/save",
+  "GET /_dashboard/providers/validate",
+  "GET /_dashboard/setup/jobs/",
+  "GET /_dashboard/setup/start",
+  "GET /_dashboard/sites",
+  "GET /_dashboard/updates/check",
+  "GET /_dashboard/updates/install",
+  "GET /assets/",
+  "GET /deploy-paths",
+  "GET /deploy-paths/new",
+  "GET /diagnostics",
+  "GET /novamira-setup",
+  "GET /providers",
+  "GET /settings",
+  "GET /sites",
+  "HEAD /assets/",
+];
+
+test("the deferred-route list is empty and the shipped surface is frozen", async () => {
+  // 6b-1 moved the three provider rows out of this list and into the table,
+  // 6b-2 `/sites` and `/connect`, 6b-3 the two setup rows, 7-1 the two
+  // diagnostics rows with `src/doctor/`, and 7-2 the last two with
+  // `src/update/`. Nothing is deferred any more.
+  assert.deepEqual([...DEFERRED_ROUTES], []);
+
   const { server, cleanup } = await fixture();
   try {
+    // The mechanism still works: a row declared here would have to 404.
     for (const entry of DEFERRED_ROUTES) {
       const response = await server.dispatch(
-        request(entry.path, {
-          headers: { [TOKEN_HEADER]: TOKEN },
-        }),
+        request(entry.path, { headers: { [TOKEN_HEADER]: TOKEN } }),
       );
       assert.equal(response.status, 404, entry.path);
     }
+
+    // Every path in the table answers something other than 404, and no path
+    // outside it does. `matchRoute` collapses the method, so the surface is
+    // listed as `GET <path>` plus the one `HEAD` row; a POST-only path is
+    // reachable by GET as a 405, which is the distinction being pinned.
+    const table = createRouteTable(routeContext());
+    const surface = [
+      ...new Set(table.map((route) => `${"GET"} ${route.path}`)),
+      "HEAD /assets/",
+    ].sort();
+    assert.deepEqual(surface, [...SHIPPED_ROUTES].sort());
+    for (const route of table)
+      if (route.path.startsWith("/_dashboard/"))
+        assert.equal(route.auth, "token", route.path);
+
+    // The two rows 7-2 moved down are answered now, not 404.
+    for (const [method, path] of [
+      ["GET", "/_dashboard/updates/check"],
+      ["POST", "/_dashboard/updates/install"],
+    ]) {
+      const response = await server.dispatch(
+        request(path, { method, headers: { [TOKEN_HEADER]: TOKEN } }),
+      );
+      assert.notEqual(response.status, 404, path);
+    }
+    // ...and the wrong method on the install route is a 405, not a 404.
+    const wrongMethod = await server.dispatch(
+      request("/_dashboard/updates/install", {
+        headers: { [TOKEN_HEADER]: TOKEN },
+      }),
+    );
+    assert.equal(wrongMethod.status, 405);
+    assert.equal(wrongMethod.headers.Allow, "POST");
   } finally {
     await cleanup();
   }
@@ -763,6 +932,43 @@ test("the deleted site-profile routes exist nowhere", async () => {
     const page = await server.dispatch(request("/sites"));
     assert.ok(!page.body.markup.includes("/_dashboard/sites/save"));
     assert.ok(!page.body.markup.includes("/_dashboard/sites/remove"));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("the setup-jobs prefix row matches both shapes and is token-guarded", async () => {
+  // The only prefix row outside `/assets/`. It has to match a job id and a job
+  // id plus `/stream`, and it has to be guarded like every other
+  // `/_dashboard/*` row — `createRouteTable` refuses to build a table where it
+  // is not, so the guard below is the check that the row *exists* at all.
+  const { server, cleanup } = await fixture();
+  try {
+    for (const path of [
+      "/_dashboard/setup/jobs/abc123",
+      "/_dashboard/setup/jobs/abc123/stream",
+    ]) {
+      const anonymous = await server.dispatch(request(path));
+      assert.equal(anonymous.status, 403, path);
+      assert.equal(anonymous.envelope.error.code, "usage_error");
+      // With the token the row is reached, and the unknown id is its own 404 —
+      // a *routing* 404 would answer "No such dashboard route." instead.
+      const authorized = await server.dispatch(
+        request(path, { headers: { [TOKEN_HEADER]: TOKEN } }),
+      );
+      assert.equal(authorized.status, 404, path);
+      assert.equal(authorized.envelope.error.message, "Setup job not found.");
+    }
+    // A POST to the prefix is a 405 with an Allow header, not a 404: the path
+    // exists, the method does not.
+    const wrongMethod = await server.dispatch(
+      request("/_dashboard/setup/jobs/abc123", {
+        method: "POST",
+        headers: { [TOKEN_HEADER]: TOKEN },
+      }),
+    );
+    assert.equal(wrongMethod.status, 405);
+    assert.equal(wrongMethod.headers.Allow, "GET");
   } finally {
     await cleanup();
   }

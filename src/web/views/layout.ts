@@ -63,7 +63,7 @@ export interface DocumentInput {
   readonly view: ConfigView;
   readonly signals: DashboardSignals;
   readonly notice: DashboardNotice;
-  /** The page body; 6a passes {@link renderPlaceholderBody}. */
+  /** The page body, from `views/pages.ts`'s `renderPageBody`. */
   readonly body: Html;
 }
 
@@ -143,11 +143,11 @@ function navLink(
  * SSE response replaces outer-mode.
  */
 export function renderMain(page: DashboardPage, body: Html): Html {
-  // `page` is unread here and stays in the signature on purpose: 6b's `#main`
-  // gains a per-page class, and the SSE handler that outer-patches this element
-  // already has to pass it.
-  void page;
-  return html`<main${idAttr("main")} class="main">${body}</main>`;
+  // The per-page class 6a promised. No stylesheet rule uses it — `app.css` is
+  // frozen — and that is fine: it is a hook, and it makes an outer `#main` patch
+  // self-describing, so a test can tell "the providers page was patched here"
+  // from "some page was patched here" without parsing the body.
+  return html`<main${idAttr("main")}${classAttr("main", `main-${page}`)}>${body}</main>`;
 }
 
 /**
@@ -166,21 +166,15 @@ export function renderToast(notice: DashboardNotice): Html {
   )} role="status" aria-live="polite">${notice.message}</div>`;
 }
 
-/** An inline notice inside a page body. 6b's forms and flashes use it. */
+/**
+ * An inline notice inside a page body: the provider flash, a form error, a
+ * per-group failure on the sites page.
+ *
+ * It renders `CliError.message` and never `CliError.details`. `failureEnvelope`'s
+ * `redact()` runs on the JSON path only, so a notice string built from `details`
+ * would walk straight past it — which is why every handler builds its notice
+ * from `asCliError(error).message` and routes the `code` to `onDiagnostic`.
+ */
 export function renderNotice(notice: DashboardNotice): Html {
   return html`<div${classAttr("notice", statusClass(notice.level))}>${notice.message}</div>`;
-}
-
-/**
- * 6a's page body: deliberately empty.
- *
- * Every routed path renders the same shell, so the server, the route table, the
- * guards, the asset handler and the SSE wrapper are all exercisable now, and 6b
- * replaces this one call rather than the wrapper around it. It is empty on
- * purpose rather than filled with a placeholder: a page that claims to show
- * providers and shows nothing is worse than a page that shows nothing.
- */
-export function renderPlaceholderBody(page: DashboardPage): Html {
-  void page;
-  return html`<section class="page"></section>`;
 }

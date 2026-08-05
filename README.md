@@ -15,22 +15,25 @@ site is provisioned, agents talk to it through the separate
 
 ## Status
 
-Early. HQ is a TypeScript port of the Go `novamira-hub` and the port is in
-progress: no release has been published to npm yet, and the command surface
-described in [`docs/v1-contract.md`](docs/v1-contract.md) is being landed phase
-by phase.
+The port of the Go `novamira-hub` is complete. Every command, route and page
+described in [`docs/v1-contract.md`](docs/v1-contract.md) is implemented, and
+that document is normative throughout — nothing in it is marked as planned. No
+release has been published to npm yet.
 
-What exists in this repository today: the error and exit-code taxonomy, the JSON
-output envelope, HQ's storage namespace with locking, atomic writes and
-owner-only file permissions, the `config.json` v1 schema and store,
-keychain-backed provider credentials, the shared HTTP client with retry, timeout
-and redacted diagnostics, the eight provider clients, the whole `config` and
-`hosting` command line, and the provisioning flow behind `hosting novamira
-setup`. The local dashboard, the skills bundle, doctor, and self-update are not
-wired up yet.
+What the repository contains: the error and exit-code taxonomy, the JSON output
+envelope, HQ's storage namespace with locking, atomic writes and owner-only file
+permissions, the `config.json` v1 schema and store, keychain-backed provider
+credentials, the shared HTTP client with retry, timeout and redacted
+diagnostics, the eight provider clients, the whole `config` and `hosting`
+command line, the provisioning flow behind `hosting novamira setup`, the bundled
+agent skills behind `skills`, the local installation report behind `doctor`,
+npm-only self-update behind `update`, the two installer scripts, and the local
+dashboard — all seven pages, including Diagnostics, which runs the same report
+`doctor` does, and Settings, which carries the update card.
 
-Sections of the contract document that are not implemented are marked
-**RESERVED** rather than described as if they shipped.
+One thing is deliberately _not_ frozen: the markup inside a dashboard page,
+beyond the app shell. A page's routes, its SSE fragments, its security model and
+what it may and may not do are contract; the elements it renders are not.
 
 ## Requirements
 
@@ -42,7 +45,23 @@ Rocket.net, Hostinger, and Cloudways.
 
 ## Install
 
-Once published, HQ installs from npm:
+Once published, the installers set up HQ **and** register its agent skill with
+the agent of your choice, then smoke-test the result with
+`novamira-hq doctor --offline`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/use-novamira/novamira-hq/main/install.sh | sh
+```
+
+```powershell
+irm https://raw.githubusercontent.com/use-novamira/novamira-hq/main/install.ps1 | iex
+```
+
+Both require Node.js 22+, `npm` and `npx`. Set `NOVAMIRA_HQ_AGENT` (for example
+`NOVAMIRA_HQ_AGENT=opencode`) to pick the agent non-interactively; without it the
+skill step asks, and needs a terminal to ask on.
+
+Or install the package alone, without the agent skill:
 
 ```sh
 npm install -g @novamira/hq --ignore-scripts
@@ -91,20 +110,33 @@ Storage locations, which are deliberately disjoint from the site CLI's:
 | --------------------------------- | -------------------------------------------------------------------------------------------- |
 | `NOVAMIRA_HQ_HOME`                | relocate the whole tree — `config.json`, `state/`, `cache/`, `credentials/` — under one root |
 | `NOVAMIRA_HQ_CONFIG`              | override the configuration file path only                                                    |
+| `NOVAMIRA_HQ_SITE_CLI`            | absolute path to the `novamira` executable, for connected-state detection                    |
 | `NOVAMIRA_HQ_ALLOW_INSECURE_HTTP` | set to `1` to let `hosting novamira setup` accept a plain-HTTP site URL that is not loopback |
+| `NOVAMIRA_HQ_UPDATE_CHECK`        | set to `0` to disable the daily update notice entirely — no request, no state written        |
+| `NOVAMIRA_HQ_REGISTRY`            | alternate npm registry for `update` and the update notice                                    |
+| `NOVAMIRA_HQ_AGENT`               | agent the installers register the bundled skill with; read by `install.sh` / `install.ps1`   |
 | `NO_COLOR`                        | disable ANSI color, like `--no-color`                                                        |
 
-The site CLI's `NOVAMIRA_HOME` and `NOVAMIRA_ALLOW_INSECURE_HTTP` are never read.
+The site CLI's `NOVAMIRA_HOME`, `NOVAMIRA_ALLOW_INSECURE_HTTP`,
+`NOVAMIRA_UPDATE_CHECK` and `NOVAMIRA_REGISTRY` are never read.
 
 ## Commands
 
-Two top-level groups plus one command: `config` manages HQ's own configuration
-and its hosting profiles, `hosting` operates provider resources through one
-profile, and `dashboard` serves the local web UI.
+Three top-level groups plus three commands: `config` manages HQ's own
+configuration and its hosting profiles, `hosting` operates provider resources
+through one profile, `skills` prints the bundled agent instructions, `dashboard`
+serves the local web UI, `doctor` checks the installation, and `update` installs
+a newer release.
 
 ```sh
 novamira-hq config add kinsta --credential-env KINSTA_API_KEY
 novamira-hq config list
+
+novamira-hq skills list
+novamira-hq skills get hosting
+novamira-hq doctor --offline
+novamira-hq update --check
+novamira-hq dashboard --open
 
 novamira-hq --profile kinsta hosting providers validate
 novamira-hq --profile kinsta hosting sites list --include-envs
@@ -135,6 +167,30 @@ the dashboard cannot be exposed to a network by accident. Every mutating route
 additionally requires a per-process token that only the served page carries, and
 every request is checked against a loopback `Host` and `Origin`, so a page on
 another site cannot drive it.
+
+What it does:
+
+- **Hosting Providers** — add, edit and remove provider profiles, and check a
+  profile's API credential. The credential is posted once and handed to the
+  credential store; the page only ever shows the reference (`env:NAME`,
+  `stored:ID`), never a value.
+- **Sites** — browse every site and environment across your configured hosts,
+  filtered by whether Novamira is connected, cached for five minutes so
+  navigating does not cost provider rate limit.
+- **Deploy paths** — create and remove the environment-to-environment paths.
+  Running one is not part of this release.
+- **Novamira Setup** — install and activate the plugin on an environment with
+  live progress, then print the `novamira auth login` command that connects your
+  agent. It runs the same code path as
+  `novamira-hq hosting novamira setup`, including the PHP gate and the
+  compatibility preflight.
+- **Diagnostics** — run the same installation report as `novamira-hq doctor`
+  (bound to `--offline`, and never `--fix`), or read one provider's capability
+  document. Neither action repaints the page, so the provider you picked stays
+  picked.
+- **Settings** — the update card, which checks the npm registry when the page
+  opens and can install a newer release with your package manager, and the
+  configuration file's location, read-only.
 
 Stop it with Ctrl-C. `--open` launches your default browser and is never fatal
 if it cannot.
@@ -183,6 +239,84 @@ user.
 provider actions, provisioning, and plugin-installed status all work without it;
 only the dashboard's connected-state detection and Connect action require it.
 
+## Agent skills
+
+HQ ships two instruction bundles for coding agents: `core`, a router that sends
+hosting work to HQ and everything inside WordPress to `novamira`, and `hosting`,
+the provider-neutral reference for the whole `hosting` tree.
+
+```sh
+novamira-hq skills list
+novamira-hq skills get           # core, the router
+novamira-hq skills get hosting
+novamira-hq skills path hosting  # a real file inside the installed package
+```
+
+The bundle an agent registers is `skills/novamira-hq/SKILL.md`, installed with
+the third-party `skills` CLI (`npx skills add <package root> --skill novamira-hq
+--global`). **No HQ command writes a skill to disk**: there is no `skills
+install` and no `setup`, and nothing touches `~/.claude` or `~/.agents`.
+
+The one thing the hosting bundle will not do is tell an agent to reach inside
+WordPress. It routes that work to `novamira auth login <url>` and the separate
+`@novamira/cli`, and it names no Application Password, no site profile and no
+WordPress REST route — because HQ has none of those.
+
+## Doctor
+
+```sh
+novamira-hq doctor              # nine checks, one line each
+novamira-hq doctor --offline    # no network operation of any kind
+novamira-hq doctor --fix        # repair private-path permissions and state storage
+```
+
+The checks, in order: the Node version, owner-only permissions on HQ's private
+paths, atomic writes in the state directory, which credential backend resolved,
+whether `config.json` matches the v1 schema, whether every profile's credential
+reference resolves, whether the bundled skills are intact, whether the optional
+`novamira` site CLI is installed and compatible, and whether a newer HQ is
+published.
+
+`--offline` drops the last one entirely — the report has eight checks and makes
+no request at all, which is what the installers' smoke test relies on.
+
+**A completed report exits 0**, even when its status is `warn` or `fail` — the
+report is the output, and a `warn` is information rather than a broken command.
+Three checks can never fail: one unresolvable credential reference must not
+condemn an install whose other profiles work, a missing `@novamira/cli` is a
+warning by design because nothing except the dashboard's connected-state
+detection depends on it, and an out-of-date or unreachable-registry install still
+works.
+
+`--fix` touches exactly two things: file permissions on HQ's own private paths,
+and creating the state directory. It writes no credential, removes no profile,
+and calls no provider.
+
+## Updates
+
+```sh
+novamira-hq update --check   # report what is published, install nothing
+novamira-hq update           # install it with your package manager
+```
+
+Distribution is npm only. `update` reads the `latest` dist-tag of `@novamira/hq`
+— one anonymous HTTPS request carrying no cookie, no token and no profile,
+credential, provider or telemetry data — and then runs
+`npm install --global --ignore-scripts @novamira/hq@<version>` (or the Bun global
+equivalent, if that is how HQ was installed). Nothing is downloaded from GitHub,
+no checksum file is fetched, and no executable is replaced in place. The
+installer's output goes to stderr only, and the exact command that ran is
+reported in `data.command`.
+
+Separately, a human running HQ at a terminal may see one stderr line a day when a
+newer release exists. It is backed by `update-check.json` in HQ's state directory
+(`$XDG_STATE_HOME/novamira-hq` on Linux — see the table above), which bounds it to
+one registry request per 24 hours. It is off entirely — no request, no state
+written — under `--quiet`, under `--json`, under
+`NOVAMIRA_HQ_UPDATE_CHECK=0`, for `dashboard` and `doctor --offline`, and
+whenever stderr is not a terminal. A scripted or piped invocation never consults
+a registry.
+
 ## Output
 
 Every command emits one envelope in `--json` mode:
@@ -200,8 +334,9 @@ full envelope, global options, and the error-code to exit-code mapping.
 
 ```sh
 bun install
-bun run check
-bun run pack:inspect
+bun run check              # lint, format check, and the contract tests
+bun run pack:inspect       # what the published tarball contains
+bun run package:acceptance # pack it, install it, and run the installed CLI
 ```
 
 Live provider API calls are explicitly gated and never run in CI. See

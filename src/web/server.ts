@@ -96,13 +96,21 @@ import {
   type Route,
 } from "./routes.js";
 import { streamSse } from "./sse.js";
+import { createDeployPathService } from "./services/deploy-paths.js";
+import { createProviderService } from "./services/providers.js";
+import { createSetupJobService } from "./services/setup-jobs.js";
+import { createSitesService } from "./services/sites.js";
 import {
   deployPathView,
+  deployPushSupported,
   hostingProfileView,
   type ConfigView,
-  type ConnectionQuery,
-  type ConnectionSnapshot,
 } from "./views/types.js";
+import type {
+  ConnectionQuery,
+  ConnectionSnapshot,
+  ConnectOutcome,
+} from "../connection-state.js";
 
 /* -------------------------------------------------------------------------- */
 /* Dependencies                                                               */
@@ -127,6 +135,65 @@ export interface DashboardIntegration {
   connectionStates(
     queries: readonly ConnectionQuery[],
   ): Promise<ConnectionSnapshot>;
+  /**
+   * The Connect action: spawns `novamira auth login <url>`. Resolves for every
+   * failure and never throws — see `src/integration/connect.ts`, which is the
+   * only place HQ runs the site CLI.
+   */
+  connect(siteUrl: string): Promise<ConnectOutcome>;
+}
+
+/**
+ * The doctor report the Diagnostics page renders.
+ *
+ * Declared structurally, like {@link DashboardIntegration} and for the same
+ * reason: `src/web/` may not import `src/doctor/`. `src/cli/dashboard.ts` builds
+ * the real runner and binds it to `{ offline: true, fix: false }` — the
+ * dashboard is a view, so a GET that patches a panel must neither repair the
+ * operator's filesystem permissions nor make a network request.
+ *
+ * It is **required**, not optional. A server constructed without one would not
+ * be degraded, it would have the Health check button quietly wired to nothing,
+ * and making the field non-optional is what stops a composition root shipping
+ * that by omission.
+ */
+export type DashboardDoctor = () => Promise<unknown>;
+
+/**
+ * The Settings page's update card: check the registry, install what it found.
+ *
+ * Declared structurally for the third time and for the third identical reason:
+ * `src/web/` may not import `src/update/`. `src/cli/dashboard.ts` builds both
+ * operations over the same {@link UpdateChecker} the `update` command uses, so
+ * the dashboard and the CLI share one cached record, one lock key and one
+ * registry — a check in the browser is a check the next `novamira-hq update`
+ * does not have to repeat.
+ *
+ * **`install` returns `updated: false` rather than throwing** when the checker
+ * finds nothing newer, because "already up to date" is an outcome and not a
+ * failure. `command` is the exact package-manager command line that ran, which
+ * the card renders so a failed install can be repeated by hand. The installer's
+ * own stdout and stderr never cross this interface: the implementation consumes
+ * them into a bounded sink and drops them.
+ *
+ * It is **required**, like the other two. A server built without it would have
+ * the update card's buttons wired to nothing.
+ */
+export interface DashboardUpdates {
+  check(): Promise<{
+    readonly current: string;
+    readonly latest: string;
+    readonly updateAvailable: boolean;
+    readonly checkedAt: string;
+    /** Origin and path only; never a URL carrying credentials. */
+    readonly registry?: string;
+  }>;
+  install(): Promise<{
+    readonly updated: boolean;
+    readonly from: string;
+    readonly to: string;
+    readonly command: string;
+  }>;
 }
 
 export interface DashboardServerDependencies {
@@ -138,14 +205,26 @@ export interface DashboardServerDependencies {
   readonly credentials: () => Promise<CredentialStore>;
   /** Injected record. Nothing under `src/web/` reads `process.env`. */
   readonly environment: NodeJS.ProcessEnv;
-  /** The one outbound-HTTP seam, for 6b's `provisionNovamira`. */
+  /** The one outbound-HTTP seam; it reaches `provisionNovamira` and stops there. */
   readonly fetch: HttpFetch;
   /** Connected-state detection. Required; see {@link DashboardIntegration}. */
   readonly integration: DashboardIntegration;
+  /** The Diagnostics page's report. Required; see {@link DashboardDoctor}. */
+  readonly doctor: DashboardDoctor;
+  /** The Settings page's update card. Required; see {@link DashboardUpdates}. */
+  readonly updates: DashboardUpdates;
   /** Clock for cache TTLs and job timestamps. */
   readonly now: () => number;
   /** Token generator. A test injects a fixed value. */
   readonly randomToken?: () => string;
+  /**
+   * How long the Novamira-setup progress stream waits between renders, in
+   * milliseconds. Defaults to Go's one second. It exists as a seam because that
+   * loop is the one handler in the dashboard that sleeps, and a contract test
+   * that had to wait a real second per tick would either be slow or would assert
+   * nothing about the second iteration.
+   */
+  readonly setupPollMs?: number;
   /** Diagnostics sink; `main.ts` routes it to `renderer.diagnostic`. */
   readonly onDiagnostic?: (label: string, payload: unknown) => void;
   /** Extra routes, for the contract test's token-guard case. */
@@ -386,31 +465,93 @@ export function createDashboardServer(
   let httpServer: Server | undefined;
   let stopped: Promise<void> | undefined;
 
+  const sites = createSitesService({
+    store: dependencies.store,
+    hosting: dependencies.hosting,
+    integration: dependencies.integration,
+    now: dependencies.now,
+  });
+
+  const providers = createProviderService({
+    store: dependencies.store,
+    hosting: dependencies.hosting,
+    credentials: dependencies.credentials,
+    // Go's `clearSitesCacheLocked` (`server.go:1384`), on every provider
+    // mutation: a removed profile must not keep answering from a warm cache.
+    onMutated: () => {
+      sites.invalidate();
+    },
+  });
+
+  const deployPaths = createDeployPathService({ store: dependencies.store });
+
+  // The job registry is process-lifetime state, like `lastChecked` and the
+  // sites cache: an operator who restarts the dashboard has run nothing. It
+  // holds the one seam that reaches the public internet (`fetch`, for the
+  // plugin release and the site's discovery document) and the one that reaches
+  // a provider (`hosting`), and it calls `provisionNovamira` — the same
+  // function `hosting novamira setup` calls, with no commander in the graph.
+  const setupJobs = createSetupJobService({
+    hosting: dependencies.hosting,
+    environment: dependencies.environment,
+    fetch: dependencies.fetch,
+    now: dependencies.now,
+  });
+
   const loadConfigView = async (): Promise<ConfigView> => {
     const document = await dependencies.store.load();
     const profiles = Object.entries(document.hostingProfiles)
       .sort(([left], [right]) => left.localeCompare(right))
-      .map(([name, profile]) => hostingProfileView(name, profile));
-    const deployPaths = Object.values(document.deployPaths)
+      .map(([name, profile]) =>
+        hostingProfileView(name, profile, {
+          environment: dependencies.environment,
+          lastCheckedMillis: providers.lastChecked(name),
+        }),
+      );
+    // Built once per view, not once per path: it walks the warm inventory, and
+    // a config with a dozen deploy paths would otherwise walk it a dozen times.
+    const resolve = sites.envResolver();
+    const deployPathViews = Object.values(document.deployPaths)
       .sort((left, right) => left.name.localeCompare(right.name))
-      .map((path) => deployPathView(path));
+      .map((path) =>
+        deployPathView(path, {
+          resolve,
+          supported: deployPushSupported(
+            document.hostingProfiles[path.hostingProfile]?.provider ?? "",
+          ),
+        }),
+      );
     return {
       profiles,
-      deployPaths,
+      deployPaths: deployPathViews,
       version: dependencies.version,
       configFile: dependencies.store.configFile,
     };
   };
 
-  const table = createRouteTable(
-    {
-      loadConfigView,
-      ...(dependencies.extraRoutes === undefined
-        ? {}
-        : { extraRoutes: dependencies.extraRoutes }),
-    },
+  const table = createRouteTable({
+    loadConfigView,
+    version: dependencies.version,
+    doctor: dependencies.doctor,
+    updates: dependencies.updates,
     token,
-  );
+    now: dependencies.now,
+    providers,
+    sites,
+    deployPaths,
+    setupJobs,
+    integration: dependencies.integration,
+    environment: dependencies.environment,
+    ...(dependencies.setupPollMs === undefined
+      ? {}
+      : { setupPollMs: dependencies.setupPollMs }),
+    ...(dependencies.onDiagnostic === undefined
+      ? {}
+      : { onDiagnostic: dependencies.onDiagnostic }),
+    ...(dependencies.extraRoutes === undefined
+      ? {}
+      : { extraRoutes: dependencies.extraRoutes }),
+  });
 
   /* ---------------------------------------------------------------------- */
   /* Guards                                                                  */

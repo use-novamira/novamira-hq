@@ -1,7 +1,11 @@
 # Novamira HQ v1 Contract
 
-Status: contract skeleton — the filled sections are normative and implemented;
-sections marked **RESERVED** are planned but not yet decided or shipped.
+Status: every section of this document is normative and implemented. One
+narrower reservation remains, stated where it applies: the dashboard's **view
+surface beyond the app shell and the seven shipped pages** is not frozen — the
+markup inside a page may change without a major version, while its routes, its
+SSE fragments, its security model and what each page may and may not do are
+frozen here.
 
 This document is normative for HQ major version 1. It fixes the values consumed
 by HQ's CLI, dashboard, and provider implementations. There is no released
@@ -24,6 +28,10 @@ remain backward compatible with and ships no legacy import.
 | license | AGPL-3.0-or-later |
 | release owner | Ovation S.r.l. through reviewed `use-novamira` GitHub workflows and npm trusted publishing with provenance |
 | runtime dependencies | exactly `commander` and `@starfederation/datastar-sdk` |
+| bundled data | the published tarball contains `dist/` and `skills/` (`novamira-hq`, `core`, `hosting`) |
+| installers | `install.sh` and `install.ps1`, published as GitHub release assets and served from the repository's raw URL; **not** inside the npm tarball |
+| distribution | npm only: no Homebrew formula, no `.deb`, no DMG, no Windows installer, no release-archive download |
+| package acceptance | `bun run package:acceptance` packs the tarball, installs it into a throwaway prefix, and exercises the installed executable offline; it runs in CI on Linux, macOS and Windows, and again in the release job against the published version |
 
 The package has no lifecycle setup, downloaded runtime, required native
 executable or addon, and no native keychain module: OS credential storage uses
@@ -51,9 +59,20 @@ Global options are `--profile <name>`, `--json`, `--quiet`, `--verbose`,
 `--no-color`, `--yes`, `--timeout <ms>`, `--version`, and `--help`. `NO_COLOR`
 has the same color-disabling effect as `--no-color`.
 
+Every other option in the surface is command-local, and no command declares one
+whose name is a reserved global: `doctor` declares `--offline` and `--fix`,
+`update` declares `--check`, `dashboard` declares `--listen` and `--open`, and
+the three `skills` subcommands declare none at all.
+
 `--profile` selects the hosting profile. A profile is never inferred: a command
 that needs one and is given none fails `usage_error` with the configured profile
 names in `details.profiles`. No command accepts a secret-valued option.
+
+A global option name is reserved across the whole command tree, so no subcommand
+may declare one. `doctor --offline` and `doctor --fix` are command-local and free
+against that set; the `skills` subcommands declare no options at all. `doctor` is
+the one command that accepts `--profile` without requiring it: the flag narrows
+one check and changes nothing else.
 
 ## Output and errors
 
@@ -239,12 +258,73 @@ of Advapi32 — with an explicit owner-only file fallback under
 unavailable or is explicitly requested. The file fallback is not OS-backed
 encryption and warns on first use.
 
+The state directory additionally holds `update-check.json`, the background
+release notice's cache. Its record is
+`{ "version": 1, "registry": string, "latest": string|null, "checkedAt": string }`,
+where `registry` is the consulted registry reduced to origin plus path and
+`latest: null` records a check that failed. It is written atomically with
+owner-only permissions under the shared lock key `__update_check__`, which is
+held across the registry request as well as the write so that two concurrent HQ
+invocations make at most one request per interval. A record whose permissions do
+not verify is deleted and treated as absent; a record whose `registry` does not
+match the one in use is ignored.
+
 All writes use a cross-process lock, an owner-only temporary file, and atomic
 replacement. Unix directories and files are verified `0700` and `0600` with the
 current UID; Windows verifies a protected ACL owned by the current SID with a
 single full-control allow rule for that SID. Contract tests resolve both HQ's
 and the site CLI's paths against one fake home on Linux, macOS, and Windows and
 assert every resulting path and credential service is distinct.
+
+## Environment variables
+
+These are HQ's own variables — the complete set that changes how HQ itself
+behaves:
+
+| Variable | Effect |
+| --- | --- |
+| `NOVAMIRA_HQ_HOME` | isolation root holding `config.json`, `state/`, `cache/` and `credentials/` directly |
+| `NOVAMIRA_HQ_CONFIG` | override the configuration file path only; state, cache and credentials keep their platform locations |
+| `NOVAMIRA_HQ_SITE_CLI` | absolute path to the `novamira` executable, for connected-state detection and the doctor's `integration.site_cli` check |
+| `NOVAMIRA_HQ_ALLOW_INSECURE_HTTP` | `1` accepts a plain-HTTP site URL in `hosting novamira setup` and a plain-HTTP **loopback** package registry; one opt-in, not two |
+| `NOVAMIRA_HQ_UPDATE_CHECK` | `0` or `false` disables the background release notice entirely — no request, no state write |
+| `NOVAMIRA_HQ_REGISTRY` | the npm registry `update`, the dashboard's update card and the background notice consult |
+| `NO_COLOR` | disables ANSI color, exactly like `--no-color` |
+
+An empty-string override is treated as unset — for every variable above, not
+only the path ones.
+
+Three further groups of variables are read, and are specified where they belong
+rather than here, because each is data the operator points HQ at rather than a
+switch on HQ's behavior:
+
+- **Platform location variables**, resolved by "Storage namespace" above:
+  `XDG_CONFIG_HOME`, `XDG_STATE_HOME` and `XDG_CACHE_HOME` on Linux, `APPDATA`
+  and `LOCALAPPDATA` on Windows, and the user's home directory on every
+  platform.
+- **Provider credential and identity variables**, named by "Configuration and
+  credentials" above: an `env:NAME` credential reference resolves the variable it
+  names, each provider kind has a default one (`KINSTA_API_KEY`,
+  `INSTAWP_API_KEY`, `PANTHEON_MACHINE_TOKEN`, `PRESSABLE_CLIENT_SECRET`,
+  `WPE_API_PASSWORD`, `ROCKETNET_PASSWORD`, `HOSTINGER_API_TOKEN`,
+  `CLOUDWAYS_API_KEY`), and four providers read a non-secret identity variable
+  when the profile's `company_id` is empty (`PRESSABLE_CLIENT_ID`,
+  `WPE_API_USER_ID`, `ROCKETNET_USERNAME`, `CLOUDWAYS_EMAIL`). WP Engine
+  additionally accepts the legacy aliases `WPENGINE_PASSWORD` and
+  `WPENGINE_USERNAME` when its primary variables are unset.
+- **`PATH` and, on Windows, `PATHEXT`**, used to resolve the optional `novamira`
+  executable when `NOVAMIRA_HQ_SITE_CLI` is not set.
+
+**HQ never reads the site CLI's variables.** `NOVAMIRA_HOME`,
+`NOVAMIRA_ALLOW_INSECURE_HTTP`, `NOVAMIRA_UPDATE_CHECK` and `NOVAMIRA_REGISTRY`
+have no effect on HQ, are never interpreted, and are never forwarded to a child
+process on HQ's behalf. The one exception is deliberate and narrow: when HQ
+spawns `novamira` through `src/integration/`, that child inherits the ambient
+environment it would have had anyway.
+
+`NOVAMIRA_HQ_AGENT` (with `NOVAMIRA_AGENT` as a fallback) is read by the
+installers, not by `novamira-hq`; it selects the agent `npx skills add`
+registers the bundled skill with.
 
 ## Provider HTTP behavior
 
@@ -277,9 +357,10 @@ secrets. Live provider API calls are explicitly gated and never run in CI.
 
 ## Hosting commands
 
-The command surface has exactly two top-level groups: `config`, for local HQ
-configuration and hosting profiles, and `hosting`, for provider resources, plus
-the single top-level command `dashboard`. There is no `site` group and no
+The command surface has exactly three top-level groups — `config`, for local HQ
+configuration and hosting profiles; `hosting`, for provider resources; and
+`skills`, for the bundled agent instructions — plus exactly three top-level
+commands: `dashboard`, `doctor` and `update`. There is no `site` group and no
 command that reaches a configured WordPress site.
 
 ### Grammar conventions
@@ -347,6 +428,37 @@ write, the company probe, and the configuration save are one critical section
 under the profile's lock, and a failure rolls the credential back. No command in
 this group prompts: HQ's interactive surface is the dashboard.
 
+### `skills`
+
+| Command | Purpose |
+| --- | --- |
+| `skills list` | list the bundled skills with their descriptions |
+| `skills get [name]` | print a bundled skill's markdown; `name` defaults to `core` |
+| `skills path [name]` | print a bundled skill's file path; `name` defaults to `core` |
+
+Exactly two bundles ship: `core`, the router, and `hosting`, the provider-neutral
+reference. A third file, `skills/novamira-hq/SKILL.md`, is the installable agent
+stub and is not reachable through `skills get`. A name outside `core` and
+`hosting` — `site` included — is `usage_error` with `details.skill` and
+`details.known`. None of the three subcommands declares an option.
+
+`skills get` in human mode writes the raw markdown to stdout with no framing; in
+JSON mode `data` is `{ name, path, content }`. `skills list` renders
+`{ skills: [{ name, description }] }` and `skills path` renders `{ name, path }`.
+The path is a real, absolute file inside the installed package.
+
+**No HQ command writes an agent skill to disk.** There is no `skills install`, no
+`--scope`, no `--force`, and no stub or symlink written into a user's home.
+Registering the skill with an agent is
+`npx skills add <package root> --skill novamira-hq --global`, which the installers
+run. The published tarball therefore contains `skills/novamira-hq/SKILL.md`,
+`skills/core/SKILL.md` and `skills/hosting/SKILL.md`.
+
+The `hosting` bundle's guidance never describes site access. It names
+`novamira auth login <url>` — the separate `@novamira/cli` — as the step after
+`hosting novamira setup`, and it mentions no Application Password, no site
+profile and no WordPress REST route.
+
 ### `hosting`
 
 Every `hosting` command operates through one hosting profile and never infers
@@ -410,6 +522,14 @@ renders the provider's capability list with `sites.delete` forced to unsupported
   configuration schema and no v1 command reads or writes it.
 - No `site` group, no Application Password option, and no Ability proxying, per
   the boundary above.
+- **No `setup` command and no `skills install`.** HQ writes no agent stub and
+  creates no `~/.claude` or `~/.agents` entry; skill registration is
+  `npx skills add` against the packaged `skills/novamira-hq` directory.
+- **No `skills get site`.** Site guidance ships with `@novamira/cli`.
+- **No self-replacing binary update.** `update` runs a package manager; it
+  downloads no release asset, verifies no checksum, unpacks no archive and
+  replaces no executable in place. There is no `upgrade` alias and no
+  `update check` / `update install` subcommand — one command, one `--check`.
 
 ## Provisioning and handoff
 
@@ -668,9 +788,13 @@ in JSON mode; the block never repeats them.
 
 ## Local dashboard
 
-`novamira-hq dashboard` serves a local web dashboard. Its transport, security
-and route surface are frozen below. **The view surface — the rendered pages,
-their forms, and their SSE fragments beyond the app shell — remains RESERVED.**
+`novamira-hq dashboard` serves a local web dashboard. Its transport, security,
+route surface and pages are frozen below, and every one of them is shipped: no
+page carries a control wired to a route that answers `404`, and there is no
+deferred route left. What is **not** frozen is the markup inside a page beyond
+the app shell — the elements a page renders, and their classes, may change
+without a major version, while its routes, its SSE fragments, its security model
+and what it may and may not do are frozen here.
 
 ### Binding
 
@@ -741,22 +865,163 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 | `/novamira-setup` | GET | no |
 | `/diagnostics` | GET | no |
 | `/settings` | GET | no |
+| `/_dashboard/providers/save` | POST | yes |
+| `/_dashboard/providers/remove` | POST | yes |
+| `/_dashboard/providers/validate` | POST | yes |
+| `/_dashboard/sites` | GET | yes |
+| `/_dashboard/connect` | POST | yes |
+| `/_dashboard/deploy-paths/save` | POST | yes |
+| `/_dashboard/deploy-paths/remove` | POST | yes |
+| `/_dashboard/setup/start` | POST | yes |
+| `/_dashboard/setup/jobs/<id>` | GET | yes |
+| `/_dashboard/setup/jobs/<id>/stream` | GET | yes |
+| `/_dashboard/diagnostics/doctor` | GET | yes |
+| `/_dashboard/diagnostics/capabilities` | GET | yes |
+| `/_dashboard/updates/check` | GET | yes |
+| `/_dashboard/updates/install` | POST | yes |
 
 `/` renders the providers page. An unknown path is `404` with a `not_found`
 failure envelope; a known path with the wrong method is `405` with an `Allow`
 header and a `usage_error` envelope; a request body over 256 KiB is `413`.
 
-Deferred, and answering `404` until they ship: `/_dashboard/providers/{save,
-remove,validate}`, `/_dashboard/sites`, `/_dashboard/deploy-paths/{save,remove}`,
-`/_dashboard/setup/start`, `/_dashboard/setup/jobs/…`, `/_dashboard/connect`,
-`/_dashboard/diagnostics/{doctor,capabilities}` and
-`/_dashboard/updates/{check,install}`. Every one of them requires the token when
-it ships: a route under `/_dashboard/` that does not require it is refused when
-the table is built, not left to a reviewer to notice.
+Every `/_dashboard/*` route answers an SSE patch stream, never JSON: a handler
+that fails turns its error into a `danger` notice and patches it onto the page,
+so a browser waiting for patches is never left with a bare failure envelope. The
+error's `code` reaches the diagnostics sink; its `details` reach nothing.
+`/_dashboard/providers/save` is the only route in HQ through which a provider
+secret travels — in the request body, in `providerForm.credentialValue`, once,
+on its way to the credential store. It is written to `config.json` as a
+`stored:<id>` reference, never as a value, and the success response explicitly
+resets that signal to the empty string.
+
+`/_dashboard/sites` is a `GET` and still requires the token: it reaches live
+provider APIs and its answer is patched into the DOM. It reads its signals from
+`?datastar=`, caches the provider listing for five minutes per
+`(profile, include_envs)` key, and patches `#sites-status` (inner),
+`#sites-result` (outer) and `#toast` (outer), in that order and no other.
+`?refresh=true` bypasses the cache; a provider profile being saved or removed
+drops it entirely.
+
+`/_dashboard/connect` takes one query parameter, `?url=`, and spawns
+`novamira auth login <url>` through the site-CLI integration: no shell, an argv
+array, the non-secret URL as the only argument, no `--name`. The URL is
+normalized by the same rules `hosting novamira setup` applies before it can
+reach an argv element, and a rejected URL is a `usage_error` with nothing
+spawned. Child output is read for the envelope's `ok` and then discarded: a
+failure is reported as one fixed sentence chosen by a reason enum, never as
+subprocess text. HQ holds no site token, makes no request to the site, and reads
+none of the site CLI's storage.
+
+`/_dashboard/setup/start` takes `?profile=` and `?env=`, plus the optional
+display values `?site=` and `?envname=` the Sites page's link already carries.
+It reads one signal subtree, `setup`; an absent `setup.enableAiAbilities` means
+**enabled**, and only an explicit `false` disables. It mints a job, runs
+`hosting novamira setup`'s provisioning service — the same code path the command
+uses, and therefore the same refusals, the same PHP gate and the same
+compatibility preflight — detached from the request, and repaints the page with
+the running job. A second start against a `(profile, environment)` that already
+has a **running** job returns that job rather than installing twice. A hosting
+profile that cannot be resolved is a `danger` notice and no job is created.
+
+`/_dashboard/setup/jobs/<id>` is a prefix route with two shapes. Without a
+suffix it answers one SSE patch of `#setup-work` (outer) and closes. With
+`/stream` it answers a long-lived SSE response that re-renders the panel's body
+into `#setup-work` (inner) at most once per second, emits a patch only when the
+markup changed, and returns when the job leaves `running`, when the job is no
+longer in the registry, or when the client disconnects. There is no wall-clock
+cap. An unknown job id, and any other path under the prefix, is a JSON `404`
+`not_found` failure envelope rather than a stream.
+
+The job's event log and its result are process-lifetime and in memory: nothing
+about a setup run is written to disk. A job records a failure as its `code` and
+`message` only — `details` are never rendered, because a compatibility failure
+carries the whole install record there and the envelope's redaction runs on the
+JSON path alone. The result panel renders what landed on the site and the
+`novamira auth login <url>` handoff; it holds no WordPress credential, username,
+REST URL or site profile, because HQ produces none of those.
+
+`/_dashboard/diagnostics/doctor` runs the same report as `novamira-hq doctor`,
+bound to `--offline` and never `--fix`: a `GET` that patches a panel does not
+repair the operator's filesystem permissions and makes no network request. It
+patches `#diagnostics-output` (outer) and then `#toast` (outer), in that order and
+no other, with the report pretty-printed inside a `<pre>`.
+
+`/_dashboard/diagnostics/capabilities` reads its profile from `?profile=`, then
+from the `diagnostics` signal subtree, which wins. An empty selection or the
+`__all__` sentinel is a `danger` notice and **no provider call**. Otherwise it
+reads the profile's capability document with `sites.delete` forced to unsupported,
+exactly as `hosting providers capabilities` does, and patches the same two
+fragments.
+
+`/_dashboard/updates/check` reads the `latest` dist-tag and patches
+`#updates-card` (outer) and then `#toast` (outer), in that order and no other.
+`?silent=true` suppresses the "up to date" and "check failed" toasts but **not**
+the "update available" one; it is what the card's own first-render self-check
+sends.
+
+`/_dashboard/updates/install` re-checks, and installs only when the registry
+still advertises something newer — otherwise it reports "already up to date",
+which is an outcome and not a failure. The package manager's stdout and stderr
+are consumed by a bounded sink and **discarded**: the card renders the exact
+command line that ran, never the child's output. A failure renders the
+`CliError`'s message truncated to 240 characters, and never its `details`.
+
+There is no deferred route: every path the dashboard answers is in the table
+above, and every other path is a `404`. A route under `/_dashboard/` whose
+`auth` is not `token` is refused when the table is built, rather than left to a
+reviewer to notice — which is why the update install route has no
+request-body form of the token even though Go's had one.
 
 **`/_dashboard/sites/save` and `/_dashboard/sites/remove` are deleted, not
 deferred.** They wrote WordPress site profiles; HQ holds no site credential and
 has no site profiles, so the paths do not exist and never will.
+
+### SSE fragments
+
+The dashboard may patch only a fixed catalog of element ids, and every
+catalogued id is rendered by a shipped view. The catalog is
+`main` (outer), `nav` (outer), `toast` (outer), `provider-flash` (outer),
+`sites-status` (inner), `sites-result` (outer), `setup-work` (outer **and**
+inner), `diagnostics-output` (outer), `updates-card` (outer), plus one computed
+id per configured provider profile for that profile's connection cell. The
+catalog is closed: every id it names is rendered by a shipped view and patched by
+a shipped handler. Every outer fragment's root element carries its own id; an
+uncatalogued selector is a compile error, not a runtime miss.
+
+### Pages
+
+Seven page paths render one document each: an app shell carrying the root signal
+object, a nav, a `#main` body and a `#toast`. Every mutating control on them
+posts to a `/_dashboard/*` route and receives SSE patches; no page submits a
+form to itself and no page reloads.
+
+- **Hosting Providers** (`/`, `/providers`) — the provider form, the configured
+  table, and a per-row connection cell driven by `/_dashboard/providers/validate`.
+  With no profiles configured it is a single onboarding card. Credential
+  *references* are rendered, never values; there is no field, column or details
+  row that could hold a secret.
+- **Sites** (`/sites`) — a toolbar that requests the inventory on mount, a
+  segmented Novamira filter, and one group per hosting profile. Each environment
+  shows its connected state, a Connect button whose `title` is the literal
+  `novamira auth login <url>` command, and, where the provider supports it, a
+  link into Novamira setup.
+- **Deploy paths** (`/deploy-paths`, `/deploy-paths/new`) — the configured paths
+  with their resolved environment names and domains, and the creation form.
+  Execution is not part of v1; the Deploy button renders disabled and says so.
+  Neither page issues a provider call: both read the warm inventory only.
+- **Novamira Setup** (`/novamira-setup`) — the target panel, the AI-Abilities
+  toggle and Start button, the live event log, and, when a run has finished, what
+  landed on the site plus the `novamira auth login` handoff. `?job=<id>` reopens
+  a run; `?profile=&env=` reopens the most recent run for that environment.
+- **Diagnostics** (`/diagnostics`) — the provider selector, two actions (Health
+  check and Check capabilities) and the output panel they patch. Neither action
+  repaints `#main`, so the selection survives.
+- **Settings** (`/settings`) — the update card and the configuration file's
+  path, read-only. The card checks the npm registry silently on first render,
+  shows the current and published versions, the registry consulted and the
+  command that ran, and offers Install only when something newer exists. It
+  renders no external link — the CSP is `default-src 'self'` — and no installer
+  output.
 
 ### Assets
 
@@ -829,10 +1094,113 @@ Nothing is written to stdout for the rest of the run. `--open` launches the
 platform URL opener with an argv array and no shell; a failure is a warning,
 never fatal. `SIGINT` and `SIGTERM` stop the listener and the command exits 0.
 
-## Doctor and update
+## Doctor
 
-**RESERVED.** The check identifiers, report shape, and update contract are not
-yet frozen. What is already decided: doctor reports a warning rather than a
-failure when the optional `novamira` CLI is missing or incompatible, and a
-completed report is a successful invocation even when its overall status is
-`warn` or `fail`.
+`novamira-hq doctor [--offline] [--fix]`. Both options are command-local.
+
+The report is a `{ version: 1, offline, fix, status, checks }` object, and in
+JSON mode `data` **is** that object. Each check is
+`{ id, status, summary, evidence, fixed? }`, where `status` is `pass`, `warn` or
+`fail`, `summary` is one stable sentence, and `evidence` is output-safe
+structured detail. The report's `status` is the worst member of `checks`.
+
+The check identifiers and their order are frozen:
+
+| # | id | Answers |
+| --- | --- | --- |
+| 1 | `runtime.node` | is the Node runtime at or above the supported major (22)? `fail` below it |
+| 2 | `storage.permissions` | are HQ's private paths owner-only? `fail` when one exists and is not, `warn` when none exists yet |
+| 3 | `storage.atomic` | does the state directory support the atomic write pattern every HQ write uses? |
+| 4 | `credential.backend` | did an OS credential service resolve, or the owner-only file fallback? `warn` for the fallback |
+| 5 | `config.schema` | does `config.json` parse against the v1 schema? `warn` when it does not exist yet |
+| 6 | `profile.credentials` | does every hosting profile's credential reference resolve? **never `fail`** |
+| 7 | `skills.bundled` | are the packaged agent skills readable, non-empty, and still carrying their cross-references? |
+| 8 | `integration.site_cli` | is `novamira` installed and at or above the minimum version? **never `fail`** |
+| 9 | `update.available` | is a newer `@novamira/hq` published? `warn` when one is, `warn` when the registry could not be reached, `pass` otherwise. **never `fail`**; skipped entirely under `--offline` |
+
+Checks run **sequentially**, never concurrently. A check that throws is isolated
+as `{ status: "fail", summary: "The check could not be completed.", evidence: { error: "check_threw" } }`
+and does not suppress any later check; the thrown error's message never reaches
+the report.
+
+**A completed report is a successful invocation.** Exit 0 and `ok: true`, even
+when the overall status is `warn` or `fail`. Only a failure to *produce* a report
+uses the normal typed nonzero contract.
+
+`profile.credentials`, `integration.site_cli` and `update.available` can never
+be `fail`. One
+unresolvable credential reference must not condemn an installation whose other
+profiles work, and `@novamira/cli` is an optional integration — hosting
+inventory, provider actions, provisioning and plugin-installed status all work
+without it, and only the dashboard's connected-state detection and Connect action
+degrade. A fresh install has neither profiles nor the site CLI and must report
+`warn`, not `fail`.
+
+`--offline` performs no network operation of any kind: `update.available` is
+**removed from the report** rather than run and recorded as skipped, so an
+offline report carries eight checks, and the background release notice is
+suppressed for the invocation. `--fix` is limited to repairing
+owner-only permissions on HQ's private paths and initializing the state
+directory: it writes no credential, removes no profile, edits no configuration
+and calls no provider. `--profile`, when given, narrows `profile.credentials` to
+that profile and changes nothing else.
+
+Evidence is output-safe by construction. `profile.credentials` renders
+`env:NAME` / `file:PATH` / `stored:ID` and a boolean, never a secret value;
+`storage.permissions` renders target *labels*, never directory contents;
+`integration.site_cli` renders the resolved executable path, the reported
+version, a reason enum and a fixed hint, and never any child output. Human mode
+prints one aligned `status  id  summary` line per check plus a trailing
+`status: <overall>` and never prints evidence; `--verbose` emits evidence as a
+redacted stderr diagnostic per non-passing check.
+
+## Update
+
+`novamira-hq update [--check]`. One command, one command-local option, matching
+`@novamira/cli`'s grammar so an operator learns it once. There is no `upgrade`
+alias and no `update check` / `update install` subcommand.
+
+Distribution is **npm only**. The published version is read from the npm
+registry's dist-tag endpoint for `@novamira/hq` — one anonymous `GET` over
+HTTPS, carrying `Accept` and nothing else: no cookie, no `Authorization`, no npm
+token, and **no profile, credential, provider or telemetry data**. Redirects are
+refused rather than followed, the response is read incrementally and abandoned at
+64 KiB, and a `latest` that is not a valid SemVer is a `network_error` rather
+than an install specifier. Plain HTTP is refused except for a loopback registry
+with `NOVAMIRA_HQ_ALLOW_INSECURE_HTTP=1`; a registry URL carrying credentials is
+a `usage_error`. HQ makes no request to GitHub.
+
+Installing runs a package manager and never replaces an executable in place:
+`npm install --global --ignore-scripts --registry <registry> @novamira/hq@<version>`
+(`npm.cmd` on Windows), or `bun add --global --registry <registry> @novamira/hq@<version>`
+when the running module resolves under a Bun global install. The registry that
+answered the version is the registry installed from. The child is spawned with an
+argv array and no shell; its stdout and stderr go to **stderr only** and never to
+stdout, so `--json` still emits exactly one envelope. An explicitly given
+`--timeout` bounds the installer process as well as the registry request;
+otherwise the installer's own five-minute deadline applies.
+
+`data` is `{ current, latest, updateAvailable }` for `--check`, the same plus
+`updated: false` for a bare `update` with nothing newer, and
+`{ updated: true, from, to, command }` after an install — where `command` is the
+exact command line that ran, so a failed install can be repeated by hand. A
+non-zero installer exit is an `internal_error` naming that command.
+
+### The background release notice
+
+After a successful invocation HQ may write one line to stderr:
+`A new novamira-hq release is available: <current> -> <latest>. Run "novamira-hq update" to install it.`
+It never touches stdout and never changes an exit code, and every failure inside
+it is silent.
+
+It is backed by `state/update-check.json` (see "Storage namespace"): at most one
+registry request per 24 hours per registry, with the lock held across the request
+so concurrent invocations do not duplicate it.
+
+It is suppressed — meaning **no request is made and no state is written**, not
+merely that no line is printed — when any of these holds: `--quiet`; `--json`;
+`NOVAMIRA_HQ_UPDATE_CHECK=0` or `false`; the command was `dashboard`, whose
+handler blocks until the listener stops; the command was `doctor --offline`; or
+stderr is not a terminal. The last is the one that matters most in practice: HQ
+is an agent-facing tool, and a scripted or piped invocation performs no network
+work its caller did not ask for.

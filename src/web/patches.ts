@@ -24,17 +24,33 @@
  * targets, an outer-mode fragment whose root carries its own id) survive as
  * conventions rules 27-30.
  *
- * **6a ships exactly the three fragments 6a renders.** `provider-flash`,
- * `sites-status`, `sites-result` and `setup-work` arrive with 6b's page views;
- * `diagnostics-output` and `updates-card` wait for Phase 7's `src/doctor/` and
- * `src/update/`. Adding a row here without a renderer breaks conventions rule
- * 28, which is the point: the catalog and the DOM cannot drift apart.
+ * **A row lands with its renderer, never before it.** 6a shipped the three
+ * fragments the app shell renders. 6b-1 added `provider-flash` with
+ * `views/providers.ts`; 6b-2 added `sites-status` (inner) and `sites-result`
+ * (outer) with `views/sites.ts`; 6b-3 closed the catalog with `setup-work` in
+ * **both** modes — Go's did the same, because the page-level handler replaces
+ * the element and the stream handler replaces only its body — plus
+ * `diagnostics-output`, whose element `views/diagnostics.ts` renders and whose
+ * two handlers landed in batch 7-1 with `src/doctor/`. Batch 7-2 added the last
+ * row, `updates-card`, together with `src/update/`, the Settings page's card and
+ * its two routes — in one diff, because adding a row here without a renderer
+ * breaks conventions rule 28, which is the point: the catalog and the DOM cannot
+ * drift. **The catalog is now closed**: every id it names is rendered and
+ * patched by shipped code, and there is no phase left holding a row back.
  *
- * `connSignal`/`rowSignal` (Go's `"checking" + alnum(profile)`) are deliberately
- * absent. They belong to the provider table, and they need a dynamic-signal
- * escape hatch on `SignalPath` that 6b must add alongside the cell renderer.
- * Record Go's collision hazard when it does: stripping non-alphanumerics maps
- * the profiles `a-b` and `ab` onto the same signal.
+ * **`connCellId` is the *provider table's* cell**, and it is easy to confuse
+ * with the other thing called "connection". This id names the cell that shows
+ * whether a hosting profile's **API credential** works (`ProviderClient.validate`,
+ * patched by `/_dashboard/providers/validate`). The sites page's per-environment
+ * cell answers a completely different question — whether a **WordPress site** is
+ * connected to Novamira, from `src/connection-state.ts`'s four-state union — and
+ * has no fragment id at all, because the whole `#sites-result` is replaced.
+ *
+ * **Per-row signals live in `signals.ts`, not here.** Go's `connSignal`/
+ * `rowSignal` built `"checking" + alnum(profile)`, which is not injective: the
+ * profiles `a-b` and `ab` collapse onto the same signal, so one row's spinner
+ * spun for two rows. `dynamicSignalPath` hex-encodes instead, for the same
+ * reason {@link connCellId} does.
  */
 
 import { CliError } from "../errors.js";
@@ -47,18 +63,54 @@ export interface PatchFragment {
   readonly mode: PatchMode;
 }
 
-/** The three ids 6a's app shell renders, and the only ones it may patch. */
-export type StaticPatchSelectorId = "main" | "nav" | "toast";
+/** Every fixed element id the dashboard may patch. */
+export type StaticPatchSelectorId =
+  | "main"
+  | "nav"
+  | "toast"
+  | "provider-flash"
+  | "sites-status"
+  | "sites-result"
+  | "setup-work"
+  | "diagnostics-output"
+  | "updates-card";
 
 /**
  * The catalog. Conventions rule 27 asserts it is non-empty and that every
  * `selectorId` matches `/^[a-z][a-z0-9-]*$/`; rule 28 asserts every entry is
- * actually rendered by a 6a view.
+ * actually rendered by a shipped view.
  */
 export const SSE_PATCH_FRAGMENTS: readonly PatchFragment[] = Object.freeze([
   { selectorId: "main", mode: "outer" },
   { selectorId: "nav", mode: "outer" },
   { selectorId: "toast", mode: "outer" },
+  { selectorId: "provider-flash", mode: "outer" },
+  // `sites-status` is the only **inner** fragment 6b-2 ships, and the mode is
+  // load-bearing: `sites-filter.js` observes `#sites-result` for mutations, so
+  // an outer patch of the result element is what re-triggers filtering after a
+  // load, while the status line — which changes on every spinner — must not.
+  { selectorId: "sites-status", mode: "inner" },
+  { selectorId: "sites-result", mode: "outer" },
+  // The one id that appears twice, because two handlers replace two different
+  // things about the same element. `/_dashboard/setup/jobs/<id>` replaces the
+  // element **outer**, wrapper included, because the wrapper carries the
+  // `data-init` that opens the progress stream; `…/stream` then replaces only
+  // the body **inner**, once per second and only when the markup changed,
+  // because re-sending the wrapper would restart the stream that sent it. Go's
+  // catalog carried both rows for the same reason.
+  { selectorId: "setup-work", mode: "outer" },
+  { selectorId: "setup-work", mode: "inner" },
+  // Rendered by `views/diagnostics.ts` since 6b-1, and patched by
+  // `handlers/diagnostics.ts`'s two routes since 7-1. It is the only fragment
+  // outside `#toast` that both diagnostics routes touch, and neither of them
+  // patches `#main`: repainting would reset the provider `<select>`.
+  { selectorId: "diagnostics-output", mode: "outer" },
+  // The last row, and the one that closes the catalog. `views/settings.ts`
+  // renders the element and `handlers/updates.ts`'s two routes replace it whole
+  // — outer, because the card's `data-init` self-check attribute lives on the
+  // root and an inner patch would leave the pre-check version of it in place,
+  // re-firing the silent check on every repaint.
+  { selectorId: "updates-card", mode: "outer" },
 ] as const satisfies readonly PatchFragment[]);
 
 declare const ConnCellBrand: unique symbol;

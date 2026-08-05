@@ -14,7 +14,11 @@ import {
 } from "./cli/program.js";
 import { defaultFileSecurity } from "./config/file-security.js";
 import { ProfileLockManager } from "./config/lock.js";
-import { platformPaths, type PathEnvironment } from "./config/paths.js";
+import {
+  overrideOf,
+  platformPaths,
+  type PathEnvironment,
+} from "./config/paths.js";
 import { ConfigStore } from "./config/profiles.js";
 import {
   createCredentialStore,
@@ -28,10 +32,23 @@ import {
 } from "./hosting/factory.js";
 import { PROVIDER_REGISTRY } from "./hosting/providers/index.js";
 import {
+  createSiteCliProbe,
+  createSiteCliResolver,
+  nodeIsFile,
+  nodeSpawnChild,
+} from "./integration/index.js";
+import {
   createRenderer,
   type OutputStreams,
   type Renderer,
 } from "./output/render.js";
+import { SkillStore } from "./skills/index.js";
+import {
+  updateCheckEnabled,
+  SpawnInstallRunner,
+  UpdateChecker,
+  type InstallRunner,
+} from "./update/index.js";
 import { VERSION } from "./version.js";
 
 /**
@@ -44,6 +61,12 @@ export { VERSION };
 
 export interface RuntimeEnvironment extends PathEnvironment {
   readonly NO_COLOR?: string;
+  /** `0` or `false` disables the 24-hour background release notice. */
+  readonly NOVAMIRA_HQ_UPDATE_CHECK?: string;
+  /** An alternate npm registry for `update` and the background notice. */
+  readonly NOVAMIRA_HQ_REGISTRY?: string;
+  /** `1` allows a plain-HTTP **loopback** registry; the same opt-in provisioning uses. */
+  readonly NOVAMIRA_HQ_ALLOW_INSECURE_HTTP?: string;
   /**
    * The rest of the process environment. Credential references and the
    * providers' identity variables are resolved from the very environment the
@@ -64,6 +87,20 @@ export interface MainOverrides {
    * invocation can reach a live provider API.
    */
   readonly registry?: ProviderRegistry;
+  /**
+   * The `fetch` the update checker uses. Defaults to global `fetch`; every
+   * update contract test injects one, so no test in this repository reaches the
+   * npm registry. It is deliberately separate from the provisioning `fetch`
+   * seam: they answer different questions and a test that fakes one must not
+   * silently fake the other.
+   */
+  readonly updateFetch?: typeof fetch;
+  /**
+   * The package-manager runner `update` spawns. Defaults to
+   * {@link SpawnInstallRunner}; a test injects a recorder so that `--check`
+   * can be proved never to spawn anything.
+   */
+  readonly installRunner?: InstallRunner;
 }
 
 /**
@@ -180,6 +217,39 @@ export async function main(
       },
     });
 
+    /*
+     * One update checker per call, over the one state directory and the one
+     * lock manager this process owns.
+     *
+     * The path comes from `paths.stateDir` — HQ's namespace, resolved by
+     * `src/config/paths.ts`; `NOVAMIRA_HOME` is never read and no namespace
+     * segment is joined by hand. The registry override and the insecure-HTTP
+     * opt-in are HQ's own variables: `NOVAMIRA_HQ_REGISTRY` and
+     * `NOVAMIRA_HQ_ALLOW_INSECURE_HTTP`, the latter shared with
+     * `src/provisioning/` so HQ has one insecure-HTTP opt-in rather than two.
+     *
+     * The registry override goes through {@link overrideOf}, which is
+     * `src/config/paths.ts`'s rule — *an empty-string override is treated as
+     * unset* — applied to the one HQ variable that is not a path. Passing `""`
+     * through would reach `new URL("/")` and surface as `internal_error` from
+     * `update`, and as `evidence: { registry: "" }` on the doctor's
+     * `update.available`; an operator who exports the variable empty means "I am
+     * not overriding this".
+     */
+    const registryOverride = overrideOf(environment.NOVAMIRA_HQ_REGISTRY);
+    const createUpdateChecker = (timeoutMs?: number): UpdateChecker =>
+      new UpdateChecker(paths.stateDir, locks, security, {
+        currentVersion: VERSION,
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
+        ...(overrides.updateFetch === undefined
+          ? {}
+          : { fetch: overrides.updateFetch }),
+        ...(registryOverride === undefined
+          ? {}
+          : { registry: registryOverride }),
+        allowInsecureHttp: environment.NOVAMIRA_HQ_ALLOW_INSECURE_HTTP === "1",
+      });
+
     const handlers = createCommandHandlers({
       version: VERSION,
       paths,
@@ -189,13 +259,91 @@ export async function main(
       // dashboard server and every `stored` credential lookup share one store
       // and one keychain probe.
       credentials: credentialStore,
+      security,
+      // Reads the packaged `skills/` directory relative to its own module URL;
+      // constructing it performs no I/O.
+      skills: new SkillStore(),
+      // The doctor's site-CLI question, built from the same resolver and spawn
+      // seam the dashboard's connected-state service uses. `src/integration/`
+      // is the only place HQ runs `novamira`, so there is one of these and the
+      // doctor takes it rather than opening a second one.
+      probeSiteCli: createSiteCliProbe({
+        resolve: createSiteCliResolver({
+          environment,
+          platform: process.platform,
+          isFile: nodeIsFile,
+        }),
+        spawn: nodeSpawnChild,
+        environment,
+      }),
+      locks,
+      createUpdateChecker,
+      createInstallRunner: (timeoutMs) =>
+        overrides.installRunner ?? new SpawnInstallRunner(timeoutMs),
       rendererFor,
     });
 
     program = createProgram(VERSION, handlers);
     configureOutput(program, streams);
 
+    /*
+     * Whether this invocation may be followed by the background release notice.
+     *
+     * A commander `preAction` hook on the root fires for the leaf command, so
+     * this is one registration rather than a flag threaded through ~110
+     * handlers. `dashboard` is excluded because its handler blocks until the
+     * listener stops, so the notice would arrive at shutdown and mean nothing;
+     * `doctor --offline` is excluded because `--offline` promises **no network
+     * operation of any kind**, and a notice that quietly made one would make the
+     * promise false.
+     */
+    // A record rather than a `let`, because the assignment happens inside a
+    // callback the compiler cannot see running: a plain `let` would be narrowed
+    // to its initializer at every read below.
+    const invocation: { noticeAllowed: boolean } = { noticeAllowed: false };
+    program.hook("preAction", (_root: Command, actionCommand: Command) => {
+      const local = actionCommand.opts<{ readonly offline?: boolean }>();
+      const globals = actionCommand.optsWithGlobals<Partial<GlobalOptions>>();
+      invocation.noticeAllowed =
+        actionCommand.name() !== "dashboard" &&
+        local.offline !== true &&
+        globals.json !== true &&
+        globals.quiet !== true;
+    });
+
     await program.parseAsync(argv, { from: "user" });
+
+    /*
+     * The 24-hour background release notice.
+     *
+     * It runs only after a *successful* invocation, writes one line to stderr
+     * through the renderer's warning path, never touches stdout, and never
+     * changes the exit code. Every failure inside it is silent — `notice()`
+     * swallows its own errors and returns `undefined` — and the cached record
+     * bounds it to at most one registry request per day per registry.
+     *
+     * **Every suppressor is evaluated before the call, not after it.** The point
+     * is not to hide a line, it is to not make the request: `--offline`, and the
+     * general rule that a non-interactive invocation performs no work the caller
+     * did not ask for, are promises about network traffic and about writes into
+     * the state directory, neither of which a check-then-discard would keep.
+     *
+     * **The terminal gate is the important one.** HQ is an agent-facing tool:
+     * most invocations are a script or an agent reading `--json`, and a daily
+     * registry request plus a state write attached to *those* would be work
+     * nobody asked for, in a process nobody is watching. So the notice is for a
+     * human at a terminal, and `stderr` not being a TTY — a pipe, a log, a CI
+     * job, a test's injected sink — turns it off entirely. `--json` and
+     * `--quiet` turn it off for the same reason, one step earlier.
+     */
+    if (
+      invocation.noticeAllowed &&
+      streams.stderr.isTTY === true &&
+      updateCheckEnabled(environment)
+    ) {
+      const message = await createUpdateChecker().notice();
+      if (message !== undefined) renderer?.warn(message);
+    }
     return 0;
   } catch (error) {
     if (isHelpExit(error)) return 0;

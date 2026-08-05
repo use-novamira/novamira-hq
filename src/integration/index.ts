@@ -30,10 +30,37 @@ export {
   type ConnectionResult,
   type ConnectionSnapshot,
   type ConnectionState,
+  type ConnectOutcome,
   type SiteCliIntegration,
   type SiteCliIntegrationOptions,
   type UnavailableReason,
 } from "./connection.js";
+
+export {
+  authLoginArgs,
+  createConnectAction,
+  AUTH_LOGIN_TIMEOUT_MS,
+  type ConnectActionOptions,
+} from "./connect.js";
+
+export {
+  envelopeReason,
+  interpretChildOutcome,
+  OUTCOME_REASONS,
+  PROFILE_GONE_CODE,
+  type ChildResult,
+} from "./classify.js";
+
+export {
+  createSiteCliProbe,
+  versionArgs,
+  DEFAULT_PROBE_TIMEOUT_MS,
+  MINIMUM_SITE_CLI_VERSION,
+  type ProbeSiteCli,
+  type SiteCliProbe,
+  type SiteCliProbeOptions,
+  type SiteCliProbeStatus,
+} from "./probe.js";
 
 export { normalizeOrigins, originOf, originsMatch } from "./origin.js";
 

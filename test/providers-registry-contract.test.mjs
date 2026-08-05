@@ -30,6 +30,13 @@ import {
   registeredProviders,
 } from "../dist/hosting/factory.js";
 import { PROVIDER_REGISTRY } from "../dist/hosting/providers/index.js";
+import {
+  DEPLOY_PUSH_PROVIDERS,
+  NOVAMIRA_SETUP_PROVIDERS,
+  NOVAMIRA_SETUP_PROVIDER_LABELS,
+  providerLabel,
+} from "../dist/hosting/types.js";
+import { wpCliResultsObservable } from "../dist/hosting/client.js";
 import { main } from "../dist/main.js";
 
 /** An obvious fake. Nothing in this suite ever contacts a real provider. */
@@ -173,4 +180,116 @@ test("the composition root uses the real registry and still accepts a fake", asy
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+/* -------------------------------------------------------------------------- */
+/* The two capability sets the dashboard's views render from                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Go hard-coded `deploySupported` and `novamiraSetupSupported` as `switch`
+ * statements inside the dashboard package, three files away from the clients
+ * they described. `src/hosting/types.ts` states them beside the clients; these
+ * cases prove the statement against the clients themselves, so adding a provider
+ * that implements the action and forgetting the set is a red test rather than a
+ * dashboard button that does nothing.
+ *
+ * Nothing here reaches a provider. `fetch` is replaced with a function that
+ * throws a marker, so "the client tried to make a request" and "the client
+ * refused the action locally" are two distinguishable, offline outcomes.
+ */
+const REACHED_NETWORK = Symbol("reached the provider");
+
+async function actionSupport(kind, request) {
+  const state = await isolatedStore();
+  try {
+    const env = Object.fromEntries(
+      PROVIDER_KINDS.map((provider) => [
+        defaultCredentialEnv(provider),
+        PLACEHOLDER,
+      ]),
+    );
+    const factory = createHostingClientFactory({
+      store: state.store,
+      registry: PROVIDER_REGISTRY,
+      env,
+      http: {
+        retries: 0,
+        fetch: async () => {
+          throw REACHED_NETWORK;
+        },
+      },
+    });
+    await state.store.upsertHostingProfile(kind, {
+      provider: kind,
+      credential: envCredential(defaultCredentialEnv(kind)),
+      companyId: IDENTITY,
+    });
+    const client = await factory.clientFromProfile(kind);
+    try {
+      await client.action(request);
+    } catch (error) {
+      if (error === REACHED_NETWORK) return { supported: true, client };
+      if (error?.code === "provider_unsupported") {
+        return { supported: false, client };
+      }
+      // Any other failure still means the action was accepted and got as far as
+      // building or sending a request.
+      return { supported: true, client };
+    }
+    return { supported: true, client };
+  } finally {
+    await rm(state.root, { recursive: true, force: true });
+  }
+}
+
+test("DEPLOY_PUSH_PROVIDERS is exactly the clients that implement push-environment", async () => {
+  for (const kind of PROVIDER_KINDS) {
+    const { supported } = await actionSupport(kind, {
+      kind: "push-environment",
+      siteId: "site-1",
+      envId: "env-1",
+      body: {},
+    });
+    assert.equal(
+      DEPLOY_PUSH_PROVIDERS.has(kind),
+      supported,
+      `${kind}: the set and the client disagree about push-environment`,
+    );
+  }
+  assert.deepEqual([...DEPLOY_PUSH_PROVIDERS].sort(), [
+    "cloudways",
+    "kinsta",
+    "rocketnet",
+  ]);
+});
+
+test("NOVAMIRA_SETUP_PROVIDERS is run-wp-cli AND observable results", async () => {
+  for (const kind of PROVIDER_KINDS) {
+    const { supported, client } = await actionSupport(kind, {
+      kind: "run-wp-cli",
+      envId: "env-1",
+      body: { command: "wp core version" },
+    });
+    // Both conditions, exactly as `provisionNovamira` applies them: Pressable
+    // implements the action but reports its results unobservable, so a plugin
+    // install could not be verified and the setup flow refuses it.
+    const eligible = supported && wpCliResultsObservable(client);
+    assert.equal(
+      NOVAMIRA_SETUP_PROVIDERS.has(kind),
+      eligible,
+      `${kind}: the set and the client disagree about novamira setup`,
+    );
+  }
+  assert.deepEqual([...NOVAMIRA_SETUP_PROVIDERS].sort(), [
+    "instawp",
+    "kinsta",
+    "rocketnet",
+  ]);
+  // The labels are what a disabled "Setup Novamira" button names, so they must
+  // stay the same three providers spelled the way the rest of HQ spells them.
+  assert.deepEqual(
+    [...NOVAMIRA_SETUP_PROVIDERS].map(providerLabel).sort(),
+    [...NOVAMIRA_SETUP_PROVIDER_LABELS].sort(),
+  );
 });

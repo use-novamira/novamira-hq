@@ -36,11 +36,16 @@ jobs:
       - run: bun install --frozen-lockfile --ignore-scripts
       - run: bun run check
       - run: bun run pack:inspect
+      # Packs the tarball, installs it into a throwaway prefix, and exercises
+      # the installed executable. Fully offline: no provider credential, no
+      # provider API call, and NOVAMIRA_HQ_UPDATE_CHECK=0 so no registry read.
+      - run: bun run package:acceptance
 
   # The contract tests hardcode UnixFileSecurity and assert POSIX modes, so they
-  # cannot run on Windows. The Windows ACL path in src/config/file-security.ts
-  # is exercised by its own acceptance run once that script lands; until then
-  # Windows is limited to the checks that are platform independent.
+  # cannot run on Windows. What Windows does run is the packaging path and the
+  # installed executable: `package:acceptance` installs the tarball into a
+  # throwaway prefix and drives `novamira-hq` through the `.cmd` shim, which is
+  # the one thing about this package that only Windows can prove.
   package-windows:
     name: windows-latest / Node ${{ matrix.node }}
     strategy:
@@ -61,3 +66,4 @@ jobs:
       - run: bun run lint
       - run: bun run format:check
       - run: bun run pack:inspect
+      - run: bun run package:acceptance

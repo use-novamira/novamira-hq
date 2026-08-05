@@ -190,6 +190,55 @@ export function providerLabel(provider: ProviderKind): string {
   return PROVIDER_LABELS[provider];
 }
 
+/* -------------------------------------------------------------------------- */
+/* Capability sets the dashboard renders from                                 */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Two facts the dashboard's views need *before* they have a client, so they
+ * cannot ask one. Go hard-coded both as `switch` statements inside the dashboard
+ * package (`deploySupported`, server.go:1590-1597; `novamiraSetupSupported`,
+ * server.go:1681-1688), which is how they drifted: `deploySupported` listed a
+ * provider whose `action` arm had been moved into the unsupported group, and
+ * nothing failed. Here they live beside the provider modules they describe, and
+ * `test/providers-registry-contract.test.mjs` asserts each set against the
+ * clients themselves, so adding a provider that implements the action and
+ * forgetting the set is a red test rather than a button that does nothing.
+ */
+
+/**
+ * Providers whose `action` implements `push-environment`.
+ *
+ * Verified against the clients: implemented by `kinsta.ts:433`,
+ * `rocketnet.ts:525` and `cloudways.ts:422`; every other provider's
+ * `push-environment` falls into its unsupported arm.
+ */
+export const DEPLOY_PUSH_PROVIDERS: ReadonlySet<ProviderKind> = Object.freeze(
+  new Set<ProviderKind>(["kinsta", "rocketnet", "cloudways"]),
+);
+
+/**
+ * Providers `hosting novamira setup` can run against.
+ *
+ * Two conditions, both required: the client implements `run-wp-cli`, **and** it
+ * reports `wpCliResultsObservable()` true. `run-wp-cli` is implemented by
+ * `kinsta.ts:582`, `instawp.ts:285`, `pressable.ts:457` and `rocketnet.ts:617`;
+ * Pressable then sets `wpCliResultsObservable: () => false`
+ * (`pressable.ts:525`), which `provisionNovamira` refuses outright
+ * (`src/provisioning/setup.ts`) because a plugin install whose result cannot be
+ * observed cannot be verified. Go arrived at the same three names by hard-coding
+ * them.
+ */
+export const NOVAMIRA_SETUP_PROVIDERS: ReadonlySet<ProviderKind> =
+  Object.freeze(new Set<ProviderKind>(["kinsta", "instawp", "rocketnet"]));
+
+/** The same three, spelled for an operator-facing sentence. Go's list, verbatim. */
+export const NOVAMIRA_SETUP_PROVIDER_LABELS: readonly string[] = Object.freeze([
+  "Kinsta",
+  "InstaWP",
+  "Rocket.net",
+]);
+
 /** A JSON object as emitted to stdout or an HTTP response body. */
 export type JsonObject = Readonly<Record<string, unknown>>;
 

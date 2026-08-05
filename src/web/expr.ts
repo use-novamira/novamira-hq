@@ -196,6 +196,21 @@ export function not(value: Expr): Expr {
   return makeExpr(`!${renderExpr(value)}`);
 }
 
+/**
+ * `(<a> || <b> || …)` — Go's `"$updates.loading || $updates.installing"`
+ * (views.go:1414, 1425), which was a hand-written attribute string.
+ *
+ * Parenthesized so the result composes: `or(a, b)` inside an `objectExpr` value
+ * or an `and` would otherwise depend on JavaScript's precedence table being
+ * remembered correctly at every call site. No arguments is `false`, which is the
+ * identity for `||` and the only answer that keeps `ds.attrs({disabled: or()})`
+ * meaning "not disabled" rather than a syntax error in the browser.
+ */
+export function or(...values: readonly Expr[]): Expr {
+  if (values.length === 0) return makeExpr("false");
+  return makeExpr(`(${values.map((value) => renderExpr(value)).join(" || ")})`);
+}
+
 /** `$path = !$path` — Go's `"$" + dsig + " = !$" + dsig`, without the seam. */
 export function toggle(path: SignalPath): Expr {
   assertSignalPath(path);
@@ -301,6 +316,11 @@ export function post(target: Url, options: PostOptions): Expr {
  * `@get`'s signals are serialized into the query string.
  */
 export function get(target: Url, options: PostOptions): Expr {
+  refuseLeakyScope(options);
+  return requestExpr("@get", target, options);
+}
+
+function refuseLeakyScope(options: PostOptions): void {
   for (const path of options.include) {
     if (path === SECRET_SCOPE || path.startsWith(`${SECRET_SCOPE}.`)) {
       throw internalError(
@@ -314,5 +334,85 @@ export function get(target: Url, options: PostOptions): Expr {
       );
     }
   }
-  return requestExpr("@get", target, options);
+}
+
+/**
+ * A long-lived `@get` for a job event stream.
+ *
+ * Go wrote the two extra options by hand, at exactly one call site
+ * (`views.go:1186`, the Novamira-setup progress stream):
+ *
+ * - `openWhenHidden: true` — the browser must keep the stream open when the tab
+ *   is backgrounded, because a setup run takes minutes and an operator switching
+ *   tabs would otherwise see the progress list freeze;
+ * - `requestCancellation: "disabled"` — Datastar's default cancels an in-flight
+ *   request when the same element fires again, which for a `data-init` stream on
+ *   a re-patched element would kill the stream it just started.
+ *
+ * They belong to that one use and nowhere else, so this is a separate
+ * constructor rather than two more options on {@link get}: a page-level `@get`
+ * that quietly acquired `openWhenHidden` would hold a provider-hitting request
+ * open on a hidden tab. It inherits `get`'s two refusals — never `token`, never
+ * the provider form — because it is still a GET and its signals still land in
+ * the query string.
+ */
+export function getStream(target: Url, options: PostOptions): Expr {
+  refuseLeakyScope(options);
+  const address = renderExpr(jsString(renderUrl(target)));
+  return makeExpr(
+    `@get(${address}, {headers: {"${DASHBOARD_TOKEN_HEADER}": $token}, filterSignals: {include: ${includeScope(options.include)}}, openWhenHidden: true, requestCancellation: "disabled"})`,
+  );
+}
+
+/**
+ * `(<json>[$key]?.<field> || <fallback>)` — Go's `providerMetaExpression`
+ * (views.go:325-383), with the string concatenation removed.
+ *
+ * The provider form's four help texts change as the operator picks a provider,
+ * and they do it in the browser with no round trip: the whole lookup table is
+ * serialized into the expression once and indexed by the bound signal. Go built
+ * that string with `"(" + mustJSON(meta) + "[$providerForm.provider]?." + field
+ * + " || " + jsStringLiteral(fallback) + ")"`, which was correct and entirely
+ * unchecked. Here the table goes through {@link jsJson} (so a `</script>` inside
+ * a help string cannot escape the attribute), the key goes through
+ * {@link assertSignalPath}, the fallback goes through {@link jsString}, and
+ * `field` must be a plain identifier — the same grammar an object key must
+ * satisfy, because it is one.
+ */
+export function lookupOr(
+  table: JsonValue,
+  key: SignalPath,
+  field: string,
+  fallback: string,
+): Expr {
+  assertSignalPath(key);
+  if (!OBJECT_KEY.test(field)) {
+    throw internalError(
+      `"${field}" is not a legal property name for a Datastar lookup expression.`,
+      { field },
+    );
+  }
+  return makeExpr(
+    `(${renderExpr(jsJson(table))}[$${key}]?.${field} || ${renderExpr(jsString(fallback))})`,
+  );
+}
+
+/**
+ * `setTimeout(() => document.getElementById("…")?.focus(), 0)`.
+ *
+ * Go had two spellings of this and one of them was a bug. `views.go:213` wrote
+ * the deferred, optional-chained form; `views.go:540`, in
+ * `editProviderExpression`, wrote `document.querySelector('#provider-form
+ * input').focus()` — undeferred and unguarded, so clicking Edit while the form
+ * was absent from the DOM threw a `TypeError` and silently aborted the rest of
+ * the assignment sequence, leaving the form half-populated.
+ *
+ * One constructor, always deferred (the element may be created by the same
+ * expression's earlier `$…open = true`, which Datastar has not applied yet) and
+ * always optional-chained. `id` goes through {@link jsString}.
+ */
+export function focusElementById(id: string): Expr {
+  return makeExpr(
+    `setTimeout(() => document.getElementById(${renderExpr(jsString(id))})?.focus(), 0)`,
+  );
 }

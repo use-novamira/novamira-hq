@@ -33,7 +33,8 @@
     "format:check": "prettier --check .",
     "headers": "node scripts/add-spdx-headers.mjs",
     "check": "bun run lint && bun run format:check && bun run test",
-    "pack:inspect": "bun run build && bun pm pack --dry-run --ignore-scripts"
+    "pack:inspect": "bun run build && bun pm pack --dry-run --ignore-scripts",
+    "package:acceptance": "bun run build && node scripts/package-acceptance.mjs"
   },
   "publishConfig": {
     "access": "public",

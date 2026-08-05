@@ -38,6 +38,7 @@ jobs:
         run: |
           node -e 'const p=require("./package.json"); if (`v${p.version}` !== process.env.GITHUB_REF_NAME) process.exit(1)'
           bun run pack:inspect
+          bun run package:acceptance
       - name: Install trusted-publishing npm client
         run: npm install --global npm@12.0.1 --ignore-scripts
       - name: Publish with trusted provenance
@@ -69,6 +70,11 @@ jobs:
           }
           await "the tarball" npm pack @novamira/hq@$version --dry-run --ignore-scripts --json
           await "the provenance attestation" attested
+      - name: Accept the published package
+        # The same acceptance run, against what the registry actually serves
+        # rather than against the working tree: it installs the published
+        # tarball into a throwaway prefix and runs the installed executable.
+        run: bun run package:acceptance -- --package=@novamira/hq@${GITHUB_REF_NAME#v}
 
   github-release:
     needs: publish
@@ -76,6 +82,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The installers are release assets, so this job needs the tree. Without
+      # the checkout `gh release create` has no files to attach and the
+      # documented `curl … | sh` URL has no stable target but a branch ref.
+      - uses: actions/checkout@v5
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -84,3 +94,5 @@ jobs:
           --verify-tag
           --generate-notes
           --title "$GITHUB_REF_NAME"
+          install.sh
+          install.ps1

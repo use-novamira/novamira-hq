@@ -52,7 +52,17 @@ interface RootPaths {
   readonly credentialsDir: string;
 }
 
-function overrideOf(value: string | undefined): string | undefined {
+/**
+ * The contract's one rule for every HQ environment override: *an empty-string
+ * override is treated as unset.*
+ *
+ * Exported because the rule outgrew this module. `src/main.ts` applies it to
+ * `NOVAMIRA_HQ_REGISTRY`, the only HQ override that is not a path — without it
+ * an exported-but-empty variable reaches `new URL("/")` and surfaces as an
+ * `internal_error` from `update` rather than as "no override given". A second
+ * spelling of the rule is a second place for it to drift.
+ */
+export function overrideOf(value: string | undefined): string | undefined {
   return value === undefined || value === "" ? undefined : value;
 }
 

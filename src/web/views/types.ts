@@ -26,28 +26,72 @@
  * model at all: it reaches the page through `defaultDashboardSignals`, and
  * nothing else may read it.
  *
- * **The connection types.** Go decided "connected" with `novamiraLinkedToEnv`,
- * which matched a hostname against a `site_profiles` entry — a boolean, derived
- * from data HQ deliberately no longer holds, and wrong in both directions
- * (`novamira auth logout` removes the credential and keeps the profile). They
- * are replaced here by a four-state union and are, by design, *view* types: an
- * unreachable site CLI is a connection state, never a hosting error.
+ * **The connection types moved down.** Go decided "connected" with
+ * `novamiraLinkedToEnv`, which matched a hostname against a `site_profiles`
+ * entry — a boolean, derived from data HQ deliberately no longer holds, and
+ * wrong in both directions (`novamira auth logout` removes the credential and
+ * keeps the profile). 6a replaced it with a four-state union that was declared
+ * *twice*, here and in `src/integration/connection.ts`, because the two are peer
+ * layers. 6b collapsed both copies into `src/connection-state.ts`, the root
+ * module both may import, and this file now re-exports them. What stays here is
+ * {@link ConnectionView}, which is the *view projection*: state plus the fixed
+ * hint a pill or a disabled button renders.
  *
- * They are declared here rather than imported because `src/web/` and
- * `src/integration/` are peer layers — neither may depend on the other — and 6a
- * needs the union to type the server's optional integration dependency before a
- * page ever consumes it. `SiteCliIntegration`'s own `ConnectionState`,
- * `UnavailableReason`, `ConnectionResult`, `ConnectionQuery` and
- * `ConnectionSnapshot` are these declarations member for member, so the two
- * satisfy each other structurally; when 6b wires the provider table to the
- * integration it should collapse them into whichever module both can import.
+ * **`HostingProfileView.credentialAvailable` is a deliberate departure from
+ * Go.** Go's `credentialAvailable` (`server.go:1654-1657`) called
+ * `credential.Resolve()`, which for a `stored` reference probes the OS keychain
+ * — on **every page render**, once per profile. An operator with twelve profiles
+ * would pay twelve keychain round trips per navigation, and on Linux with a
+ * locked keyring several of those block. HQ answers cheaply instead:
+ *
+ * - `env` → the named variable is present and non-empty in the server's injected
+ *   `environment` record (no I/O at all);
+ * - `file` → `true`; the path is checked when the credential is actually used;
+ * - `stored` → `true`; the keychain is probed when the credential is used.
+ *
+ * The failure mode of a wrong `true` is that the connection cell says "Not
+ * checked" instead of "No credential" — and the operator finds out from **Check
+ * connection**, which is the button that exists for exactly that. The failure
+ * mode of Go's version is a dashboard that stalls on navigation.
+ *
+ * **`DeployPathView` carries three derived fields, and one imported type.** Go's
+ * `deployPathSummary` (`types.go:20-32`) resolved each environment's display
+ * name and domain against the warm sites inventory and asked whether the path's
+ * provider could push at all; {@link deployPathView} does the same, taking the
+ * resolver as a parameter rather than reaching for a cache. That is the one
+ * place this module imports from `src/web/services/` — type-only, and in the
+ * views → services direction. The reverse is forbidden: a service that imported
+ * a view could not be exercised without one.
  */
 
 import {
+  SITE_CLI_INSTALL_HINT,
+  unavailableHint,
+  type ConnectionResult,
+  type ConnectionState,
+} from "../../connection-state.js";
+import {
   credentialSource,
+  isProviderKind,
+  PROVIDER_KINDS,
+  type CredentialRef,
   type DeployPath,
   type HostingProfile,
+  type ProviderKind,
 } from "../../config/schema.js";
+import { DEPLOY_PUSH_PROVIDERS, providerLabel } from "../../hosting/types.js";
+// Type-only, and the direction is views → services: a service may never import
+// a view. `EnvResolver` is declared where it is produced so that the resolver
+// `services/sites.ts` builds and the one `deployPathView` consumes cannot drift.
+import type { EnvResolver } from "../services/sites.js";
+
+export type {
+  ConnectionQuery,
+  ConnectionResult,
+  ConnectionSnapshot,
+  ConnectionState,
+  UnavailableReason,
+} from "../../connection-state.js";
 
 /* -------------------------------------------------------------------------- */
 /* Pages and notices                                                          */
@@ -113,9 +157,34 @@ export interface HostingProfileView {
   readonly credential: string;
   readonly companyId: string | null;
   readonly apiBaseUrl: string | null;
+  /**
+   * Whether a credential is *plausibly* readable, by the cheap rule documented
+   * in this file's header. It is never the credential, and never proof.
+   */
+  readonly credentialAvailable: boolean;
+  /**
+   * When this profile last validated successfully, in unix milliseconds, or
+   * `null` when it never has in this process.
+   *
+   * Go's comment at `views.go:425-428` is the reason this is a success-only
+   * stamp and must stay one: a timestamp is recorded *only after a check
+   * succeeds*, so the row can infer "connected" from a stamp being present. The
+   * failure path renders an age without recording it, so the cell shows how
+   * stale the failure is without ever claiming a success.
+   */
+  readonly lastCheckedMillis: number | null;
 }
 
-/** The eleven `DeployPath` fields, verbatim; nothing here is sensitive. */
+/**
+ * The eleven `DeployPath` fields plus the three Go's `deployPathSummary`
+ * (`types.go:20-32`) derived; nothing here is sensitive.
+ *
+ * `sourceEnvName` and `targetEnvName` are **resolved**, not stored: the warm
+ * sites inventory's display name wins, the name saved on the deploy path is the
+ * fallback, and the raw environment id is the last resort. That is Go's
+ * `deployPathSummaries` `resolve` closure (`server.go:1553-1562`), and it is why
+ * a path saved before a rename still shows the environment's current name.
+ */
 export interface DeployPathView {
   readonly name: string;
   readonly hostingProfile: string;
@@ -123,11 +192,15 @@ export interface DeployPathView {
   readonly siteLabel: string;
   readonly sourceEnvId: string;
   readonly sourceEnvName: string;
+  readonly sourceEnvDomain: string;
   readonly targetEnvId: string;
   readonly targetEnvName: string;
+  readonly targetEnvDomain: string;
   readonly pushDb: boolean;
   readonly pushFiles: boolean;
   readonly searchReplace: boolean;
+  /** Whether this path's hosting profile can push environments at all. */
+  readonly supported: boolean;
 }
 
 export interface ConfigView {
@@ -139,9 +212,48 @@ export interface ConfigView {
   readonly configFile: string;
 }
 
+/**
+ * A provider's human label, tolerating a value this build does not know.
+ *
+ * `HostingProfileView.provider` is a `string`, not a `ProviderKind`: it came out
+ * of a config file that may have been written by a newer HQ. Go's
+ * `providerLabel` had the same tolerance by accident — a map miss returned the
+ * zero value and the caller fell back to the raw string — so this states it.
+ */
+export function providerLabelFor(provider: string): string {
+  return (PROVIDER_KINDS as readonly string[]).includes(provider)
+    ? providerLabel(provider as ProviderKind)
+    : provider;
+}
+
+export interface HostingProfileViewContext {
+  /** The server's injected environment record; nothing here reads `process.env`. */
+  readonly environment: NodeJS.ProcessEnv;
+  /** From `services/providers.ts`'s in-memory map; `null` when never checked. */
+  readonly lastCheckedMillis: number | null;
+}
+
+/**
+ * The cheap `credentialAvailable` rule. See this file's header for why it is not
+ * `credential.Resolve()`.
+ */
+function credentialAvailable(
+  credential: CredentialRef,
+  environment: NodeJS.ProcessEnv,
+): boolean {
+  switch (credential.type) {
+    case "env":
+      return (environment[credential.name] ?? "") !== "";
+    case "file":
+    case "stored":
+      return true;
+  }
+}
+
 export function hostingProfileView(
   name: string,
   profile: HostingProfile,
+  context: HostingProfileViewContext,
 ): HostingProfileView {
   return {
     name,
@@ -149,77 +261,108 @@ export function hostingProfileView(
     credential: credentialSource(profile.credential),
     companyId: profile.companyId ?? null,
     apiBaseUrl: profile.apiBaseUrl ?? null,
+    credentialAvailable: credentialAvailable(
+      profile.credential,
+      context.environment,
+    ),
+    lastCheckedMillis: context.lastCheckedMillis,
   };
 }
 
-export function deployPathView(path: DeployPath): DeployPathView {
+/**
+ * Whether a provider can push one environment onto another.
+ *
+ * The argument is a `string` for the same reason {@link providerLabelFor}'s is:
+ * it came out of a config file a newer HQ may have written. An unknown provider
+ * is not deploy-capable, which is the safe answer — the Deploy button stays
+ * disabled rather than promising something no client implements.
+ */
+export function deployPushSupported(provider: string): boolean {
+  return isProviderKind(provider) && DEPLOY_PUSH_PROVIDERS.has(provider);
+}
+
+export interface DeployPathViewContext {
+  /** From `services/sites.ts`; resolves an environment id against the warm cache. */
+  readonly resolve: EnvResolver;
+  /** From {@link deployPushSupported} over the path's hosting profile. */
+  readonly supported: boolean;
+}
+
+export function deployPathView(
+  path: DeployPath,
+  context: DeployPathViewContext,
+): DeployPathView {
+  const source = context.resolve(path.sourceEnvId, path.sourceEnvName);
+  const target = context.resolve(path.targetEnvId, path.targetEnvName);
   return {
     name: path.name,
     hostingProfile: path.hostingProfile,
     siteId: path.siteId,
     siteLabel: path.siteLabel,
     sourceEnvId: path.sourceEnvId,
-    sourceEnvName: path.sourceEnvName,
+    sourceEnvName: source.name,
+    sourceEnvDomain: source.domain,
     targetEnvId: path.targetEnvId,
-    targetEnvName: path.targetEnvName,
+    targetEnvName: target.name,
+    targetEnvDomain: target.domain,
     pushDb: path.pushDb,
     pushFiles: path.pushFiles,
     searchReplace: path.searchReplace,
+    supported: context.supported,
   };
 }
 
 /* -------------------------------------------------------------------------- */
-/* Connection state                                                           */
+/* Connection state, as a view                                                */
 /* -------------------------------------------------------------------------- */
 
 /**
- * The four answers to "is this environment connected to Novamira?".
+ * One environment's connection state, projected for rendering.
  *
- * - `not_configured` — no site-CLI profile matches the environment's origin;
- * - `connected` — a matching profile holds a usable credential and the site CLI
- *   reports its REST surface reachable;
- * - `reconnect_required` — every matching profile reports an absent, invalid or
- *   expired credential, or an authentication error;
- * - `unavailable` — the site CLI is missing or incompatible, a child timed out,
- *   its output was malformed, or reachability could not be established because
- *   of a network or server failure.
+ * It differs from {@link ConnectionResult} in exactly one way, and the
+ * difference is the point: a `ConnectionResult` carries a *reason enum*, and a
+ * `ConnectionView` carries the fixed sentence that reason selects. Views never
+ * call `unavailableHint` themselves — {@link connectionView} is the one place it
+ * is called from `src/web/` — so there is a single place to check that no child
+ * output, no error message and no path can reach a `title=` attribute.
  */
-export type ConnectionState =
-  "not_configured" | "connected" | "reconnect_required" | "unavailable";
-
-export type UnavailableReason =
-  | "cli_absent"
-  | "cli_incompatible"
-  | "cli_timeout"
-  | "cli_failed"
-  | "malformed_output"
-  | "output_truncated"
-  | "deadline_exceeded"
-  | "site_unreachable";
-
-export interface ConnectionResult {
-  readonly state: ConnectionState;
-  /** Matching profile names; empty for `not_configured` and most `unavailable`. */
-  readonly profiles: readonly string[];
-  readonly reason?: UnavailableReason;
-}
-
-export interface ConnectionQuery {
-  /** The caller's own key for finding its result again, e.g. `${site}/${env}`. */
-  readonly key: string;
-  readonly origins: readonly string[];
-}
-
-export interface ConnectionSnapshot {
-  readonly byKey: ReadonlyMap<string, ConnectionResult>;
-  /** Unix milliseconds; `relative-time.js` renders it from `data-checked-at`. */
-  readonly checkedAt: number;
-  readonly cliAvailable: boolean;
-}
-
 export interface ConnectionView {
   readonly state: ConnectionState;
   readonly profiles: readonly string[];
   /** Present only for `unavailable`: a fixed, non-secret install or retry hint. */
   readonly hint?: string;
+}
+
+/**
+ * Project one result, honouring the "site CLI absent" degradation.
+ *
+ * `CLAUDE.md` requires that when `novamira` is missing the dashboard "disables
+ * connected-state detection with an install hint" — not that it reports every
+ * environment as not connected, which would be a *wrong answer* rather than a
+ * degraded one. So `cliAvailable === false` forces `unavailable` with
+ * {@link SITE_CLI_INSTALL_HINT}, whatever the per-key result says, and the
+ * per-environment Connect buttons render disabled with the same sentence.
+ */
+export function connectionView(
+  result: ConnectionResult,
+  cliAvailable: boolean,
+): ConnectionView {
+  if (!cliAvailable) {
+    return {
+      state: "unavailable",
+      profiles: result.profiles,
+      hint: SITE_CLI_INSTALL_HINT,
+    };
+  }
+  if (result.state === "unavailable") {
+    return {
+      state: "unavailable",
+      profiles: result.profiles,
+      hint:
+        result.reason === undefined
+          ? SITE_CLI_INSTALL_HINT
+          : unavailableHint(result.reason),
+    };
+  }
+  return { state: result.state, profiles: result.profiles };
 }

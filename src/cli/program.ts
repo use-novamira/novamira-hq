@@ -7,10 +7,13 @@ import {
   registerDashboardCommands,
   type DashboardHandlers,
 } from "./dashboard.js";
+import { registerDoctorCommands, type DoctorHandlers } from "./doctor.js";
 import {
   registerHostingCommands,
   type HostingCommandHandlers,
 } from "./hosting/index.js";
+import { registerSkillsCommands, type SkillsHandlers } from "./skills.js";
+import { registerUpdateCommands, type UpdateHandlers } from "./update.js";
 
 /** Executable name; also the name every usage message tells the user to run. */
 export const PROGRAM_NAME = "novamira-hq";
@@ -51,11 +54,17 @@ export interface GlobalOptions {
 
 /**
  * Every command the program can run, as a typed interface. `program.ts` knows
- * the option grammar; `commands.ts` knows how to satisfy it. Phase 4 adds the
- * hosting handlers here and nothing else in this file changes shape.
+ * the option grammar; `commands.ts` knows how to satisfy it. Phase 4 added the
+ * hosting handlers, Phase 6 the dashboard, Phase 7 `skills`, `doctor` and
+ * `update`; the shape of this file has not otherwise changed.
  */
 export interface CommandHandlers
-  extends HostingCommandHandlers, DashboardHandlers {
+  extends
+    HostingCommandHandlers,
+    DashboardHandlers,
+    SkillsHandlers,
+    DoctorHandlers,
+    UpdateHandlers {
   version(version: string, options: GlobalOptions): void | Promise<void>;
   configPath(options: GlobalOptions): void | Promise<void>;
 }
@@ -126,11 +135,22 @@ export function createProgram(
   // Application Passwords, no Ability proxying.
   registerHostingCommands(program, handlers, optionsFor);
 
-  // `dashboard` is a top-level command, like Go's. It is registered after the
-  // hosting tree only so that `--help` lists it last; nothing depends on the
-  // order, and registration never dereferences `handlers` outside its action —
-  // `createProgram("test", {})` is a supported call in the contract tests.
+  // The bundled agent skills: a third top-level group, beside `config` and
+  // `hosting`, because the instructions describe how to drive HQ rather than an
+  // operation on a hosting profile. It declares no options at all, so nothing
+  // in it can shadow a reserved global.
+  registerSkillsCommands(program, handlers, optionsFor);
+
+  // `dashboard`, `doctor` and `update` are top-level commands, like Go's. They
+  // are registered after the hosting tree only so that `--help` lists them
+  // last; nothing depends on the order, and registration never dereferences
+  // `handlers` outside its action — `createProgram("test", {})` is a supported
+  // call in the contract tests. `update` deliberately has no `upgrade` alias:
+  // Go carried one (`support.go:30-95`) and a second name for one command is a
+  // second thing the contract has to describe.
   registerDashboardCommands(program, handlers, optionsFor);
+  registerDoctorCommands(program, handlers, optionsFor);
+  registerUpdateCommands(program, handlers, optionsFor);
 
   program.action(async () => {
     if (program.opts<{ readonly version: boolean }>().version) {

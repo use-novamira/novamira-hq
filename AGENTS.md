@@ -11,8 +11,9 @@ for the site CLI.
 The runtime is Node.js 22+ ESM, written in strict TypeScript and built with Bun.
 Start with `README.md` for user-facing behavior and `docs/v1-contract.md` for the
 normative output, configuration, and security contract. HQ is a TypeScript port
-of the Go `novamira-hub`; `typescript-migration-plan.md` is the authoritative
-plan and is still being executed, so parts of the layout below do not exist yet.
+of the Go `novamira-hub`; `typescript-migration-plan.md` records how it was
+executed. The port is complete — every module named below exists — so treat
+`docs/v1-contract.md` as describing shipped behavior rather than intent.
 
 ## Boundary rule
 
@@ -63,6 +64,56 @@ calls just to test.
 ## Orientation
 
 - `src/errors.ts` is the single source of the `CliError` code and exit taxonomy.
+- `src/skills/` is a **leaf**: it reads the packaged `skills/` directory at the
+  repository root (`novamira-hq`, `core`, `hosting`) and hands the markdown to
+  `src/cli/skills.ts` and to the doctor's `skills.bundled` check. It imports
+  `node:` builtins and `../errors.js` and nothing else, and it **writes nothing,
+  anywhere** — there is no `skills install` and no `setup` command, because
+  registering a skill with an agent is `npx skills add`'s job. There is no `site`
+  bundle: site guidance ships with `@novamira/cli`, and the hosting bundle's
+  prose must never describe site access — it names `novamira auth login` as the
+  step after provisioning and stops. `package.json`'s `files` ships `skills/`;
+  `scripts/copy-static.mjs` must not be taught about it, because that script
+  exists only for assets that live _inside_ `src/`.
+- `src/doctor/` is the local installation report: `engine.ts` holds the
+  `pass`/`warn`/`fail` record shape and the sequential runner that isolates a
+  throwing check, `checks.ts` the frozen check ids in their frozen order. It may
+  import `src/config/`, `src/credentials/`, `src/skills/`, `src/integration/`
+  and `src/update/`, and may import neither `src/cli/` nor `src/web/` — both of
+  those call _it_. Four rules are contract, not preference: a produced report is
+  a successful invocation whatever its status; `profile.credentials`,
+  `integration.site_cli` and `update.available` can never be `fail`, because one
+  bad credential reference, a missing `@novamira/cli` and an out-of-date install
+  are all normal; `--fix` may only repair private-path permissions and create
+  the state directory; and `--offline` **removes** `update.available` from the
+  list rather than running it and recording a skip.
+- `src/update/` is the npm-only self-update: `registry.ts`'s anonymous dist-tag
+  read, `install.ts`'s package-manager command and spawn seam, `notifier.ts`'s
+  cached record and background notice. It may import `src/config/` (atomic
+  write, file security, the lock manager), `src/semver.ts` and `src/errors.js`,
+  and must import none of `src/cli/`, `src/web/`, `src/doctor/`. Go's
+  release-archive download, checksum verification and in-place executable
+  replacement are deleted, not ported, and HQ makes no request to GitHub. The
+  registry `fetch` and the installer runner are both injectable, and every test
+  supplies both — no test in this repository reaches the npm registry or spawns
+  a package manager. The state record lives at `<stateDir>/update-check.json`,
+  resolved through `src/config/paths.ts`; `NOVAMIRA_HOME`,
+  `NOVAMIRA_UPDATE_CHECK` and `NOVAMIRA_REGISTRY` are never read, and the
+  opt-out and override are `NOVAMIRA_HQ_UPDATE_CHECK` and `NOVAMIRA_HQ_REGISTRY`.
+  The background notice is suppressed _before_ the request, never after it: a
+  scripted, piped, `--json`, `--quiet`, `dashboard` or `doctor --offline`
+  invocation performs no registry read and writes no state.
+- `src/semver.ts` is a leaf holding `Semver`, `parseSemver`, `compareSemver`,
+  `compareSemverStrings` and `isSemver`. It used to live in
+  `src/provisioning/compatibility.ts`, which now re-exports it so existing
+  callers and `test/provisioning-contract.test.mjs` are unchanged; it moved so
+  `src/update/` could compare versions without importing `src/provisioning/`.
+- `src/connection-state.ts` is the shared connected-state vocabulary — the
+  four-state union, `ConnectionQuery`/`ConnectionSnapshot`/`ConnectOutcome`, and
+  the fixed hint per `UnavailableReason`. It sits at the root, beside
+  `errors.ts` and `json.ts`, and imports nothing, because `src/integration/`
+  computes those values and `src/web/` renders them and the two are peers that
+  may share only a root module.
 - `src/output/` renders the success/failure envelope and redacts diagnostics.
 - `src/config/` resolves HQ paths and owns locks, atomic writes, owner-only file
   security, the `config.json` v1 schema, and the config store.
@@ -86,15 +137,50 @@ calls just to test.
   `signals.ts`'s one root signal object, `patches.ts`'s SSE fragment catalog,
   `sse.ts` (the only module that may import `@starfederation/datastar-sdk`),
   `request.ts`/`responses.ts`/`routes.ts`/`static.ts`, `server.ts` with the
-  loopback bind guard and the per-process mutation token, and `views/`. It is a
-  **peer of `src/cli/`, never a consumer**: nothing under `src/web/` may import
-  `src/cli/`, and `src/cli/dashboard.ts` imports `src/web/index.ts`.
+  loopback bind guard and the per-process mutation token, and `views/`.
+  `signals-input.ts` is the only place a posted signal record is narrowed, and
+  `patch.ts` is the one page-repaint patch sequence (signals, `#main`, `#nav`,
+  `#toast` — in that order). `views/pages.ts` is the exhaustive page-body
+  dispatcher every batch adds one `case` arm to; a page's view model lives in
+  its own view module, never in `views/types.ts`. `services/` holds the
+  dashboard's own mutable state and its read/write paths — it may import
+  `src/config/`, `src/credentials/`, `src/hosting/`, `src/provisioning/`,
+  `src/connection-state.ts` and `src/integration/`'s public surface, and may not
+  import `src/web/views/` or `src/web/handlers/`. `services/sites.ts` owns the
+  five-minute provider-listing cache and the single `connectionStates` round per
+  listing; the deploy-path pages read that cache **warm only** and must never
+  trigger a provider call, and `/_dashboard/connect` spawns
+  `novamira auth login <url>` through `src/integration/` and renders no child
+  output, ever. `services/setup-jobs.ts` is the Novamira-setup job registry: it
+  calls `provisionNovamira` from `src/provisioning/` **whole** — no second copy
+  of the sequence, no Application Password, no site-profile write — runs it
+  detached from the request, and bounds both the registry and each job's event
+  log. `handlers/setup.ts`'s progress stream is the one looping handler in the
+  dashboard and must honour `request.signal`. `handlers/diagnostics.ts` answers
+  the two `/_dashboard/diagnostics/*` routes; nothing under `src/web/` imports
+  `src/doctor/` — `DashboardDoctor` is declared structurally on
+  `DashboardServerDependencies`, exactly as `DashboardIntegration` is, and
+  `src/cli/dashboard.ts` supplies the real runner bound to
+  `{ offline: true, fix: false }`. `handlers/updates.ts` answers the two
+  `/_dashboard/updates/*` routes the same way, through the structurally-declared
+  `DashboardUpdates`; nothing under `src/web/` imports `src/update/` either, and
+  the installer's output never crosses that boundary. `handlers/` is one module per
+  route group, mirroring `src/cli/hosting/`'s shape; a handler is a pure
+  `(request) => DashboardResponse` and every SSE handler catches its own errors
+  and turns them into a notice patch, because an escaping throw would answer an
+  SSE route with a JSON envelope. It is a **peer of `src/cli/`, never a
+  consumer**: nothing under `src/web/` may import `src/cli/`, and
+  `src/cli/dashboard.ts` imports `src/web/index.ts`.
 - `src/integration/` is the site CLI connected-state service and the **only**
-  place HQ runs `novamira`: an injectable spawn seam (`shell: false`, an argv
+  place HQ runs `novamira` — `probe.ts`'s `--version` probe for the doctor
+  included: an injectable spawn seam (`shell: false`, an argv
   array, bounded output, a per-child timeout plus a shared refresh deadline),
   executable resolution, total origin normalization, and the two-stage
   `sites list` then `auth status` algorithm behind the four states
-  `not_configured` / `connected` / `reconnect_required` / `unavailable`. Every
+  `not_configured` / `connected` / `reconnect_required` / `unavailable`, plus
+  `connect.ts`'s Connect action (`novamira auth login <url>`, the non-secret URL
+  as its only argument) and `classify.ts`, the child-outcome classification both
+  share. Every
   failure mode is a state, never a hosting error; `@novamira/cli` is never
   imported and never a dependency of any kind; the site CLI's config,
   credential storage and `NOVAMIRA_HOME` are never read; child output is never
@@ -117,8 +203,22 @@ calls just to test.
   texts, and three files of ours. They are excluded from ESLint, Prettier and
   the SPDX header script, and `scripts/copy-static.mjs` copies them into
   `dist/` as part of `bun run build`. Do not reformat them.
-- Still to land per the plan: the dashboard's page views and `/_dashboard/*`
-  handlers, `src/skills/`, `src/doctor/`, and `src/update/`.
+- `install.sh` and `install.ps1` live at the repository root and are **not** in
+  `package.json`'s `files`: an installer inside the package it installs is
+  circular. They are served from the repository's raw URL and attached to each
+  GitHub release. They install the package with `--ignore-scripts`, smoke-test it
+  with `novamira-hq doctor --offline` — which is why a `warn` report must exit 0
+  — and then register the bundled skill with an exactly pinned `skills@x.y.z`.
+  `scripts/package-acceptance.mjs` packs the tarball, installs it into a
+  throwaway prefix and drives the installed executable; `bun run
+package:acceptance` runs it, and all three packaging jobs plus the release job
+  do too.
+- Nothing is left deferred. `routes.ts`'s `DEFERRED_ROUTES` is **empty**, the
+  `patches.ts` catalog is closed, and every page, route and fragment the contract
+  names is shipped. The mechanism stays for a future phase to declare intent
+  with; the route conventions test pins the shipped table's exact method-and-path
+  surface, so a new route has to be declared in `docs/v1-contract.md` and in that
+  test before it can ship.
 
 ## Making changes
 
@@ -130,6 +230,7 @@ calls just to test.
   everything else must be a `node:` builtin. Do not use `console.*` in `src/`.
 - Add or update a focused contract test for behavior changes.
 - Run `bun install` when needed and `bun run check` before handoff. Run
-  `bun run pack:inspect` for packaging or release changes.
+  `bun run pack:inspect` and `bun run package:acceptance` for packaging,
+  installer or release changes.
 - Never expose provider secrets in config JSON, argv, output, errors, logs,
   tests, or docs; keep JSON stdout machine-parseable and diagnostics redacted.

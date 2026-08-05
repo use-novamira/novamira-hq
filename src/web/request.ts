@@ -43,6 +43,18 @@ export interface DashboardRequest {
   readonly query: URLSearchParams;
   /** Keys lower-cased, as `node:http` already delivers them. */
   readonly headers: Readonly<Record<string, string | undefined>>;
+  /**
+   * Aborts when the client goes away.
+   *
+   * Go read `r.Context().Done()` in exactly one handler, the setup job stream
+   * (`server.go:1013`), and it was the only thing that stopped a one-second poll
+   * loop from running for the rest of the process when the operator closed the
+   * tab. HQ's equivalent is this signal, and it is **required** rather than
+   * optional so that a looping handler cannot forget to honour it: a synthesized
+   * request in a test passes `new AbortController().signal`, which simply never
+   * aborts.
+   */
+  readonly signal: AbortSignal;
   /** Bounded and memoized: a second call returns the first call's value. */
   body(): Promise<string>;
 }
@@ -142,11 +154,21 @@ export function dashboardRequestFrom(
 ): DashboardRequest {
   const target = new URL(message.url ?? "/", "http://dashboard.invalid");
   let pending: Promise<string> | undefined;
+  // `close` fires for every completed request too, which is harmless: a handler
+  // that has already returned never reads the signal, and a streaming handler
+  // that is still running is exactly the one that must stop.
+  const disconnected = new AbortController();
+  const abort = (): void => {
+    disconnected.abort();
+  };
+  message.once("aborted", abort);
+  message.once("close", abort);
   return {
     method: (message.method ?? "GET").toUpperCase(),
     path: decodePath(target.pathname),
     query: target.searchParams,
     headers: lowerCasedHeaders(message.headers),
+    signal: disconnected.signal,
     body() {
       pending ??= readBoundedBody(message);
       return pending;

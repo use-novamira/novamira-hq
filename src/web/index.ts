@@ -22,7 +22,9 @@ export {
   parseListenAddress,
   requireLoopbackHost,
   type BoundAddress,
+  type DashboardDoctor,
   type DashboardIntegration,
+  type DashboardUpdates,
   type DashboardServer,
   type DashboardServerDependencies,
   type ListenAddress,
@@ -34,6 +36,7 @@ export {
   pageForPath,
   DEFERRED_ROUTES,
   PAGE_ROUTE_PATHS,
+  type DeferredRoute,
   type HttpMethod,
   type Route,
   type RouteAuth,
@@ -64,6 +67,47 @@ export {
 } from "./request.js";
 
 export {
+  parseDeployForm,
+  parseDiagnostics,
+  parseProviderForm,
+  parseSetup,
+  parseSiteBrowser,
+  readQuerySignals,
+  MAX_QUERY_SIGNAL_BYTES,
+  type DeployFormInput,
+  type DiagnosticsInput,
+  type ProviderFormInput,
+  type SetupInput,
+  type SiteBrowserInput,
+} from "./signals-input.js";
+
+export { patchPage, patchToast, type PagePatch } from "./patch.js";
+
+export {
+  createDeployPathService,
+  createProviderService,
+  createSetupJobService,
+  createSitesService,
+  connectionFor,
+  connectionKey,
+  MAX_EVENTS,
+  MAX_JOBS,
+  SITES_CACHE_TTL_MS,
+  type DeployPathService,
+  type EnvResolver,
+  type ProviderMutation,
+  type ProviderService,
+  type ProviderServiceOptions,
+  type SetupJobEvent,
+  type SetupJobService,
+  type SetupJobSnapshot,
+  type SetupJobStatus,
+  type SiteGroup,
+  type SitesResult,
+  type SitesService,
+} from "./services/index.js";
+
+export {
   connCellId,
   SSE_PATCH_FRAGMENTS,
   type ConnCellId,
@@ -90,7 +134,13 @@ export {
 } from "./static.js";
 
 export {
+  assertSignalPath,
+  connCheckingSignal,
   defaultDashboardSignals,
+  defaultDeployFormSignals,
+  defaultProviderFormSignals,
+  dynamicSignalPath,
+  providerDetailsSignal,
   toSignalRecord,
   ALL_PROFILES_SENTINEL,
   type DashboardSignals,
@@ -102,13 +152,86 @@ export {
   renderMain,
   renderNav,
   renderNotice,
-  renderPlaceholderBody,
   renderSidebar,
   renderToast,
   type DocumentInput,
 } from "./views/layout.js";
 
+export { renderPageBody, type PageModel } from "./views/pages.js";
+
 export {
+  pageConnState,
+  renderConnCell,
+  renderProviderFlash,
+  renderProviderForm,
+  renderProvidersPage,
+  renderProviderRow,
+  renderProviderTable,
+  type ProviderConnState,
+  type ProvidersPageModel,
+} from "./views/providers.js";
+
+export {
+  renderSitesPage,
+  renderSitesResult,
+  renderSitesStatus,
+  type SitesResultView,
+} from "./views/sites.js";
+
+export {
+  deployPathsStatusLine,
+  deployPushesSummary,
+  renderDeployPathNewPage,
+  renderDeployPathsPage,
+  type DeployNewView,
+  type WarmSitesView,
+} from "./views/deploy-paths.js";
+
+export {
+  renderDiagnosticsOutput,
+  renderDiagnosticsPage,
+} from "./views/diagnostics.js";
+
+export {
+  createDiagnosticsCapabilitiesHandler,
+  createDiagnosticsDoctorHandler,
+  patchDiagnosticsOutput,
+} from "./handlers/diagnostics.js";
+
+export {
+  initialUpdateCardView,
+  renderSettingsPage,
+  renderUpdateCard,
+  type UpdateCardView,
+} from "./views/settings.js";
+
+export {
+  createUpdateCheckHandler,
+  createUpdateInstallHandler,
+  patchUpdateCard,
+} from "./handlers/updates.js";
+
+export {
+  humanizeSetupError,
+  renderSetupPage,
+  renderSetupWork,
+  renderSetupWorkBody,
+  setupViewForJob,
+  type SetupView,
+} from "./views/setup.js";
+
+export {
+  parseSetupJobPath,
+  SETUP_JOBS_PREFIX,
+  SETUP_POLL_MS,
+} from "./handlers/setup.js";
+
+export {
+  connectionView,
+  deployPathView,
+  deployPushSupported,
+  hostingProfileView,
+  providerLabelFor,
   statusClass,
   DASHBOARD_PAGES,
   EMPTY_NOTICE,

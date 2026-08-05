@@ -37,6 +37,7 @@
 import { spawn } from "node:child_process";
 import type { Command } from "commander";
 
+import { runDoctor } from "../doctor/index.js";
 import {
   createSiteCliIntegration,
   createSiteCliResolver,
@@ -46,13 +47,16 @@ import {
   type SpawnChild,
 } from "../integration/index.js";
 import { globalHttpFetch, type HttpFetch } from "../provisioning/http.js";
+import { installVersion, type InstallRunner } from "../update/index.js";
 import {
   createDashboardServer,
   parseListenAddress,
   requireLoopbackHost,
   type BoundAddress,
+  type DashboardDoctor,
   type DashboardIntegration,
   type DashboardServer,
+  type DashboardUpdates,
 } from "../web/index.js";
 import type { CommandDependencies } from "./commands.js";
 import { runLocalCommand } from "./hosting-command.js";
@@ -92,6 +96,17 @@ export interface DashboardCommandOverrides {
   readonly spawn?: SpawnChild;
   readonly resolveSiteCli?: ResolveSiteCli;
   readonly integration?: DashboardIntegration;
+  /** Replaces the doctor runner, for a test that wants to script the report. */
+  readonly doctor?: DashboardDoctor;
+  /** Replaces both update operations, for a test that scripts them. */
+  readonly updates?: DashboardUpdates;
+  /**
+   * Replaces only the package-manager child, leaving the real registry read and
+   * the real result shape in place. It is the narrower of the two seams: a test
+   * that wants to prove the card renders the exact command that ran uses this,
+   * not `updates`.
+   */
+  readonly installRunner?: InstallRunner;
   readonly openBrowser?: (target: string) => Promise<void>;
 }
 
@@ -128,6 +143,110 @@ export function createDashboardIntegration(
     environment,
     now: overrides.now ?? (() => Date.now()),
   });
+}
+
+/**
+ * Build the report runner the Diagnostics page's Health check button calls.
+ *
+ * **Bound to `{ offline: true, fix: false }`, and that is not a default.** The
+ * dashboard is a view: a `GET` that patches a panel must not repair the
+ * operator's filesystem permissions, and it must not make a network request on
+ * a button press. `novamira-hq doctor --fix` is where repair lives, and
+ * {@link createDashboardUpdates} below is the one thing on this dashboard that
+ * may reach a registry.
+ *
+ * This is also the seam that keeps `src/web/` from importing `src/doctor/`:
+ * `DashboardDoctor` is declared structurally in `src/web/server.ts` and the real
+ * implementation is assembled here, in the composition layer, exactly as
+ * `createDashboardIntegration` assembles the site-CLI service.
+ */
+export function createDashboardDoctor(
+  dependencies: CommandDependencies,
+  environment: NodeJS.ProcessEnv,
+  overrides: DashboardCommandOverrides = {},
+): DashboardDoctor {
+  if (overrides.doctor !== undefined) return overrides.doctor;
+  return () =>
+    runDoctor(
+      {
+        paths: dependencies.paths,
+        security: dependencies.security,
+        store: dependencies.store,
+        credentials: dependencies.credentials,
+        skills: dependencies.skills,
+        probeSiteCli: dependencies.probeSiteCli,
+        environment,
+      },
+      { offline: true, fix: false },
+    );
+}
+
+/** The dashboard's registry deadline (Go: 20 s) and installer deadline (3 min). */
+const DASHBOARD_UPDATE_CHECK_TIMEOUT_MS = 20_000;
+const DASHBOARD_UPDATE_INSTALL_TIMEOUT_MS = 180_000;
+
+/**
+ * Build the update card's two operations.
+ *
+ * **One checker, shared with the CLI.** `createUpdateChecker` closes over the
+ * same `paths.stateDir`, the same `ProfileLockManager` and the same registry the
+ * `update` command uses, so a check made from the browser is a check the next
+ * `novamira-hq update` does not have to repeat, and two of them running at once
+ * make one request rather than two.
+ *
+ * **The installer's output is consumed and dropped.** It is bounded by the sink
+ * below and never rendered: `npm` writes progress bars, deprecation notices and
+ * whatever a package's own output happens to be, none of which is a machine
+ * envelope and none of which belongs in an HTML patch. What the card renders
+ * instead is `command` — the exact command line that ran — which is the useful
+ * half and is ours.
+ *
+ * **`install` re-checks before it installs**, so a card left open overnight
+ * cannot install a version the registry no longer advertises; when the check
+ * finds nothing newer it returns `updated: false` rather than throwing, because
+ * "already up to date" is an outcome.
+ */
+export function createDashboardUpdates(
+  dependencies: CommandDependencies,
+  overrides: DashboardCommandOverrides = {},
+): DashboardUpdates {
+  if (overrides.updates !== undefined) return overrides.updates;
+  return {
+    check: async () => {
+      const checker = dependencies.createUpdateChecker(
+        DASHBOARD_UPDATE_CHECK_TIMEOUT_MS,
+      );
+      const status = await checker.check();
+      return { ...status, registry: checker.registryIdentity };
+    },
+    install: async () => {
+      const checker = dependencies.createUpdateChecker(
+        DASHBOARD_UPDATE_CHECK_TIMEOUT_MS,
+      );
+      const status = await checker.check();
+      if (!status.updateAvailable) {
+        return {
+          updated: false,
+          from: status.current,
+          to: status.latest,
+          command: "",
+        };
+      }
+      const runner =
+        overrides.installRunner ??
+        dependencies.createInstallRunner(DASHBOARD_UPDATE_INSTALL_TIMEOUT_MS);
+      return installVersion(
+        status.current,
+        status.latest,
+        runner,
+        // The bounded sink: read so the child's pipes never fill and block it,
+        // and then discarded.
+        () => undefined,
+        undefined,
+        checker.registryIdentity,
+      );
+    },
+  };
 }
 
 /**
@@ -199,6 +318,8 @@ export function createDashboardHandlers(
           // `NOVAMIRA_HQ_SITE_CLI` and `PATH` come from the same place every
           // other command reads them from.
           integration: createDashboardIntegration(io.env, overrides),
+          doctor: createDashboardDoctor(dependencies, io.env, overrides),
+          updates: createDashboardUpdates(dependencies, overrides),
           ...(overrides.randomToken === undefined
             ? {}
             : { randomToken: overrides.randomToken }),

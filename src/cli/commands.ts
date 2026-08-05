@@ -1,17 +1,25 @@
 // SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { VerifiedFileSecurity } from "../config/file-security.js";
+import type { ProfileLockManager } from "../config/lock.js";
 import type { PlatformPaths } from "../config/paths.js";
 import type { ConfigStore } from "../config/profiles.js";
 import type { CredentialStore } from "../credentials/store.js";
 import type { HostingClientFactory } from "../hosting/factory.js";
+import type { ProbeSiteCli } from "../integration/index.js";
 import type {
   CommandMeta,
   InvocationWarning,
   Renderer,
 } from "../output/render.js";
+import type { SkillStore } from "../skills/index.js";
+import type { InstallRunner, UpdateChecker } from "../update/index.js";
 import { createDashboardHandlers } from "./dashboard.js";
+import { createDoctorHandlers } from "./doctor.js";
 import { createHostingCommandHandlers } from "./hosting/index.js";
+import { createSkillsHandlers } from "./skills.js";
+import { createUpdateHandlers } from "./update.js";
 import type { CommandHandlers, GlobalOptions } from "./program.js";
 
 /** What a command produces; the renderer decides how it reaches the user. */
@@ -46,6 +54,54 @@ export interface CommandDependencies {
    * reason — it is built at startup and may never touch a `stored` credential.
    */
   readonly credentials: () => Promise<CredentialStore>;
+  /**
+   * Owner-only file permissions, verified and applied.
+   *
+   * `main.ts` has always built one; Phase 7 is the first consumer outside the
+   * config layer, because `doctor`'s `storage.permissions` check verifies HQ's
+   * private paths and `--fix` repairs them.
+   */
+  readonly security: VerifiedFileSecurity;
+  /** The packaged agent-skill bundles; `skills` reads them, `doctor` checks them. */
+  readonly skills: SkillStore;
+  /**
+   * "Is `novamira` installed and compatible?", from `src/integration/` — the
+   * only place HQ runs that executable. It is a function rather than the
+   * integration service because `doctor` asks a different question than the
+   * dashboard does, and because every branch of the answer is a warning.
+   */
+  readonly probeSiteCli: ProbeSiteCli;
+  /**
+   * The one lock manager this process owns.
+   *
+   * `main.ts` has always built it — `ConfigStore` takes it — and 7-2 is the
+   * first consumer outside the config layer: `UpdateChecker` holds
+   * `__update_check__` across both the registry request and the record write,
+   * so two HQ invocations starting together make at most one request per
+   * interval. It is exposed here rather than reached for through `store`
+   * because a manager rejects re-entrant acquisition of a key it already holds,
+   * and two managers behave like two processes.
+   */
+  readonly locks: ProfileLockManager;
+  /**
+   * Builds the update checker bound to a request deadline, in milliseconds.
+   *
+   * A factory rather than an instance because the deadline differs per caller:
+   * `update` passes `--timeout`, the doctor's `update.available` check passes
+   * its own short budget, and the dashboard's card passes a longer one. All of
+   * them share one state record, one lock key and one registry, because the
+   * composition root closes over the same paths and locks every time.
+   */
+  readonly createUpdateChecker: (timeoutMs: number) => UpdateChecker;
+  /**
+   * Builds the package-manager runner `update` spawns, bounded by `timeoutMs`
+   * when an explicit `--timeout` was given and by the runner's own five-minute
+   * default otherwise. A seam, so a contract test can prove `--check` never
+   * spawns anything and that a non-zero exit is an `internal_error`.
+   */
+  readonly createInstallRunner: (
+    timeoutMs: number | undefined,
+  ) => InstallRunner;
   /**
    * Resolves the process-wide renderer from the parsed global options.
    * Memoized in `main.ts`, so one renderer — and one `requestId` — serves the
@@ -92,6 +148,17 @@ export function createCommandHandlers(
     // handler is the only one that does not return: it binds, renders the one
     // envelope, and then blocks until the listener stops.
     ...createDashboardHandlers(dependencies),
+
+    // `skills` and `doctor`: two local groups that reach no provider. `doctor`
+    // is the one command whose *contents* may report a failure while the
+    // invocation itself succeeds — see `cli/doctor.ts`.
+    ...createSkillsHandlers(dependencies),
+    ...createDoctorHandlers(dependencies),
+
+    // `update`: the third top-level command. It is the only handler in HQ that
+    // spawns a package manager, and the only one whose child's output reaches
+    // the operator verbatim — on stderr, never on stdout.
+    ...createUpdateHandlers(dependencies),
 
     version: (programVersion, options) =>
       execute(options, () => ({

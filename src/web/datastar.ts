@@ -32,11 +32,14 @@
  * always emits `data-on:submit__prevent`. The colon separator lives here, in one
  * place, so `data-on-click` cannot be typed at all.
  *
- * **Not Datastar, and deliberately absent.** `data-checked-at`, `data-nm-state`,
- * `data-sf-status` and `data-sf-count` are read by HQ's own shipped JS
- * (`relative-time.js`, `sites-filter.js`), not by Datastar. They belong to 6b's
- * page views, and 6b must add one named helper per attribute here rather than
- * reach for `attr("data-nm-state", …)` at a call site.
+ * **Not Datastar, but still one helper per attribute.** `data-checked-at`,
+ * `data-nm-state`, `data-sf-status` and `data-sf-count` are read by HQ's own
+ * shipped JS (`relative-time.js`, `sites-filter.js`), not by Datastar. 6b added
+ * them in the banner-separated section at the bottom of this file rather than
+ * letting a view reach for `attr("data-nm-state", …)`, because each one's value
+ * set is a contract with a frozen asset: every value is a closed union, never a
+ * `string`, so a typo is a compile error instead of a row that silently stops
+ * being filterable.
  */
 
 import { CliError } from "../errors.js";
@@ -170,4 +173,64 @@ export function onSubmit(expression: Expr): Attr {
  */
 function expressionAttr(name: string, expression: Expr): Attr {
   return attr(name, renderExpr(expression));
+}
+
+/* ========================================================================== */
+/* NOT DATASTAR — the attributes HQ's own shipped scripts read                */
+/* ========================================================================== */
+
+/*
+ * Everything below this banner is read by `src/web/static/relative-time.js` and
+ * `src/web/static/sites-filter.js`, which are copied verbatim from the Go
+ * program and must not be edited (`CLAUDE.md`, `static.ts:6-26`). The markup
+ * follows the asset, never the other way round, so each helper's value type is
+ * exactly the set of literals the script compares against.
+ */
+
+/**
+ * `data-checked-at` — unix **milliseconds**.
+ *
+ * `relative-time.js` does `parseInt(el.dataset.checkedAt)` and skips the element
+ * when the result is falsy, then overwrites the element's `textContent`. Two
+ * consequences are encoded here and must not be undone: a non-integer or
+ * non-finite value is refused outright rather than emitted (a silently skipped
+ * stamp is harder to notice than a thrown error), and any *label* text has to
+ * live in a different element from the one carrying this attribute.
+ */
+export function checkedAt(millis: number): Attr {
+  if (!Number.isSafeInteger(millis)) {
+    throw internalError(
+      "data-checked-at takes unix milliseconds as a safe integer; relative-time.js parses it with parseInt and skips anything falsy.",
+    );
+  }
+  return attr("data-checked-at", String(millis));
+}
+
+/**
+ * `data-nm-state` — whether a site row already has Novamira installed.
+ *
+ * `sites-filter.js:28-33` compares the value against the literals `"installed"`
+ * and (implicitly) anything-else, and drives the segmented control's two
+ * counters from it. Go derived the value from a `site_profiles` lookup
+ * (`novamiraRowState`, views.go:1090-1100); HQ derives it from the site CLI's
+ * `ConnectionResult` per environment — see 6b-2's `views/sites.ts`.
+ */
+export type NovamiraRowState = "installed" | "install";
+
+export function novamiraState(state: NovamiraRowState): Attr {
+  return attr("data-nm-state", state);
+}
+
+/** `data-sf-status` — the segmented control's three buttons. */
+export type SitesFilterStatus = "all" | "with" | "without";
+
+export function sitesFilterStatus(status: SitesFilterStatus): Attr {
+  return attr("data-sf-status", status);
+}
+
+/** `data-sf-count` — the two live counters `sites-filter.js` writes into. */
+export type SitesFilterCount = "with" | "without";
+
+export function sitesFilterCount(bucket: SitesFilterCount): Attr {
+  return attr("data-sf-count", bucket);
 }

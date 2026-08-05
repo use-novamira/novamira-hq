@@ -1,0 +1,105 @@
+# SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# Install Novamira HQ and register its agent skill, on Windows.
+#
+# The PowerShell twin of install.sh; see that file's header for why the Go's
+# self-replacing binary and hand-written agent stub are deleted rather than
+# ported. Two Windows-specific differences: npm's global bin is a `.cmd` shim,
+# not a `bin/` entry, and the two environment variables the `skills` CLI needs
+# are set and restored around the call rather than passed as a command prefix.
+
+$ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
+
+$package = "@novamira/hq"
+# Pinned exactly, never a range. See install.sh.
+$skillsPackage = "skills@1.5.18"
+
+function Fail([string] $Message) {
+  throw "novamira-hq installer: $Message"
+}
+
+function Resolve-Application([string] $Name) {
+  $command = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+  if ($null -eq $command) {
+    Fail "$Name is required but was not found in PATH"
+  }
+  return $command.Source
+}
+
+function Invoke-Checked([string] $Command, [string[]] $Arguments) {
+  & $Command @Arguments
+  if ($LASTEXITCODE -ne 0) {
+    Fail "$Command failed with exit code $LASTEXITCODE"
+  }
+}
+
+$node = Resolve-Application "node"
+$npm = Resolve-Application "npm"
+$npx = Resolve-Application "npx"
+
+if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
+  Fail "the PowerShell installer supports Windows only; use install.sh on macOS or Linux"
+}
+
+$nodeVersion = & $node --version
+if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch '^v(\d+)' -or [int] $Matches[1] -lt 22) {
+  Fail "Node.js 22 or newer is required (found $nodeVersion)"
+}
+
+Write-Output "Installing $package with npm..."
+Invoke-Checked $npm @("install", "--global", "--ignore-scripts", $package)
+
+$npmPrefix = & $npm prefix --global
+if ($LASTEXITCODE -ne 0) {
+  Fail "npm prefix --global failed with exit code $LASTEXITCODE"
+}
+$npmPrefix = ([string] $npmPrefix).Trim()
+$novamiraHqBin = Join-Path $npmPrefix "novamira-hq.cmd"
+if (-not (Test-Path -LiteralPath $novamiraHqBin -PathType Leaf)) {
+  Fail "npm installed Novamira HQ, but novamira-hq is not available in PATH (npm prefix: $npmPrefix)"
+}
+
+Invoke-Checked $novamiraHqBin @("--version")
+Invoke-Checked $novamiraHqBin @("doctor", "--offline")
+
+$npmRoot = & $npm root --global
+if ($LASTEXITCODE -ne 0) {
+  Fail "npm root --global failed with exit code $LASTEXITCODE"
+}
+$npmRoot = ([string] $npmRoot).Trim()
+$skillSource = Join-Path $npmRoot "@novamira/hq"
+$skillFile = Join-Path $skillSource "skills/novamira-hq/SKILL.md"
+if (-not (Test-Path -LiteralPath $skillFile -PathType Leaf)) {
+  Fail "the installed npm package does not contain the Novamira HQ agent skill"
+}
+
+Write-Output "`nInstalling the Novamira HQ agent skill globally..."
+# NOVAMIRA_HQ_AGENT first, NOVAMIRA_AGENT as a fallback, so someone installing
+# both tools sets one variable rather than two.
+$agent = [Environment]::GetEnvironmentVariable("NOVAMIRA_HQ_AGENT")
+if ([string]::IsNullOrWhiteSpace($agent)) {
+  $agent = [Environment]::GetEnvironmentVariable("NOVAMIRA_AGENT")
+}
+$oldDisableTelemetry = [Environment]::GetEnvironmentVariable("DISABLE_TELEMETRY")
+$oldIgnoreScripts = [Environment]::GetEnvironmentVariable("npm_config_ignore_scripts")
+try {
+  [Environment]::SetEnvironmentVariable("DISABLE_TELEMETRY", "1")
+  [Environment]::SetEnvironmentVariable("npm_config_ignore_scripts", "true")
+  $skillArguments = @("--yes", $skillsPackage, "add", $skillSource, "--skill", "novamira-hq", "--global")
+  if (-not [string]::IsNullOrWhiteSpace($agent)) {
+    $skillArguments += @("--agent", $agent, "--yes")
+  } elseif ([Console]::IsInputRedirected) {
+    Fail "skill installation needs a terminal or NOVAMIRA_HQ_AGENT (for example, NOVAMIRA_HQ_AGENT=opencode)"
+  }
+  Invoke-Checked $npx $skillArguments
+} finally {
+  [Environment]::SetEnvironmentVariable("DISABLE_TELEMETRY", $oldDisableTelemetry)
+  [Environment]::SetEnvironmentVariable("npm_config_ignore_scripts", $oldIgnoreScripts)
+}
+
+Write-Output "`nNovamira HQ and its agent skill installed successfully."
+Write-Output "Optional: install the site CLI for connected-state detection —"
+Write-Output "  npm install -g @novamira/cli"

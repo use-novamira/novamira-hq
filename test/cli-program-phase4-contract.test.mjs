@@ -37,6 +37,17 @@ const COMMAND_SURFACE = {
   // runs until the operator stops it has no operation deadline to set.
   dashboard: ["--listen", "--open"],
 
+  // Phase 7's local surface. `doctor`'s two options and `update`'s one are
+  // command-local and free against the reserved globals; the `skills`
+  // subcommands declare no options at all, which is what makes them incapable
+  // of shadowing one. `update` has no `upgrade` alias: Go carried one and a
+  // second name for one command is a second thing the contract has to describe.
+  doctor: ["--offline", "--fix"],
+  update: ["--check"],
+  "skills list": [],
+  "skills get": [],
+  "skills path": [],
+
   "config path": [],
   "config add": [
     "--company",

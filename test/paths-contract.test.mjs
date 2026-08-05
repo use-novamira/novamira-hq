@@ -6,6 +6,7 @@ import test from "node:test";
 import { CONFIG_LOCK_KEY, lockFilePath } from "../dist/config/lock.js";
 import { platformPaths } from "../dist/config/paths.js";
 import { CREDENTIAL_SERVICE } from "../dist/credentials/keychain-backends.js";
+import { UPDATE_CHECK_FILE, UPDATE_CHECK_LOCK } from "../dist/update/index.js";
 
 // The site CLI's namespace, hard-coded rather than imported: this test must
 // keep failing if `@novamira/cli` ever moves, and HQ must never depend on it.
@@ -207,4 +208,38 @@ test("the config lock file is the one ProfileLockManager writes", () => {
     }
   }
   assert.equal(CONFIG_LOCK_KEY, "config");
+});
+
+test("the update-check record resolves under HQ's namespace on every platform", () => {
+  const separator = (platform) => (platform === "win32" ? "\\" : "/");
+  for (const platform of ["linux", "darwin", "win32"]) {
+    const hq = hqPaths(platform);
+    const record = `${hq.stateDir}${separator(platform)}${UPDATE_CHECK_FILE}`;
+    // The file name is appended to the resolved `stateDir` and nowhere else: no
+    // namespace segment is ever joined by hand.
+    assert.ok(contains(hq.stateDir, record, platform));
+    // It never lands in the site CLI's tree, whatever the platform.
+    assert.ok(
+      !contains(SITE_CLI_PATHS[platform].stateDir, record, platform),
+      platform,
+    );
+  }
+
+  // `NOVAMIRA_HQ_HOME` relocates it; `NOVAMIRA_HOME` does not, and never will.
+  const isolated = hqPaths("linux", {
+    NOVAMIRA_HQ_HOME: "/tmp/hq-root",
+    NOVAMIRA_HOME: "/tmp/site-root",
+  });
+  assert.equal(isolated.stateDir, "/tmp/hq-root/state");
+  assert.equal(
+    `${isolated.stateDir}/${UPDATE_CHECK_FILE}`,
+    "/tmp/hq-root/state/update-check.json",
+  );
+
+  const siteOnly = hqPaths("linux", { NOVAMIRA_HOME: "/tmp/site-root" });
+  assert.deepEqual(siteOnly, hqPaths("linux"));
+
+  assert.equal(UPDATE_CHECK_FILE, "update-check.json");
+  // The lock key is double-underscored, so no legal profile name can collide.
+  assert.equal(UPDATE_CHECK_LOCK, "__update_check__");
 });

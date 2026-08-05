@@ -47,11 +47,14 @@ import { CliError } from "../dist/errors.js";
 import * as ds from "../dist/web/datastar.js";
 import {
   confirmThen,
+  focusElementById,
   get,
+  getStream,
   jsBoolean,
   jsJson,
   jsNumber,
   jsString,
+  lookupOr,
   not,
   objectExpr,
   post,
@@ -78,7 +81,11 @@ import {
 import { connCellId, SSE_PATCH_FRAGMENTS } from "../dist/web/patches.js";
 import { createRouteTable, DEFERRED_ROUTES } from "../dist/web/routes.js";
 import {
+  assertSignalPath,
+  connCheckingSignal,
   defaultDashboardSignals,
+  dynamicSignalPath,
+  providerDetailsSignal,
   ALL_PROFILES_SENTINEL,
 } from "../dist/web/signals.js";
 import { streamSse } from "../dist/web/sse.js";
@@ -88,6 +95,17 @@ import {
   renderNav,
   renderToast,
 } from "../dist/web/views/layout.js";
+import { renderDiagnosticsOutput } from "../dist/web/views/diagnostics.js";
+import { renderUpdateCard } from "../dist/web/views/settings.js";
+import { renderProviderFlash } from "../dist/web/views/providers.js";
+import {
+  renderSetupWork,
+  renderSetupWorkBody,
+} from "../dist/web/views/setup.js";
+import {
+  renderSitesResult,
+  renderSitesStatus,
+} from "../dist/web/views/sites.js";
 
 const TOKEN = "c".repeat(64);
 
@@ -151,6 +169,19 @@ async function dashboard() {
     integration: {
       connectionStates: async () => {
         throw new Error("the conventions test must not detect connections");
+      },
+    },
+    doctor: async () => {
+      throw new Error("the conventions test must not run the doctor");
+    },
+    updates: {
+      check: async () => {
+        throw new Error(
+          "the conventions test must not reach a package registry",
+        );
+      },
+      install: async () => {
+        throw new Error("the conventions test must not run a package manager");
       },
     },
   });
@@ -257,6 +288,78 @@ async function webSources() {
   };
   await walk(root);
   return { root, files };
+}
+
+/**
+ * The minimum `RouteContext` `createRouteTable` needs.
+ *
+ * 6b turned the second positional `token` argument into a field on the context
+ * and added the service record; a test that only wants the *table* still has to
+ * supply both, which is the point — a handler cannot be constructed without the
+ * things it needs.
+ */
+function routeContext(overrides = {}) {
+  return {
+    loadConfigView: async () => ({
+      profiles: [],
+      deployPaths: [],
+      version: "0.0.0-test",
+      configFile: "/dev/null",
+    }),
+    token: TOKEN,
+    now: () => 1_700_000_000_000,
+    providers: {
+      upsert: async () => ({ name: "x" }),
+      remove: async () => ({ name: "x" }),
+      validate: async () => ({}),
+      recordChecked: () => undefined,
+      clearChecked: () => undefined,
+      lastChecked: () => null,
+    },
+    sites: {
+      list: async () => ({
+        profile: "__all__",
+        includeEnvs: true,
+        cached: false,
+        storedAt: null,
+        expiresAt: null,
+        groups: [],
+        connections: null,
+      }),
+      warm: () => undefined,
+      invalidate: () => undefined,
+      envResolver: () => (envId) => ({ name: envId, domain: "" }),
+      resolveSite: () => undefined,
+      refreshConnections: async () => null,
+    },
+    deployPaths: {
+      upsert: async () => "x",
+      remove: async () => "x",
+    },
+    integration: {
+      connectionStates: async () => {
+        throw new Error("the conventions test must not detect connections");
+      },
+      connect: async () => {
+        throw new Error("the conventions test must not run the site CLI");
+      },
+    },
+    doctor: async () => {
+      throw new Error("the conventions test must not run the doctor");
+    },
+    updates: {
+      check: async () => {
+        throw new Error(
+          "the conventions test must not reach a package registry",
+        );
+      },
+      install: async () => {
+        throw new Error("the conventions test must not run a package manager");
+      },
+    },
+    environment: {},
+    ...overrides,
+  };
 }
 
 function isInternalError(error) {
@@ -749,14 +852,21 @@ test("24: every @post and @get carries the token header and a filterSignals scop
     assert.ok(value.includes(DASHBOARD_TOKEN_HEADER), value);
     assert.ok(value.includes("filterSignals"), value);
   }
-  assert.equal(
-    requests,
-    rendered.length,
+  assert.ok(
+    requests >= rendered.length,
     "the scan found every constructed request",
   );
-  // The corpus itself must contain no request at all: 6a ships no action.
-  assert.ok(!(await corpus()).includes("@post("));
-  assert.ok(!(await corpus()).includes("@get("));
+  // The corpus now ships real actions, so the scan above has real work to do:
+  // the providers page alone renders a save, a remove and a validate.
+  const inCorpus = [
+    ...attrValues(await corpus(), "data-on:click"),
+    ...attrValues(await corpus(), "data-on:submit__prevent"),
+  ].filter((value) => value.includes("@post(") || value.includes("@get("));
+  assert.ok(inCorpus.length > 0, "6b's pages render requests");
+  for (const value of inCorpus) {
+    assert.ok(value.includes(DASHBOARD_TOKEN_HEADER), value);
+    assert.ok(value.includes("filterSignals"), value);
+  }
 });
 
 test("25: a @post's include scope names token, exactly once, regex-escaped", () => {
@@ -846,7 +956,7 @@ test("26: the deleted site-profile routes appear nowhere", async () => {
       `${path} in DEFERRED_ROUTES`,
     );
   }
-  const table = createRouteTable({ loadConfigView: async () => ({}) }, TOKEN);
+  const table = createRouteTable(routeContext());
   for (const route of table) {
     assert.ok(!route.path.startsWith("/_dashboard/sites/"), route.path);
   }
@@ -859,12 +969,69 @@ test("26: the deleted site-profile routes appear nowhere", async () => {
 /* E. The patch catalog (rules 27-32; Go rules 0-4)                           */
 /* -------------------------------------------------------------------------- */
 
-/** The 6a renderer for each catalogued fragment. 6b adds rows, not code. */
-const FRAGMENT_RENDERERS = {
-  main: () => renderMain("providers", html`<section class="page"></section>`),
-  nav: () => renderNav("providers"),
-  toast: () => renderToast({ level: "ok", message: "done" }),
+/** A running job, for the two `setup-work` renderers. */
+const SETUP_VIEW = {
+  profile: "dev",
+  envId: "env-1",
+  siteLabel: "",
+  envName: "",
+  jobId: "a1b2c3",
+  job: {
+    id: "a1b2c3",
+    status: "running",
+    profile: "dev",
+    envId: "env-1",
+    startedAt: 1_700_000_000_000,
+    finishedAt: null,
+    events: [
+      { at: 1_700_000_000_000, level: "info", message: "Setup job started." },
+    ],
+    result: null,
+    error: null,
+  },
 };
+
+/**
+ * The renderer for each catalogued fragment, keyed by `id/mode`; a row without
+ * one fails rule 28.
+ *
+ * The key is the pair rather than the id because `setup-work` is catalogued
+ * twice: `/_dashboard/setup/jobs/<id>` replaces the element outer (wrapper and
+ * all, because the wrapper carries the stream's `data-init`) and `…/stream`
+ * replaces only its body inner.
+ */
+const FRAGMENT_RENDERERS = {
+  "main/outer": () =>
+    renderMain("providers", html`<section class="page"></section>`),
+  "nav/outer": () => renderNav("providers"),
+  "toast/outer": () => renderToast({ level: "ok", message: "done" }),
+  "provider-flash/outer": () =>
+    renderProviderFlash({ level: "danger", message: "no" }, ""),
+  "sites-status/inner": () => renderSitesStatus(1_700_000_000_000),
+  "sites-result/outer": () =>
+    renderSitesResult({
+      profile: "__all__",
+      includeEnvs: true,
+      groups: [],
+      connections: null,
+      notice: { level: "neutral", message: "" },
+    }),
+  "setup-work/outer": () => renderSetupWork(SETUP_VIEW),
+  "setup-work/inner": () => renderSetupWorkBody(SETUP_VIEW),
+  "diagnostics-output/outer": () =>
+    renderDiagnosticsOutput({ level: "neutral", message: "" }, "body"),
+  "updates-card/outer": () =>
+    renderUpdateCard({
+      checked: true,
+      current: "0.1.0",
+      latest: "0.2.0",
+      updateAvailable: true,
+    }),
+};
+
+function fragmentKey(fragment) {
+  return `${fragment.selectorId}/${fragment.mode}`;
+}
 
 test("27: the catalog is non-empty and every selector id is a legal target", () => {
   assert.ok(SSE_PATCH_FRAGMENTS.length > 0, "Go's `found == 0` guard");
@@ -872,46 +1039,65 @@ test("27: the catalog is non-empty and every selector id is a legal target", () 
     assert.match(fragment.selectorId, /^[a-z][a-z0-9-]*$/);
     assert.ok(["outer", "inner"].includes(fragment.mode), fragment.mode);
   }
-  // Phase 7's fragments must not have crept in ahead of `src/doctor/`.
-  assert.deepEqual(
-    SSE_PATCH_FRAGMENTS.map(
-      (fragment) => `${fragment.selectorId}/${fragment.mode}`,
-    ),
-    ["main/outer", "nav/outer", "toast/outer"],
-  );
+  // A row lands with its renderer. 6b-3 closed the Phase-6 catalog with
+  // `setup-work` in both modes and `diagnostics-output/outer`; 7-2 added the
+  // last row, `updates-card`, with `views/settings.ts`'s card and its two
+  // routes. The catalog is now closed: no phase is holding a row back.
+  assert.deepEqual(SSE_PATCH_FRAGMENTS.map(fragmentKey), [
+    "main/outer",
+    "nav/outer",
+    "toast/outer",
+    "provider-flash/outer",
+    "sites-status/inner",
+    "sites-result/outer",
+    "setup-work/outer",
+    "setup-work/inner",
+    "diagnostics-output/outer",
+    "updates-card/outer",
+  ]);
 });
 
-test("28: every catalogued fragment is rendered by a 6a view", async () => {
-  const shell = await page(await dashboard(), "/providers");
+test("28: every catalogued fragment is rendered by a shipped view", async () => {
+  // The scan is over the whole corpus rather than one page: 6b-2's two sites
+  // fragments live on `/sites` and the providers page has no element for them.
+  // What the rule asserts is that a catalogued id is *rendered somewhere*, and
+  // that a renderer exists for it — the catalog and the DOM cannot drift.
+  const body = await corpus();
   for (const fragment of SSE_PATCH_FRAGMENTS) {
     assert.ok(
-      shell.includes(`id="${fragment.selectorId}"`),
-      `${fragment.selectorId} has no element in the shell`,
+      body.includes(`id="${fragment.selectorId}"`),
+      `${fragment.selectorId} has no element on any page`,
     );
     assert.ok(
-      FRAGMENT_RENDERERS[fragment.selectorId] !== undefined,
-      `${fragment.selectorId} has no 6a renderer`,
+      FRAGMENT_RENDERERS[fragmentKey(fragment)] !== undefined,
+      `${fragmentKey(fragment)} has no renderer`,
     );
   }
 });
 
 test("29: every routed page carries main, nav and toast", async () => {
   const server = await dashboard();
-  // Go's rule-1 table. 6b adds `provider-flash`, `sites-status`, `sites-result`
-  // and `setup-work` rows; Phase 7 adds `diagnostics-output` and
-  // `updates-card`. Extend the `ids` column, never the assertion.
+  // Go's rule-1 table. 6b-3 added the `setup-work` and `diagnostics-output`
+  // rows; 7-2 added `updates-card` to `/settings`. Extend the `ids` column,
+  // never the assertion.
   const pages = [
-    { path: "/", ids: ["main", "nav", "toast"] },
-    { path: "/providers", ids: ["main", "nav", "toast"] },
-    { path: "/sites", ids: ["main", "nav", "toast"] },
+    { path: "/", ids: ["main", "nav", "toast", "provider-flash"] },
+    { path: "/providers", ids: ["main", "nav", "toast", "provider-flash"] },
+    {
+      path: "/sites",
+      ids: ["main", "nav", "toast", "sites-status", "sites-result"],
+    },
     { path: "/deploy-paths", ids: ["main", "nav", "toast"] },
     { path: "/deploy-paths/new", ids: ["main", "nav", "toast"] },
     {
       path: "/novamira-setup?profile=dev&env=env-1",
-      ids: ["main", "nav", "toast"],
+      ids: ["main", "nav", "toast", "setup-work"],
     },
-    { path: "/diagnostics", ids: ["main", "nav", "toast"] },
-    { path: "/settings", ids: ["main", "nav", "toast"] },
+    {
+      path: "/diagnostics",
+      ids: ["main", "nav", "toast", "diagnostics-output"],
+    },
+    { path: "/settings", ids: ["main", "nav", "toast", "updates-card"] },
   ];
   for (const entry of pages) {
     const markup = await page(server, entry.path);
@@ -963,12 +1149,12 @@ function ssePatchBlock(body, selectorId, mode) {
 test("30: an outer fragment's root carries its own id; an inner one has no wrapper", async () => {
   const body = await sseBody((stream) => {
     for (const fragment of SSE_PATCH_FRAGMENTS)
-      stream.patchElements(FRAGMENT_RENDERERS[fragment.selectorId](), {
+      stream.patchElements(FRAGMENT_RENDERERS[fragmentKey(fragment)](), {
         selectorId: fragment.selectorId,
         mode: fragment.mode,
       });
-    // 6a catalogs no inner fragment, so the inner branch is exercised with the
-    // shape 6b's `sites-status` will have: a body with no wrapper of its own.
+    // A second inner patch, so the assertion below also covers an id that has
+    // an outer row in the catalog — `sites-status` is the real inner fragment.
     stream.patchElements(html`<li>row</li>`, {
       selectorId: "main",
       mode: "inner",
@@ -1104,13 +1290,19 @@ test("38: setup.enableAiAbilities defaults to true", async () => {
 
 test("39: the rendered data-signals round-trips to defaultDashboardSignals", async () => {
   const server = await dashboard();
+  // Go's `defaultProviderFormSignals` preselected `providerKinds()[0]`, and the
+  // page handler now passes it, so the provider <select>, the metadata
+  // expressions and the reset expression all start on the same kind.
   assert.deepEqual(
     rootSignals(await page(server, "/settings")),
-    defaultDashboardSignals(server.token),
+    defaultDashboardSignals(server.token, { firstProviderKind: "kinsta" }),
   );
   assert.deepEqual(
     rootSignals(await page(server, "/providers?new=host")),
-    defaultDashboardSignals(server.token, { openProviderForm: true }),
+    defaultDashboardSignals(server.token, {
+      openProviderForm: true,
+      firstProviderKind: "kinsta",
+    }),
   );
   // Every member is written out explicitly: Go relied on struct zero values,
   // and a missing key here would let a `data-bind` create a signal at runtime.
@@ -1180,6 +1372,192 @@ test("the expression constructors emit exactly the documented source", () => {
     renderAttr(ds.init(set("sites.loading", jsBoolean(false)))),
     ' data-init="$sites.loading = false"',
   );
+});
+
+/* -------------------------------------------------------------------------- */
+/* G. 6b's plumbing: dynamic signals, the non-Datastar attributes, and the     */
+/*    three new expression constructors                                       */
+/* -------------------------------------------------------------------------- */
+
+test("40: dynamicSignalPath is injective — Go's a-b/ab collision cannot recur", () => {
+  // Go's `rowSignal` kept only the key's alphanumerics, so `a-b` and `ab` both
+  // became `checkingab`: expanding one row's details expanded the other's, and
+  // one "Check connection" spinner spun for two rows.
+  assert.notEqual(connCheckingSignal("a-b"), connCheckingSignal("ab"));
+  assert.notEqual(providerDetailsSignal("a-b"), providerDetailsSignal("ab"));
+  const seen = new Set();
+  for (const profile of [
+    "a-b",
+    "ab",
+    "a_b",
+    "a.b",
+    "-",
+    "_",
+    "prod",
+    "prod2",
+    "prôd-ü",
+  ]) {
+    for (const path of [
+      connCheckingSignal(profile),
+      providerDetailsSignal(profile),
+    ]) {
+      assert.equal(seen.has(path), false, `${profile} collided on ${path}`);
+      seen.add(path);
+      // Every dynamic path must satisfy the same grammar a compiler-derived one
+      // does, so `ds.bind`/`ds.indicator` accept it and nothing can smuggle a
+      // `$` or a `.` through the hex encoding.
+      assert.doesNotThrow(() => assertSignalPath(path), path);
+      assert.doesNotThrow(() => ds.indicator(path), path);
+      assert.doesNotThrow(() => signal(path), path);
+    }
+  }
+  assert.match(connCheckingSignal("prod"), /^checking_[0-9a-f]+$/);
+  assert.match(providerDetailsSignal("prod"), /^details_[0-9a-f]+$/);
+  for (const [prefix, key] of [
+    ["", "x"],
+    ["checking", ""],
+  ])
+    assert.throws(
+      () => dynamicSignalPath(prefix, key),
+      isInternalError,
+      `${prefix}/${key}`,
+    );
+});
+
+test("41: the four non-Datastar helpers emit exactly their frozen attributes", async () => {
+  assert.equal(
+    renderAttr(ds.checkedAt(1_700_000_000_000)),
+    ' data-checked-at="1700000000000"',
+  );
+  for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, 1.5, 2 ** 60])
+    assert.throws(() => ds.checkedAt(bad), isInternalError, String(bad));
+  assert.equal(
+    renderAttr(ds.novamiraState("installed")),
+    ' data-nm-state="installed"',
+  );
+  assert.equal(
+    renderAttr(ds.novamiraState("install")),
+    ' data-nm-state="install"',
+  );
+  assert.equal(
+    renderAttr(ds.sitesFilterStatus("without")),
+    ' data-sf-status="without"',
+  );
+  assert.equal(
+    renderAttr(ds.sitesFilterCount("with")),
+    ' data-sf-count="with"',
+  );
+
+  // The values are a contract with two frozen assets, so pin them from the
+  // asset side too: change the markup, never the script.
+  const filter = await readFile(
+    new URL("../src/web/static/sites-filter.js", import.meta.url),
+    "utf8",
+  );
+  for (const literal of [
+    '"installed"',
+    "data-sf-status",
+    '[data-sf-count="with"]',
+    '[data-sf-count="without"]',
+  ])
+    assert.ok(filter.includes(literal), literal);
+  const relative = await readFile(
+    new URL("../src/web/static/relative-time.js", import.meta.url),
+    "utf8",
+  );
+  assert.ok(relative.includes("data-checked-at"));
+  assert.ok(
+    relative.includes("parseInt"),
+    "the stamp must be an integer of milliseconds",
+  );
+});
+
+test("42: no module outside datastar.ts writes a data-* attribute by hand", async () => {
+  // In the spirit of rule 6. `attr("data-…", …)` at a call site would bypass the
+  // closed value unions that keep the markup and the shipped scripts in step.
+  const { root, files } = await webSources();
+  const offenders = files
+    .filter(
+      (file) =>
+        file.path !== join(root, "datastar.ts") && /"data-/.test(file.code),
+    )
+    .map((file) => file.path);
+  assert.deepEqual(offenders, []);
+
+  // And nothing a page actually renders may carry an attribute outside the set
+  // the helpers can emit.
+  const allowed = new Set([
+    "data-signals",
+    "data-bind",
+    "data-class",
+    "data-attr",
+    "data-text",
+    "data-indicator",
+    "data-init",
+    "data-checked-at",
+    "data-nm-state",
+    "data-sf-status",
+    "data-sf-count",
+  ]);
+  const body = await corpus();
+  for (const match of body.matchAll(/\s(data-[a-z0-9:_-]+)=/g)) {
+    const name = match[1];
+    if (name.startsWith("data-on:")) {
+      assert.match(
+        name,
+        /^data-on:(click|change|input|keydown|submit)(__(prevent|outside))*$/,
+      );
+      continue;
+    }
+    assert.ok(allowed.has(name), `unknown attribute ${name}`);
+  }
+});
+
+test("43: getStream, lookupOr and focusElementById emit the documented source", () => {
+  const stream = renderExpr(
+    getStream(url("/_dashboard/setup/jobs/abc/stream"), { include: [] }),
+  );
+  assert.ok(stream.includes(DASHBOARD_TOKEN_HEADER), stream);
+  assert.ok(stream.includes("filterSignals"), stream);
+  assert.ok(stream.includes("openWhenHidden: true"), stream);
+  assert.ok(stream.includes('requestCancellation: "disabled"'), stream);
+  // It is still a GET, so it inherits both of `get`'s refusals.
+  for (const include of [["token"], ["providerForm"]])
+    assert.throws(
+      () => getStream(url("/x"), { include }),
+      isInternalError,
+      include.join(),
+    );
+
+  assert.equal(
+    renderExpr(
+      lookupOr(
+        { kinsta: { help: "Paste a <b>key</b>" } },
+        "providerForm.provider",
+        "help",
+        "Paste it",
+      ),
+    ),
+    '({"kinsta":{"help":"Paste a \\u003cb\\u003ekey\\u003c/b\\u003e"}}[$providerForm.provider]?.help || "Paste it")',
+  );
+  assert.throws(
+    () => lookupOr({}, "providerForm.provider", "a-b", "x"),
+    isInternalError,
+    "a property name must be an identifier",
+  );
+  assert.throws(
+    () => lookupOr({}, "$providerForm.provider", "help", "x"),
+    isInternalError,
+  );
+
+  // Go's `editProviderExpression` wrote `document.querySelector('#provider-form
+  // input').focus()` — undeferred and unguarded, so it threw when the form was
+  // absent and abandoned the rest of the assignment sequence.
+  assert.equal(
+    renderExpr(focusElementById("profile")),
+    'setTimeout(() => document.getElementById("profile")?.focus(), 0)',
+  );
+  assert.ok(renderExpr(focusElementById('a"b')).includes("?.focus()"));
 });
 
 test("no secret-shaped value can reach the markup, a URL or an SSE frame", async () => {

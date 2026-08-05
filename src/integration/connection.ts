@@ -48,20 +48,40 @@
  * message, no output, no path.
  *
  * **No cache.** Go kept a five-minute TTL (`sitesCacheTTL`, server.go:48); that
- * is a page concern and belongs with the page that owns it (6b).
+ * is a page concern and belongs with the page that owns it (6b's
+ * `src/web/services/sites.ts`).
+ *
+ * **The state union lives at the root.** `ConnectionState`,
+ * `UnavailableReason`, `ConnectionResult`, `ConnectionQuery`,
+ * `ConnectionSnapshot`, `ConnectOutcome` and `unavailableHint` are declared in
+ * `src/connection-state.ts` and re-exported below, because `src/web/` renders
+ * them and `src/web/` and `src/integration/` are peer layers that may share only
+ * a root module. What stays here is what *acts*: the algorithm, the spawn seam,
+ * and {@link integrationUnavailableError}, which builds a `CliError` and is
+ * therefore HQ taxonomy rather than shared vocabulary.
  */
 
-import { CliError } from "../errors.js";
-import { normalizeOrigins, originOf } from "./origin.js";
 import {
-  SITE_CLI_INSTALL_HINT,
-  type ResolveSiteCli,
-  type SiteCliResolution,
-} from "./resolve.js";
+  NOT_CONFIGURED_CONNECTION,
+  unavailableHint,
+  type ConnectionQuery,
+  type ConnectionResult,
+  type ConnectionSnapshot,
+  type ConnectOutcome,
+  type UnavailableReason,
+} from "../connection-state.js";
+import { CliError } from "../errors.js";
+import {
+  childFailure,
+  interpretChildOutcome,
+  type ChildResult,
+} from "./classify.js";
+import { createConnectAction } from "./connect.js";
+import { normalizeOrigins, originOf } from "./origin.js";
+import { type ResolveSiteCli, type SiteCliResolution } from "./resolve.js";
 import {
   authStatusArgs,
   parseAuthStatus,
-  parseEnvelope,
   parseSitesList,
   siteCliChildEnv,
   sitesListArgs,
@@ -71,90 +91,18 @@ import {
 import {
   DEFAULT_MAX_STDERR_BYTES,
   DEFAULT_MAX_STDOUT_BYTES,
-  type ChildOutcome,
-  type ChildOutcomeKind,
   type SpawnChild,
 } from "./spawn.js";
 
-/* -------------------------------------------------------------------------- */
-/* The result union                                                           */
-/* -------------------------------------------------------------------------- */
-
-/**
- * These five declarations are repeated member for member in
- * `src/web/views/types.ts`. That is deliberate, not an oversight: `src/web/`
- * and `src/integration/` are peer layers and neither may import the other, so
- * the dashboard types its optional integration dependency structurally. The two
- * satisfy each other exactly; when a later phase gives both a module they can
- * share, collapse them there.
- */
-export type ConnectionState =
-  "not_configured" | "connected" | "reconnect_required" | "unavailable";
-
-export type UnavailableReason =
-  | "cli_absent"
-  | "cli_incompatible"
-  | "cli_timeout"
-  | "cli_failed"
-  | "malformed_output"
-  | "output_truncated"
-  | "deadline_exceeded"
-  | "site_unreachable";
-
-export interface ConnectionResult {
-  readonly state: ConnectionState;
-  /** Matching profile names; empty for `not_configured` and most `unavailable`. */
-  readonly profiles: readonly string[];
-  readonly reason?: UnavailableReason;
-}
-
-export interface ConnectionQuery {
-  /** The caller's own key for finding its result again, e.g. `${site}/${env}`. */
-  readonly key: string;
-  /**
-   * Candidate values for the environment's public address, most specific
-   * first — typically `env.primaryDomain` and then `site.primaryDomain`. They
-   * are heterogeneous by provider (bare hostname or full URL) and are
-   * normalized here.
-   */
-  readonly origins: readonly string[];
-}
-
-export interface ConnectionSnapshot {
-  readonly byKey: ReadonlyMap<string, ConnectionResult>;
-  /** Unix milliseconds, from the injected clock. */
-  readonly checkedAt: number;
-  readonly cliAvailable: boolean;
-}
-
-/* -------------------------------------------------------------------------- */
-/* Hints                                                                      */
-/* -------------------------------------------------------------------------- */
-
-/**
- * A fixed, non-secret sentence per reason. Exhaustive over the union, so a new
- * reason cannot ship without one. Nothing here interpolates child output.
- */
-const UNAVAILABLE_HINTS: Readonly<Record<UnavailableReason, string>> = {
-  cli_absent: SITE_CLI_INSTALL_HINT,
-  cli_incompatible:
-    "Update the Novamira site CLI: the installed version does not support the commands HQ uses.",
-  cli_timeout: "The Novamira site CLI did not answer in time; try again.",
-  cli_failed:
-    "The Novamira site CLI could not be run; check the installation and try again.",
-  malformed_output:
-    "The Novamira site CLI returned output HQ could not read; check that its version is current.",
-  output_truncated:
-    "The Novamira site CLI returned more output than HQ reads; check that its version is current.",
-  deadline_exceeded:
-    "Checking connection state took too long and was stopped; try again.",
-  site_unreachable:
-    "The site could not be reached to confirm the connection; try again.",
-};
-
-export function unavailableHint(reason: UnavailableReason): string {
-  return UNAVAILABLE_HINTS[reason];
-}
+export type {
+  ConnectionQuery,
+  ConnectionResult,
+  ConnectionSnapshot,
+  ConnectionState,
+  ConnectOutcome,
+  UnavailableReason,
+} from "../connection-state.js";
+export { unavailableHint } from "../connection-state.js";
 
 /**
  * The `CliError` a view may carry for an `unavailable` result.
@@ -168,64 +116,6 @@ export function integrationUnavailableError(
   return new CliError("integration_unavailable", unavailableHint(reason), {
     details: { reason },
   });
-}
-
-/* -------------------------------------------------------------------------- */
-/* Classification                                                             */
-/* -------------------------------------------------------------------------- */
-
-/**
- * How a child stopped, mapped to why the answer is unavailable. Exhaustive over
- * every kind except `"exited"`, which is the only kind whose stdout is read.
- *
- * The exit *code* is never consulted, in either direction: the envelope on
- * stdout is authoritative for a child that ran, and a killed child carries no
- * meaningful status at all.
- */
-const OUTCOME_REASONS: Readonly<
-  Record<Exclude<ChildOutcomeKind, "exited">, UnavailableReason>
-> = {
-  not_found: "cli_absent",
-  spawn_failed: "cli_failed",
-  timed_out: "cli_timeout",
-  aborted: "deadline_exceeded",
-  truncated: "output_truncated",
-};
-
-/**
- * The site CLI error codes HQ classifies specifically. `usage_error` means the
- * installed CLI does not know the command or the flag — an old version, not a
- * transport failure. `site_required` cannot happen (HQ always passes `--site`),
- * so if it ever does it is an HQ bug and is surfaced rather than hidden. Every
- * other code, including one HQ has never seen, degrades to `cli_failed`.
- */
-const ENVELOPE_REASONS: Readonly<Record<string, UnavailableReason>> = {
-  usage_error: "cli_incompatible",
-  site_required: "cli_failed",
-};
-
-/** The site CLI's `error.code` meaning "that profile is not configured here". */
-const PROFILE_GONE_CODE = "site_not_found";
-
-type ChildResult =
-  | { readonly kind: "data"; readonly data: unknown }
-  | { readonly kind: "failure"; readonly reason: UnavailableReason }
-  /** Stage two only: the profile vanished between the two stages. */
-  | { readonly kind: "site_missing" };
-
-function failure(reason: UnavailableReason): ChildResult {
-  return { kind: "failure", reason };
-}
-
-function interpret(outcome: ChildOutcome): ChildResult {
-  if (outcome.kind !== "exited") {
-    return failure(OUTCOME_REASONS[outcome.kind]);
-  }
-  const envelope = parseEnvelope(outcome.stdout);
-  if (envelope.ok === "malformed") return failure("malformed_output");
-  if (envelope.ok) return { kind: "data", data: envelope.data };
-  if (envelope.code === PROFILE_GONE_CODE) return { kind: "site_missing" };
-  return failure(ENVELOPE_REASONS[envelope.code] ?? "cli_failed");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -319,6 +209,8 @@ export interface SiteCliIntegrationOptions {
   readonly now: () => number;
   readonly perChildTimeoutMs?: number;
   readonly overallDeadlineMs?: number;
+  /** The Connect action's own budget; see `connect.ts`'s five-minute default. */
+  readonly connectTimeoutMs?: number;
   readonly concurrency?: number;
   readonly maxStdoutBytes?: number;
   readonly maxStderrBytes?: number;
@@ -328,16 +220,16 @@ export interface SiteCliIntegration {
   connectionStates(
     queries: readonly ConnectionQuery[],
   ): Promise<ConnectionSnapshot>;
+  /**
+   * Spawns `novamira auth login <url>`. Resolves for every failure and never
+   * throws; see `connect.ts` for why the outcome carries a reason and no text.
+   */
+  connect(siteUrl: string): Promise<ConnectOutcome>;
 }
 
 export const DEFAULT_PER_CHILD_TIMEOUT_MS = 10_000;
 export const DEFAULT_OVERALL_DEADLINE_MS = 20_000;
 export const DEFAULT_CONCURRENCY = 4;
-
-const NOT_CONFIGURED: ConnectionResult = Object.freeze({
-  state: "not_configured" as const,
-  profiles: Object.freeze([]),
-});
 
 function unavailable(reason: UnavailableReason): ConnectionResult {
   return { state: "unavailable", profiles: [], reason };
@@ -381,7 +273,22 @@ export function createSiteCliIntegration(
   const maxStdoutBytes = options.maxStdoutBytes ?? DEFAULT_MAX_STDOUT_BYTES;
   const maxStderrBytes = options.maxStderrBytes ?? DEFAULT_MAX_STDERR_BYTES;
 
+  // Composed rather than inlined: the Connect action has its own timeout, its
+  // own signal, and a deliberately different reading of the child's answer, and
+  // `connect.ts` is where the boundary-rule reasoning for it lives.
+  const connect = createConnectAction({
+    spawn: options.spawn,
+    resolve: options.resolve,
+    environment: options.environment,
+    ...(options.connectTimeoutMs === undefined
+      ? {}
+      : { timeoutMs: options.connectTimeoutMs }),
+    maxStdoutBytes,
+    maxStderrBytes,
+  });
+
   return {
+    connect,
     connectionStates: async (queries) => {
       // One deadline for the whole refresh, shared by every child. The
       // per-child timeout and this signal both apply; whichever fires first
@@ -410,7 +317,7 @@ export function createSiteCliIntegration(
       const cli = resolution;
 
       const run = async (args: readonly string[]): Promise<ChildResult> => {
-        if (signal.aborted) return failure("deadline_exceeded");
+        if (signal.aborted) return childFailure("deadline_exceeded");
         const outcome = await options.spawn({
           command: cli.command,
           args: [...cli.prefixArgs, ...args],
@@ -420,7 +327,7 @@ export function createSiteCliIntegration(
           maxStderrBytes,
           signal,
         });
-        return interpret(outcome);
+        return interpretChildOutcome(outcome);
       };
 
       /* Stage one: one `sites list`, for the whole refresh. */
@@ -480,7 +387,7 @@ export function createSiteCliIntegration(
           (name) => verdicts.get(name)?.kind !== "missing",
         );
         if (names.length === 0) {
-          byKey.set(query.key, NOT_CONFIGURED);
+          byKey.set(query.key, NOT_CONFIGURED_CONNECTION);
           continue;
         }
         const states = names.map(

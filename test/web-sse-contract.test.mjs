@@ -22,6 +22,17 @@ import { fileURLToPath } from "node:url";
 import { html, renderHtml } from "../dist/web/html.js";
 import { connCellId, SSE_PATCH_FRAGMENTS } from "../dist/web/patches.js";
 import { streamSse } from "../dist/web/sse.js";
+import { renderDiagnosticsOutput } from "../dist/web/views/diagnostics.js";
+import { renderUpdateCard } from "../dist/web/views/settings.js";
+import { renderProviderFlash } from "../dist/web/views/providers.js";
+import {
+  renderSetupWork,
+  renderSetupWorkBody,
+} from "../dist/web/views/setup.js";
+import {
+  renderSitesResult,
+  renderSitesStatus,
+} from "../dist/web/views/sites.js";
 import {
   renderMain,
   renderNav,
@@ -128,22 +139,92 @@ test("patchSignals emits one datastar-patch-signals block", async () => {
   ]);
 });
 
+/** A running job, for the two `setup-work` renderers. */
+const SETUP_JOB = {
+  id: "a1b2c3",
+  status: "running",
+  profile: "dev",
+  envId: "env-1",
+  startedAt: 1_700_000_000_000,
+  finishedAt: null,
+  events: [
+    { at: 1_700_000_000_000, level: "info", message: "Setup job started." },
+  ],
+  result: null,
+  error: null,
+};
+
+const SETUP_VIEW = {
+  profile: "dev",
+  envId: "env-1",
+  siteLabel: "",
+  envName: "",
+  jobId: SETUP_JOB.id,
+  job: SETUP_JOB,
+};
+
 test("every catalogued outer fragment has a root element carrying its id", () => {
+  // One entry per catalogued fragment, keyed by `id/mode`: 6b-3's `setup-work`
+  // is in the catalog twice, with a different renderer per mode, because the
+  // page-level route replaces the element and the stream replaces only its
+  // body. A row added without its renderer fails here, which is the point: the
+  // catalog and the DOM cannot drift apart.
   const rendered = new Map([
-    ["main", renderHtml(renderMain("providers", html`<p>x</p>`))],
-    ["nav", renderHtml(renderNav("providers"))],
-    ["toast", renderHtml(renderToast({ level: "ok", message: "done" }))],
+    ["main/outer", renderHtml(renderMain("providers", html`<p>x</p>`))],
+    ["nav/outer", renderHtml(renderNav("providers"))],
+    ["toast/outer", renderHtml(renderToast({ level: "ok", message: "done" }))],
+    [
+      "provider-flash/outer",
+      renderHtml(renderProviderFlash({ level: "danger", message: "no" }, "")),
+    ],
+    ["sites-status/inner", renderHtml(renderSitesStatus(1_700_000_000_000))],
+    [
+      "sites-result/outer",
+      renderHtml(
+        renderSitesResult({
+          profile: "__all__",
+          includeEnvs: true,
+          groups: [],
+          connections: null,
+          notice: { level: "neutral", message: "" },
+        }),
+      ),
+    ],
+    ["setup-work/outer", renderHtml(renderSetupWork(SETUP_VIEW))],
+    ["setup-work/inner", renderHtml(renderSetupWorkBody(SETUP_VIEW))],
+    [
+      "diagnostics-output/outer",
+      renderHtml(
+        renderDiagnosticsOutput({ level: "neutral", message: "" }, "body"),
+      ),
+    ],
+    [
+      "updates-card/outer",
+      renderHtml(
+        renderUpdateCard({
+          checked: true,
+          current: "0.1.0",
+          latest: "0.2.0",
+          updateAvailable: true,
+        }),
+      ),
+    ],
   ]);
   assert.ok(SSE_PATCH_FRAGMENTS.length > 0);
   for (const fragment of SSE_PATCH_FRAGMENTS) {
     assert.match(fragment.selectorId, /^[a-z][a-z0-9-]*$/);
-    const markup = rendered.get(fragment.selectorId);
-    assert.ok(markup, `${fragment.selectorId} has a 6a renderer`);
+    const markup = rendered.get(`${fragment.selectorId}/${fragment.mode}`);
+    assert.ok(markup, `${fragment.selectorId}/${fragment.mode} has a renderer`);
     if (fragment.mode === "outer")
       assert.match(
         markup,
         new RegExp(`^<[a-z]+[^>]*\\sid="${fragment.selectorId}"`),
         fragment.selectorId,
+      );
+    else
+      assert.ok(
+        !markup.includes(`id="${fragment.selectorId}"`),
+        `${fragment.selectorId} inner fragment must not carry its own wrapper`,
       );
   }
 });

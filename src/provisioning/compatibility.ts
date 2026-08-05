@@ -60,6 +60,7 @@ import { Buffer } from "node:buffer";
 
 import { CliError } from "../errors.js";
 import { asRecord } from "../json.js";
+import { compareSemver, parseSemver } from "../semver.js";
 import { VERSION } from "../version.js";
 import type { HttpFetch, HttpResponse } from "./http.js";
 import {
@@ -149,98 +150,29 @@ function unsupported(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Version comparison — HQ's own copies, error-free by construction           */
+/* Version comparison                                                         */
 /* -------------------------------------------------------------------------- */
 
-const SEMVER_IDENTIFIER = "(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)";
-const SEMVER = new RegExp(
-  `^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)` +
-    `(?:-(${SEMVER_IDENTIFIER}(?:\\.${SEMVER_IDENTIFIER})*))?` +
-    `(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$`,
-);
-const NUMERIC = /^\d+$/;
-
 /**
- * Components stay as digit strings, exactly as the site CLI keeps them, so a
- * release number beyond `Number.MAX_SAFE_INTEGER` keeps full precision.
+ * SemVer moved down to the leaf `src/semver.ts` in batch 7-2.
+ *
+ * It used to live here, because this was the first module in HQ that needed the
+ * rule that a prerelease sorts below the matching final release. `src/update/`
+ * then needed the same comparison, and `src/update/` importing
+ * `src/provisioning/` would be a layering smell — the update checker has
+ * nothing to do with provisioning a WordPress site. The code is unchanged; only
+ * its address moved, and it is re-exported here so every existing caller,
+ * including `test/provisioning-contract.test.mjs`, keeps importing it from this
+ * module. Diff `src/semver.ts` against `novamira-cli/src/semver.ts` when the
+ * site CLI's matrix moves.
  */
-export interface Semver {
-  readonly major: string;
-  readonly minor: string;
-  readonly patch: string;
-  readonly prerelease?: string;
-}
-
-/**
- * The site CLI's `isSemver` + capture, as a parse. It returns `undefined`
- * instead of throwing `InvalidSemverError`, so every caller here decides which
- * check id an unparseable version belongs to.
- */
-export function parseSemver(value: string): Semver | undefined {
-  const match = SEMVER.exec(value);
-  if (match === null) return undefined;
-  const [, major, minor, patch, prerelease] = match;
-  if (major === undefined || minor === undefined || patch === undefined)
-    return undefined;
-  return {
-    major,
-    minor,
-    patch,
-    ...(prerelease === undefined ? {} : { prerelease }),
-  };
-}
-
-/** Compare two unsigned decimal strings without converting them to numbers. */
-function compareNumeric(left: string, right: string): number {
-  const leftDigits = left.replace(/^0+(?=\d)/, "");
-  const rightDigits = right.replace(/^0+(?=\d)/, "");
-  if (leftDigits.length !== rightDigits.length)
-    return leftDigits.length < rightDigits.length ? -1 : 1;
-  if (leftDigits === rightDigits) return 0;
-  return leftDigits < rightDigits ? -1 : 1;
-}
-
-function comparePrerelease(
-  left: string | undefined,
-  right: string | undefined,
-): number {
-  if (left === right) return 0;
-  const leftParts = left?.split(".") ?? [];
-  const rightParts = right?.split(".") ?? [];
-  const length = Math.max(leftParts.length, rightParts.length);
-  for (let index = 0; index < length; index += 1) {
-    const leftPart = leftParts[index];
-    const rightPart = rightParts[index];
-    if (leftPart === undefined) return -1;
-    if (rightPart === undefined) return 1;
-    if (leftPart === rightPart) continue;
-    const leftNumeric = NUMERIC.test(leftPart);
-    const rightNumeric = NUMERIC.test(rightPart);
-    if (leftNumeric && rightNumeric) return compareNumeric(leftPart, rightPart);
-    if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
-    // SemVer orders alphanumeric identifiers by ASCII, not by locale.
-    return leftPart < rightPart ? -1 : 1;
-  }
-  return 0;
-}
-
-/**
- * SemVer precedence. A prerelease sorts BELOW the matching final release, which
- * is the whole reason this is not a string or numeric comparison: `1.11.1-rc.1`
- * passes a naive check and then fails `novamira auth login`.
- */
-export function compareSemver(left: Semver, right: Semver): number {
-  const major = compareNumeric(left.major, right.major);
-  if (major !== 0) return major;
-  const minor = compareNumeric(left.minor, right.minor);
-  if (minor !== 0) return minor;
-  const patch = compareNumeric(left.patch, right.patch);
-  if (patch !== 0) return patch;
-  if (left.prerelease === undefined && right.prerelease !== undefined) return 1;
-  if (left.prerelease !== undefined && right.prerelease === undefined)
-    return -1;
-  return comparePrerelease(left.prerelease, right.prerelease);
-}
+export {
+  compareSemver,
+  isSemver,
+  parseSemver,
+  InvalidSemverError,
+  type Semver,
+} from "../semver.js";
 
 /** WordPress versions are dotted-numeric, not SemVer: `6.9`, `6.10.2`. */
 export function parseDotted(value: string): readonly number[] | undefined {

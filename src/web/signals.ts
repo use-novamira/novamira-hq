@@ -41,6 +41,15 @@
  *   relied on struct zero values, which `encoding/json` still emits;
  *   TypeScript's object literals must carry the keys or the root `data-signals`
  *   object loses them and a `data-bind` on a missing path silently creates it.
+ *
+ * **The dynamic-signal escape hatch (6b).** `DashboardSignals` cannot describe
+ * one signal per configured provider profile, and it should not try: those
+ * signals are per-row UI state that Datastar creates on first write, and putting
+ * one per profile into the root `data-signals` would grow the token-bearing
+ * attribute on every page for no benefit. {@link dynamicSignalPath} is the one
+ * way to mint such a path, it hex-encodes the caller's key, and it goes through
+ * {@link assertSignalPath} like everything else. See its comment for the Go
+ * collision it exists to fix.
  */
 
 import { CliError } from "../errors.js";
@@ -153,6 +162,97 @@ export function assertSignalPath(path: string): asserts path is SignalPath {
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* Dynamic per-row signals                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A per-row signal path derived from a caller-supplied key.
+ *
+ * **The bug this fixes.** Go's `rowSignal` (views.go:456-466) built
+ * `prefix + <the key's alphanumerics>`, dropping every other character. That map
+ * is not injective: the profiles `a-b` and `ab` both become `…ab`, so expanding
+ * one row's Details expanded the other's, and clicking "Check connection" on one
+ * spun the spinner on both. Worse, a profile named `-` collapsed to the bare
+ * prefix and collided with every other punctuation-only name.
+ *
+ * Hex encoding is injective by construction and stays inside the
+ * `[A-Za-z0-9_]` grammar {@link assertSignalPath} enforces, so any legal profile
+ * name — including one with `.`, `-`, `_` or non-ASCII characters — yields a
+ * distinct, valid path. It is the same recipe `connCellId` uses for element ids,
+ * for the same reason.
+ *
+ * These paths are deliberately **absent from {@link DashboardSignals}**:
+ * Datastar creates a signal on first write, which is what Go relied on too.
+ */
+export function dynamicSignalPath(prefix: string, key: string): SignalPath {
+  if (prefix === "" || key === "") {
+    throw new CliError(
+      "internal_error",
+      "A dynamic signal path needs a non-empty prefix and a non-empty key.",
+    );
+  }
+  const path = `${prefix}_${Buffer.from(key, "utf8").toString("hex")}`;
+  assertSignalPath(path);
+  return path;
+}
+
+/** `checking_<hex>` — Go's `connSignal`, the row's `data-indicator` target. */
+export function connCheckingSignal(profile: string): SignalPath {
+  return dynamicSignalPath("checking", profile);
+}
+
+/** `details_<hex>` — Go's `rowSignal("details", …)`, the details-row toggle. */
+export function providerDetailsSignal(profile: string): SignalPath {
+  return dynamicSignalPath("details", profile);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Defaults                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Go's `defaultProviderFormSignals` (views.go:1498-1506).
+ *
+ * Exported because three call sites need the *same* object: the root
+ * `data-signals` of a rendered page, the reset expression the Cancel and Add
+ * Profile buttons run, and the RFC 7386 signal patch the save and remove
+ * handlers send. A fourth spelling would be a form that resets to a different
+ * state depending on how it was reset.
+ */
+export function defaultProviderFormSignals(
+  firstProviderKind?: string,
+): ProviderFormSignals {
+  return {
+    open: false,
+    profile: "",
+    provider: firstProviderKind ?? "",
+    credentialEnv: "",
+    credentialValue: "",
+    companyId: "",
+    apiBaseUrl: "",
+    force: false,
+  };
+}
+
+/** The deploy form's reset state; 6b-3's save handler patches it. */
+export function defaultDeployFormSignals(): DeployFormSignals {
+  return {
+    open: false,
+    name: "",
+    hostingProfile: "",
+    siteId: "",
+    siteLabel: "",
+    sourceEnvId: "",
+    sourceEnvName: "",
+    targetEnvId: "",
+    targetEnvName: "",
+    pushDb: false,
+    pushFiles: false,
+    searchReplace: false,
+  };
+}
+
 export interface DefaultSignalOptions {
   /** `?new=host` opens the provider form on load. `?new=site` is ignored. */
   readonly openProviderForm?: boolean;
@@ -168,29 +268,10 @@ export function defaultDashboardSignals(
   return {
     token,
     providerForm: {
+      ...defaultProviderFormSignals(options?.firstProviderKind),
       open: options?.openProviderForm ?? false,
-      profile: "",
-      provider: options?.firstProviderKind ?? "",
-      credentialEnv: "",
-      credentialValue: "",
-      companyId: "",
-      apiBaseUrl: "",
-      force: false,
     },
-    deployForm: {
-      open: false,
-      name: "",
-      hostingProfile: "",
-      siteId: "",
-      siteLabel: "",
-      sourceEnvId: "",
-      sourceEnvName: "",
-      targetEnvId: "",
-      targetEnvName: "",
-      pushDb: false,
-      pushFiles: false,
-      searchReplace: false,
-    },
+    deployForm: defaultDeployFormSignals(),
     sites: {
       profile: ALL_PROFILES_SENTINEL,
       includeEnvs: true,

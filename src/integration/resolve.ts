@@ -54,6 +54,8 @@
 import { stat } from "node:fs/promises";
 import { posix as posixPath, win32 as win32Path } from "node:path";
 
+import { SITE_CLI_OVERRIDE_ENV } from "../connection-state.js";
+
 /** The executable, and any arguments that must precede the CLI's own argv. */
 export interface SiteCliResolution {
   readonly command: string;
@@ -63,20 +65,20 @@ export interface SiteCliResolution {
 
 export type ResolveSiteCli = () => Promise<SiteCliResolution | undefined>;
 
-/** HQ's own override. The site CLI's variables are never read. */
-export const SITE_CLI_OVERRIDE_ENV = "NOVAMIRA_HQ_SITE_CLI";
+/**
+ * HQ's own override, and the fixed hint that names it.
+ *
+ * Both moved to `src/connection-state.ts` in 6b and are re-exported here, so
+ * that `src/web/` can render the hint without importing `src/integration/` (the
+ * two are peer layers). This module remains the only one that *reads* the
+ * variable; the root module only spells it, once, so the sentence and the lookup
+ * cannot drift.
+ */
+export { SITE_CLI_INSTALL_HINT } from "../connection-state.js";
+export { SITE_CLI_OVERRIDE_ENV };
 
 /** The executable name, as published by `@novamira/cli`. */
 export const SITE_CLI_COMMAND = "novamira";
-
-/**
- * The fixed, non-secret hint the dashboard shows when the CLI cannot be found.
- * It names the override so an operator with a non-standard install has a way
- * out that does not involve changing `PATH`.
- */
-export const SITE_CLI_INSTALL_HINT =
-  "Install the Novamira site CLI (npm install -g @novamira/cli) to see connection state, " +
-  `or set ${SITE_CLI_OVERRIDE_ENV} to its executable.`;
 
 /** Windows' default when `PATHEXT` is unset, in the order the shell probes. */
 const DEFAULT_PATHEXT = ".COM;.EXE;.BAT;.CMD";

@@ -12,7 +12,14 @@ import { redact } from "./redact.js";
 
 export interface OutputStreams {
   readonly stdout: { write(chunk: string): unknown };
-  readonly stderr: { write(chunk: string): unknown };
+  /**
+   * `isTTY` is declared because `src/main.ts` reads it: the 24-hour background
+   * release notice is for a human at a terminal, and a pipe, a log, a CI job or
+   * a test's injected sink turns it off — which means turning off the registry
+   * request and the state write behind it, not just the line. It is optional so
+   * an injected sink stays two properties, and absent means "not a terminal".
+   */
+  readonly stderr: { write(chunk: string): unknown; isTTY?: boolean };
 }
 
 export interface InvocationWarning {
@@ -94,6 +101,19 @@ export interface Renderer {
   warn(message: string): void;
   /** Human-mode progress note on stderr; suppressed by `--json`/`--quiet`. */
   note(message: string): void;
+  /**
+   * Verbatim text on stderr: no prefix, no added newline, no redaction.
+   *
+   * The one path for a *child process's own output*, added in Phase 7-2 for
+   * `novamira-hq update`, whose package-manager child can run for minutes.
+   * Suppressed by `--quiet` only and **never by `--json`**: stdout stays a
+   * single envelope either way, and an install that prints nothing for two
+   * minutes looks hung. It is not a general-purpose stderr writer — a message
+   * HQ composes belongs in {@link Renderer.note}, {@link Renderer.warn} or
+   * {@link Renderer.diagnostic}, all of which frame and, where relevant,
+   * redact it.
+   */
+  childOutput(chunk: string): void;
   /** Redacted diagnostic on stderr; only with `--verbose` and not `--quiet`. */
   diagnostic(label: string, payload: unknown): void;
   /** Free-form human-mode stdout line; a no-op in JSON mode. */
@@ -197,6 +217,10 @@ export function createRenderer(
 
     note(message) {
       if (!quiet && !json) writeStderrLine(message);
+    },
+
+    childOutput(chunk) {
+      if (!quiet) streams.stderr.write(chunk);
     },
 
     diagnostic(label, payload) {

@@ -26,13 +26,11 @@ import {
   serializeHostingEnvironment,
   serializeHostingSite,
   serializeOperationStatus,
-  serializeProviderCapability,
   serializeProviderValidation,
   type ActionResult,
   type HostingEnvironment,
   type HostingSite,
   type OperationStatus,
-  type ProviderCapability,
   type ProviderValidation,
 } from "../hosting/types.js";
 import type { CommandMeta, InvocationWarning } from "../output/render.js";
@@ -225,50 +223,18 @@ export function renderSecretWrite(path: string): RenderedResult {
 /* Capability post-processing                                                 */
 /* -------------------------------------------------------------------------- */
 
-/** The capability HQ reports as unsupported regardless of the provider. */
-export const SITE_DELETE_CAPABILITY = "sites.delete";
-
-/** Why {@link SITE_DELETE_CAPABILITY} is reported unsupported. */
-export const SITE_DELETE_DISABLED_NOTE =
-  "site deletion is not exposed by Novamira HQ";
-
-function asCapability(value: unknown): ProviderCapability | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    return undefined;
-  const record = value as Record<string, unknown>;
-  const name = record.name;
-  const supported = record.supported;
-  const notes = record.notes;
-  if (typeof name !== "string" || typeof supported !== "boolean")
-    return undefined;
-  if (typeof notes === "string" && notes !== "")
-    return { name, supported, notes };
-  if (notes !== undefined && notes !== null && typeof notes !== "string")
-    return undefined;
-  return { name, supported };
-}
-
 /**
- * Go's `disabledSiteDeleteCapability`. `hosting sites delete` is deliberately
- * not registered, so a provider that advertises `sites.delete` must not be
- * reported as offering it here. A response that is not a capability list is
- * returned unchanged, matching Go's "unmarshal failed, pass it through".
+ * Moved to `src/hosting/capabilities.ts` in Phase 7 and re-exported here.
+ *
+ * The rule — a provider that advertises `sites.delete` must not be reported as
+ * offering it through HQ — now has two callers: `hosting providers capabilities`
+ * and the dashboard's `/_dashboard/diagnostics/capabilities` route. `src/web/`
+ * may not import `src/cli/`, so the rule sits below both. Every existing
+ * importer, `test/cli-foundations-contract.test.mjs` included, keeps working
+ * unchanged.
  */
-export function disableSiteDeleteCapability(value: unknown): unknown {
-  if (!Array.isArray(value)) return value;
-  const capabilities: ProviderCapability[] = [];
-  for (const entry of value as readonly unknown[]) {
-    const capability = asCapability(entry);
-    if (capability === undefined) return value;
-    capabilities.push(
-      capability.name === SITE_DELETE_CAPABILITY
-        ? {
-            name: capability.name,
-            supported: false,
-            notes: SITE_DELETE_DISABLED_NOTE,
-          }
-        : capability,
-    );
-  }
-  return capabilities.map(serializeProviderCapability);
-}
+export {
+  disableSiteDeleteCapability,
+  SITE_DELETE_CAPABILITY,
+  SITE_DELETE_DISABLED_NOTE,
+} from "../hosting/capabilities.js";
