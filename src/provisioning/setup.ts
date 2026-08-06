@@ -63,6 +63,7 @@ import {
   NOVAMIRA_LATEST_SOURCE_ALIAS,
   activatePlugin,
   inferPluginSlug,
+  installFailureHint,
   installPreflightApplies,
   installedPluginIsActive,
   pluginInstallCommand,
@@ -352,6 +353,15 @@ export async function provisionNovamira(
     report("ok", "WP-CLI preflight passed.");
   }
 
+  // Both install-failure branches below ask the same question before they
+  // report: was this simply a re-run? `--force` already requested the
+  // overwrite, so suggesting it again there would be advice the operator has
+  // taken — the hint is suppressed rather than probed for.
+  const installHint = async (): Promise<string> =>
+    (request.force ?? false)
+      ? ""
+      : installFailureHint(client, envId, slug, budget);
+
   // B3. The install itself. Go's asymmetry is preserved exactly: the async
   // branch never inspects `result.status`, the sync branch never waits.
   report("info", "Installing the Novamira plugin.");
@@ -376,7 +386,7 @@ export async function provisionNovamira(
     if (status.failed) {
       throw new CliError(
         "provider_error",
-        `Plugin install operation ${status.operationId} failed: ${status.message ?? "provider reported failure"}`,
+        `Plugin install operation ${status.operationId} failed: ${status.message ?? "provider reported failure"}${await installHint()}`,
         {
           details: {
             provider: status.provider,
@@ -389,7 +399,7 @@ export async function provisionNovamira(
   } else if (installResult.status >= 400) {
     throw new CliError(
       "provider_error",
-      `Plugin install failed: provider returned status ${String(installResult.status)}: ${installResult.message ?? "request failed"}`,
+      `Plugin install failed: provider returned status ${String(installResult.status)}: ${installResult.message ?? "request failed"}${await installHint()}`,
       {
         details: {
           provider: installResult.provider,

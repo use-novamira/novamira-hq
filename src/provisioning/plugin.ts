@@ -70,6 +70,10 @@ export const PREFLIGHT_HINT_COMMAND = "wp config get DB_HOST";
 export const DB_HOST_LOCALHOST_HINT =
   "; DB_HOST is localhost, which can make WP-CLI use a missing MySQL socket on some hosts. Set DB_HOST to 127.0.0.1 or the provider's TCP database host, then retry";
 
+/** The hint appended when a failed install turns out to be a re-run. */
+export const ALREADY_INSTALLED_HINT =
+  "; the plugin is already installed, and `wp plugin install` refuses to overwrite it. Re-run with --force to reinstall over it";
+
 /* -------------------------------------------------------------------------- */
 /* Source resolution                                                          */
 /* -------------------------------------------------------------------------- */
@@ -297,6 +301,54 @@ async function preflightHint(
   return wpCliOutput(status.raw).trim() === "localhost"
     ? DB_HOST_LOCALHOST_HINT
     : "";
+}
+
+/** The probe {@link installFailureHint} runs. Inside Kinsta's charset. */
+export function pluginIsInstalledCommand(slug: string): string {
+  return shellJoin(["wp", "plugin", "is-installed", slug]);
+}
+
+/**
+ * The already-installed tell, or nothing — the same courtesy {@link
+ * preflightHint} pays, for the failure one step later.
+ *
+ * This exists because a provider is allowed to report a failed WP-CLI run
+ * without reporting what WP-CLI said. Kinsta collapses *every* non-zero exit
+ * into `500 Server Error` carrying no stdout and no stderr, so the operator
+ * re-running `hosting novamira setup` on a site they already provisioned is
+ * told only that the install "failed" — never that `wp plugin install` refuses
+ * an existing directory, and never that `--force` is the answer.
+ *
+ * `wp plugin is-installed` is the right probe precisely because it writes
+ * nothing: it reports through its exit status alone, which is the one channel
+ * that survives such a provider. `status.failed === false` therefore means the
+ * plugin is present.
+ *
+ * Every failure to answer is silence rather than a guess. A wrong hint on top
+ * of a real failure is worse than none, so a throw, a refused command and a
+ * provider that answered synchronously (`undefined`, where the exit status did
+ * not survive as an operation) all yield `""`.
+ */
+export async function installFailureHint(
+  client: ProviderClient,
+  envId: string,
+  slug: string,
+  budget: PollBudget,
+): Promise<string> {
+  if (slug === "") return "";
+  let status: OperationStatus | undefined;
+  try {
+    status = await runWpCli(
+      client,
+      envId,
+      pluginIsInstalledCommand(slug),
+      budget,
+    );
+  } catch {
+    return "";
+  }
+  if (status === undefined || status.failed) return "";
+  return ALREADY_INSTALLED_HINT;
 }
 
 /**

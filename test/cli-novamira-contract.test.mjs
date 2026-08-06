@@ -47,7 +47,10 @@ import { CliError } from "../dist/errors.js";
 import { createHostingClientFactory } from "../dist/hosting/factory.js";
 import { createRenderer } from "../dist/output/render.js";
 import { PROTECTED_RESOURCE_PATH } from "../dist/provisioning/compatibility.js";
-import { DB_HOST_LOCALHOST_HINT } from "../dist/provisioning/plugin.js";
+import {
+  ALREADY_INSTALLED_HINT,
+  DB_HOST_LOCALHOST_HINT,
+} from "../dist/provisioning/plugin.js";
 import { PHP_VERSION_COMMAND } from "../dist/provisioning/phpcompat.js";
 
 /** An obvious fake. Nothing in this suite ever contacts a real provider. */
@@ -1653,4 +1656,134 @@ test("setup issues no application-password command and writes no profile", async
   } finally {
     await rm(root, { force: true, recursive: true });
   }
+});
+
+/* -------------------------------------------------------------------------- */
+/* The already-installed hint                                                 */
+/* -------------------------------------------------------------------------- */
+
+test("a failed install carries the already-installed hint when it applies", async () => {
+  // 111. A provider is allowed to report a failed WP-CLI run without reporting
+  // what WP-CLI said — Kinsta collapses every non-zero exit into a bare
+  // `500 Server Error`. Re-running setup on a site that already has the plugin
+  // then reports only that the install "failed", so the probe supplies the
+  // reason and names `--force`. `wp plugin is-installed` writes nothing and
+  // reports through its exit status alone, which is the one channel that
+  // survives such a provider: a non-failed operation means the plugin is there.
+  const client = fakeClient({
+    wpCli: {
+      [PHP_VERSION_COMMAND]: sync({ data: { result: "8.2.12" } }),
+      "wp option get siteurl": sync({
+        data: { result: "https://example.com" },
+      }),
+      "wp plugin install novamira": asyncOperation("op-install"),
+      "wp plugin is-installed novamira": asyncOperation("op-probe"),
+    },
+    operations: {
+      "op-install": operationStatus("op-install", {
+        done: true,
+        failed: true,
+        message: "Operation failed! Please refer to `data` for more details.",
+      }),
+      "op-probe": operationStatus("op-probe", { done: true, failed: false }),
+    },
+  });
+  const { run } = harness({ client, overrides: { fetch: forbiddenFetch() } });
+
+  const { envelope } = await run([
+    "setup",
+    "--env",
+    "env-1",
+    "--source",
+    "novamira",
+  ]);
+
+  assert.equal(envelope.error.code, "provider_error");
+  assert.equal(envelope.error.message.endsWith(ALREADY_INSTALLED_HINT), true);
+  assert.match(envelope.error.message, /--force/);
+  // The probe ran after the install, never instead of it.
+  assert.deepEqual(client.commands(), [
+    PHP_VERSION_COMMAND,
+    "wp option get siteurl",
+    "wp plugin install novamira",
+    "wp plugin is-installed novamira",
+  ]);
+});
+
+test("a failed install omits the hint when the plugin is absent", async () => {
+  // 112. The install failed for some other reason; `--force` would not fix it,
+  // so saying so would be advice that sends the operator the wrong way. A
+  // failed probe is "not installed", because `is-installed` exits non-zero.
+  const client = fakeClient({
+    wpCli: {
+      [PHP_VERSION_COMMAND]: sync({ data: { result: "8.2.12" } }),
+      "wp option get siteurl": sync({
+        data: { result: "https://example.com" },
+      }),
+      "wp plugin install novamira": asyncOperation("op-install"),
+      "wp plugin is-installed novamira": asyncOperation("op-probe"),
+    },
+    operations: {
+      "op-install": operationStatus("op-install", {
+        done: true,
+        failed: true,
+        message: "disk full",
+      }),
+      "op-probe": operationStatus("op-probe", { done: true, failed: true }),
+    },
+  });
+  const { run } = harness({ client, overrides: { fetch: forbiddenFetch() } });
+
+  const { envelope } = await run([
+    "setup",
+    "--env",
+    "env-1",
+    "--source",
+    "novamira",
+  ]);
+
+  assert.equal(envelope.error.code, "provider_error");
+  assert.equal(envelope.error.message.includes(ALREADY_INSTALLED_HINT), false);
+  assert.match(envelope.error.message, /disk full/);
+});
+
+test("--force suppresses the already-installed hint and its probe", async () => {
+  // 113. The operator already asked for the overwrite, so the hint would be
+  // advice they have taken. It is suppressed rather than probed for: no
+  // `is-installed` call is made at all.
+  const client = fakeClient({
+    wpCli: {
+      [PHP_VERSION_COMMAND]: sync({ data: { result: "8.2.12" } }),
+      "wp option get siteurl": sync({
+        data: { result: "https://example.com" },
+      }),
+      "wp plugin install novamira --force": asyncOperation("op-install"),
+      "wp plugin is-installed novamira": asyncOperation("op-probe"),
+    },
+    operations: {
+      "op-install": operationStatus("op-install", {
+        done: true,
+        failed: true,
+        message: "still broken",
+      }),
+      "op-probe": operationStatus("op-probe", { done: true, failed: false }),
+    },
+  });
+  const { run } = harness({ client, overrides: { fetch: forbiddenFetch() } });
+
+  const { envelope } = await run([
+    "setup",
+    "--env",
+    "env-1",
+    "--source",
+    "novamira",
+    "--force",
+  ]);
+
+  assert.equal(envelope.error.code, "provider_error");
+  assert.equal(envelope.error.message.includes(ALREADY_INSTALLED_HINT), false);
+  assert.equal(
+    client.commands().includes("wp plugin is-installed novamira"),
+    false,
+  );
 });
