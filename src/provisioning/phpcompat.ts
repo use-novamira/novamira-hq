@@ -13,10 +13,13 @@
  *
  * Two behaviours look sloppy and are deliberate.
  *
- * 1. The version is the LAST version-like token in the output, not the first.
- *    Providers echo the command back before its output, and a PHP deprecation
- *    notice will happily print `5.6` in front of the value `echo` produced. The
- *    last token is the one WP-CLI actually wrote.
+ * 1. The version is read from `wp cli info`'s `PHP version:` label when the
+ *    output carries one, and is otherwise the LAST version-like token, not the
+ *    first. The label has to win, because `wp cli info` prints WP-CLI's own
+ *    version *after* PHP's — the trailing token is `2.12.0`, not `8.4.1`. The
+ *    last-token rule still governs unlabelled output: providers echo the command
+ *    back before its output, and a PHP deprecation notice will happily print
+ *    `5.6` in front of the real value.
  * 2. The comparison is on the MAJOR component only. Go compared `Major < 8` and
  *    its test asserts exactly that; `"8.0"` is message text, not a bound. Do not
  *    upgrade this into a semver comparison — there is no upper bound either, so
@@ -38,11 +41,26 @@ export const NOVAMIRA_SETUP_MINIMUM_PHP = "8.0";
 export const NOVAMIRA_SETUP_MINIMUM_PHP_MAJOR = 8;
 
 /**
- * Sent as a LITERAL string, never through `shellJoin`: `shellQuote` refuses
- * both `'` and `;`, and both are load-bearing here. Do not "normalise" this
- * into a joined argument list — it will throw `usage_error` at run time.
+ * `wp cli info`, and deliberately NOT `wp eval 'echo PHP_VERSION;'`.
+ *
+ * Kinsta validates `wp_command` against `letters, numbers, spaces, single
+ * quotes, _, -, ., /, :, =` and answers anything else with HTTP 400. PHP's
+ * `eval()` in turn refuses an unterminated statement, so `wp eval` cannot be
+ * spelled in any way Kinsta accepts: with the `;` the request is rejected, and
+ * without it the site raises a parse error. Because this gate is the first
+ * request `hosting novamira setup` makes, the old command made provisioning
+ * impossible on Kinsta rather than merely degraded.
+ *
+ * `wp cli info` costs nothing on the other seven providers and is strictly
+ * better here: it does not bootstrap WordPress, so the gate no longer needs a
+ * reachable database to tell an operator their PHP is too old. The DB-backed
+ * preflight stays exactly where it was, one step later.
+ *
+ * Its output labels the value (`PHP version:\t8.4.1`) and carries WP-CLI's own
+ * version last, which is why {@link phpVersionFromOutput} reads the label in
+ * preference to the trailing token. See the module comment.
  */
-export const PHP_VERSION_COMMAND = "wp eval 'echo PHP_VERSION;'";
+export const PHP_VERSION_COMMAND = "wp cli info";
 
 /** Go's `phpcompat.Version`. */
 export interface PhpVersion {
@@ -56,12 +74,16 @@ export interface PhpVersion {
 const PHP_VERSION_PATTERN = /\b(\d+)\.(\d+)(?:\.(\d+))?\b/g;
 
 /**
- * The LAST version-like token in the output. Provider command echoes and PHP
- * deprecation warnings routinely precede the value `echo` produced.
+ * `wp cli info`'s labelled row, matched a line at a time so that only the
+ * label's own value is scanned. `PHP binary:\t/usr/bin/php8.4` sits directly
+ * above it and must never be mistaken for the version.
  */
-export function phpVersionFromOutput(output: string): PhpVersion | undefined {
+const PHP_VERSION_LABEL_PATTERN = /^[ \t]*PHP version[ \t]*:[ \t]*(.+)$/gim;
+
+/** The LAST version-like token in a fragment, or `undefined` if it has none. */
+function lastVersionToken(text: string): PhpVersion | undefined {
   let last: PhpVersion | undefined;
-  for (const match of output.matchAll(PHP_VERSION_PATTERN)) {
+  for (const match of text.matchAll(PHP_VERSION_PATTERN)) {
     const [raw, major, minor, patch] = match;
     if (major === undefined || minor === undefined) continue;
     last = {
@@ -72,6 +94,28 @@ export function phpVersionFromOutput(output: string): PhpVersion | undefined {
     };
   }
   return last;
+}
+
+/** The value of the last `PHP version:` row, when the output carries one. */
+function labelledVersion(output: string): PhpVersion | undefined {
+  let last: PhpVersion | undefined;
+  for (const match of output.matchAll(PHP_VERSION_LABEL_PATTERN)) {
+    const value = match[1];
+    if (value === undefined) continue;
+    const found = lastVersionToken(value);
+    if (found !== undefined) last = found;
+  }
+  return last;
+}
+
+/**
+ * The site's PHP version: `wp cli info`'s `PHP version:` label when the output
+ * has one, else the LAST version-like token. Provider command echoes and PHP
+ * deprecation warnings routinely precede the real value, and `wp cli info`
+ * routinely follows it with WP-CLI's own version — hence both rules.
+ */
+export function phpVersionFromOutput(output: string): PhpVersion | undefined {
+  return labelledVersion(output) ?? lastVersionToken(output);
 }
 
 /**

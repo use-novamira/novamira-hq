@@ -326,10 +326,7 @@ test("the PHP version is the LAST version-like token in the output", async () =>
   // 18: an unstripped read, where the echo carries no version but the command
   // line could; the value `echo` produced is the last token.
   const echoed = await raised(
-    () =>
-      ensureNovamiraSetupPhp(
-        "2026-06-30 wp eval 'echo PHP_VERSION;'\n7.4.33\n",
-      ),
+    () => ensureNovamiraSetupPhp("2026-06-30 wp cli info\n7.4.33\n"),
     "echoed php",
   );
   assert.equal(echoed.code, "server_unsupported");
@@ -356,15 +353,55 @@ test("output with no version in it is a provider_error, not server_unsupported",
   }
 });
 
-test("PHP_VERSION_COMMAND is a literal because shellJoin refuses it", async () => {
-  // 21: the constant documents its own reason; this pins it. `shellQuote`
-  // refuses both `'` and `;`, and both are load-bearing in `wp eval`.
-  assert.equal(PHP_VERSION_COMMAND, "wp eval 'echo PHP_VERSION;'");
-  const error = await raised(
-    () => shellJoin(["wp", "eval", "echo PHP_VERSION;"]),
-    "shellJoin php eval",
+test("PHP_VERSION_COMMAND is spelled in the charset every provider accepts", async () => {
+  // 21: Kinsta validates `wp_command` against `letters, numbers, spaces, single
+  // quotes, _, -, ., /, :, =` and answers anything else with HTTP 400. `wp eval`
+  // cannot satisfy it — PHP's `eval()` refuses an unterminated statement, so the
+  // `;` is mandatory and rejected — and this gate is setup's FIRST request, so a
+  // command outside the charset makes provisioning impossible on Kinsta.
+  assert.equal(PHP_VERSION_COMMAND, "wp cli info");
+  assert.match(PHP_VERSION_COMMAND, /^wp [a-z0-9 _.:/='-]+$/);
+
+  // The old command is pinned as a counter-example so it cannot come back.
+  assert.doesNotMatch("wp eval 'echo PHP_VERSION;'", /^wp [a-z0-9 _.:/='-]+$/);
+
+  // It is still sent as a literal rather than joined: shellJoin quotes each
+  // argument, which would spell `wp 'cli' 'info'` and defeat the charset.
+  assert.equal(shellJoin(["wp", "cli", "info"]), "wp cli info");
+});
+
+test("the PHP gate reads wp cli info's label, not its trailing token", async () => {
+  // 22: `wp cli info` prints WP-CLI's own version AFTER PHP's, so the
+  // last-token rule alone would report 2.12.0 and refuse every site.
+  const info = [
+    "OS:\tLinux 6.8.0-1052-oracle #53-Ubuntu SMP x86_64",
+    "Shell:\t",
+    "PHP binary:\t/usr/bin/php8.5",
+    "PHP version:\t8.5.7",
+    "php.ini used:\t/etc/php/8.5/cli/php.ini",
+    "MySQL version:\tmariadb from 11.4.7-MariaDB, client 15.2",
+    "WP-CLI version:\t2.12.0",
+  ].join("\n");
+
+  assert.equal(ensureNovamiraSetupPhp(info), "8.5.7");
+  assert.deepEqual(phpVersionFromOutput(info), {
+    major: 8,
+    minor: 5,
+    patch: 7,
+    raw: "8.5.7",
+  });
+
+  // The label still wins when the site is genuinely too old, so an operator on
+  // PHP 7 gets server_unsupported rather than a WP-CLI version in the message.
+  const old = await raised(
+    () =>
+      ensureNovamiraSetupPhp(
+        info.replace("PHP version:\t8.5.7", "PHP version:\t7.4.33"),
+      ),
+    "php 7 via label",
   );
-  assert.equal(error.code, "usage_error");
+  assert.equal(old.code, "server_unsupported");
+  assert.match(old.message, /7\.4\.33/);
 });
 
 /* -------------------------------------------------------------------------- */
