@@ -200,10 +200,15 @@ interface CacheEntry {
  *
  * A profile name matches `[A-Za-z0-9][A-Za-z0-9._-]{0,63}` and so can never
  * contain a NUL, which makes the encoding injective — `("a", true)` and
- * `("a 1", false)` cannot collide the way a `:` separator would allow.
+ * `("a\01", false)` cannot collide the way a `:` separator would allow.
+ *
+ * The separator is written `\u0000` rather than as a raw byte. A literal NUL
+ * makes this whole file binary to `grep` and `rg`, which then skip it in
+ * silence — a repository-wide search for `listSites` does not find the call
+ * in `loadGroup` below.
  */
 function cacheKey(profile: string, includeEnvs: boolean): string {
-  return `${includeEnvs ? "1" : "0"} ${profile}`;
+  return `${includeEnvs ? "1" : "0"}\u0000${profile}`;
 }
 
 function nonEmpty(value: string | undefined): value is string {
