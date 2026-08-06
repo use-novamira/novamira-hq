@@ -27,7 +27,7 @@
  * oversized-body error names a byte count and nothing else.
  */
 
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { CliError } from "../errors.js";
 import { asRecord } from "../json.js";
@@ -148,21 +148,32 @@ async function readBoundedBody(message: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-/** Adapt one `node:http` message. The only place `IncomingMessage` is read. */
+/**
+ * Adapt one `node:http` message. The only place `IncomingMessage` is read.
+ *
+ * `response` is what the abort signal watches. An `IncomingMessage` emits
+ * `close` once its body has been *consumed*, not only when the peer disappears,
+ * so watching the request would abort every route that reads its Datastar
+ * signals from the body — which is every `POST` under `/_dashboard/` — the
+ * instant it had them. The response socket closing before the response was
+ * ended is the disconnect a looping handler must stop for.
+ */
 export function dashboardRequestFrom(
   message: IncomingMessage,
+  response: ServerResponse,
 ): DashboardRequest {
   const target = new URL(message.url ?? "/", "http://dashboard.invalid");
   let pending: Promise<string> | undefined;
-  // `close` fires for every completed request too, which is harmless: a handler
-  // that has already returned never reads the signal, and a streaming handler
-  // that is still running is exactly the one that must stop.
   const disconnected = new AbortController();
   const abort = (): void => {
     disconnected.abort();
   };
   message.once("aborted", abort);
-  message.once("close", abort);
+  response.once("close", () => {
+    // A normal end closes the response too; only an unfinished one is a client
+    // that went away while a handler was still writing.
+    if (!response.writableEnded) abort();
+  });
   return {
     method: (message.method ?? "GET").toUpperCase(),
     path: decodePath(target.pathname),

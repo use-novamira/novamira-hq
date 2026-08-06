@@ -628,7 +628,9 @@ test("every command that names an environment requires --env", async () => {
     ["access", "ssh", "set-status", "--enabled"],
     ["access", "ssh", "allowlist"],
     ["access", "ssh", "set-allowlist", "--ip", "10.0.0.1"],
-    ["access", "ssh", "config", "--site", "site-1"],
+    // `ssh config` is deliberately absent: it is the one read that takes both
+    // ids and requires neither, because which of them addresses the resource is
+    // the provider's business. See the test below.
     ["access", "ssh", "generate-password"],
     ["access", "ssh", "password", "--secret-out", "/tmp/pw"],
     ["access", "ssh", "set-password-status"],
@@ -650,16 +652,37 @@ test("every command that names an environment requires --env", async () => {
   }
 });
 
-test("ssh config requires --site, change-expiration requires --interval", async () => {
-  const config = harness();
-  const site = await fails(
-    config,
-    ["access", "ssh", "config", "--env", "env-1"],
-    "usage_error",
-    2,
-  );
-  assert.equal(site.details.flag, "--site");
+test("ssh config passes both ids through and requires neither", async () => {
+  // Go's `access.go:129` builds `ReadSSHConfig{SiteID, EnvID}` from whatever was
+  // given and lets the provider decide: Kinsta reads both, Cloudways and
+  // Rocket.net take the env id and fall back to the site id. Requiring both here
+  // made `ssh config` unreachable on the two providers that only ever have one.
+  const envOnly = harness();
+  await succeeds(envOnly, ["access", "ssh", "config", "--env", "env-1"]);
+  assert.deepEqual(envOnly.client.reads[0], {
+    kind: "ssh-config",
+    siteId: "",
+    envId: "env-1",
+  });
 
+  const siteOnly = harness();
+  await succeeds(siteOnly, ["access", "ssh", "config", "--site", "site-1"]);
+  assert.deepEqual(siteOnly.client.reads[0], {
+    kind: "ssh-config",
+    siteId: "site-1",
+    envId: "",
+  });
+
+  const neither = harness();
+  await succeeds(neither, ["access", "ssh", "config"]);
+  assert.deepEqual(neither.client.reads[0], {
+    kind: "ssh-config",
+    siteId: "",
+    envId: "",
+  });
+});
+
+test("change-expiration requires --interval", async () => {
   const expiration = harness();
   const interval = await fails(
     expiration,

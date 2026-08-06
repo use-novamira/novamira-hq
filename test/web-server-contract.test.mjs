@@ -1037,3 +1037,68 @@ test("dispatch and the node:http adapter agree", async () => {
     await cleanup();
   }
 });
+
+/* -------------------------------------------------------------------------- */
+/* A POST route that reads its body still gets to stream                      */
+/* -------------------------------------------------------------------------- */
+
+/** `rawRequest`, with a method and a body. */
+function rawPost(port, path, headers, body) {
+  return new Promise((resolve, reject) => {
+    const payload = Buffer.from(body, "utf8");
+    const message = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: {
+          ...headers,
+          "content-type": "application/json",
+          "content-length": String(payload.byteLength),
+        },
+      },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () =>
+          resolve({
+            status: response.statusCode,
+            headers: response.headers,
+            body: Buffer.concat(chunks).toString("utf8"),
+          }),
+        );
+      },
+    );
+    message.on("error", reject);
+    message.end(payload);
+  });
+}
+
+test("a POST SSE route that reads its body still writes its patches", async () => {
+  // The regression this pins: on Node an `IncomingMessage` emits `close` as soon
+  // as its body has been *consumed*, and the Datastar SDK ends the response from
+  // `req.on("close")`. Every `POST` under `/_dashboard/` reads its signals from
+  // the body, so every one of them answered a real mutation with `200` and zero
+  // bytes — the browser saw no patch and no toast while the write went through.
+  //
+  // Only a real socket shows it. A synthesized `DashboardRequest` resolves
+  // `body()` from a string and never emits anything, which is why the whole
+  // suite was green while the dashboard's every button did nothing.
+  const { server, cleanup } = await fixture();
+  try {
+    const bound = await server.listen({ hostname: "127.0.0.1", port: 0 });
+    const response = await rawPost(
+      bound.port,
+      "/_dashboard/deploy-paths/save",
+      { host: `127.0.0.1:${bound.port}`, [TOKEN_HEADER]: TOKEN },
+      JSON.stringify({ deployForm: {} }),
+    );
+    assert.equal(response.status, 200);
+    assert.match(response.headers["content-type"], /text\/event-stream/);
+    assert.notEqual(response.body, "", "the SSE stream wrote nothing");
+    assert.match(response.body, /^event: datastar-patch-elements$/m);
+  } finally {
+    await cleanup();
+  }
+});

@@ -358,6 +358,18 @@ export const createPressableClient: ProviderClientFactory = (
   }
 
   async function getSite(siteId: string): Promise<HostingSite> {
+    // An empty id would address `/sites/` — the *list* endpoint, whose `data` is
+    // an array. `asObject` would flatten that to `{}` and `toHostingSite` would
+    // hand back a site with id `0` and one synthetic `live` environment: a
+    // fabricated answer to a question Pressable was never asked. Go escaped this
+    // only by accident, failing to unmarshal the array; refuse it outright.
+    if (siteId === "") {
+      throw new CliError(
+        "usage_error",
+        "A site id is required to address a Pressable site.",
+        { details: { provider: PROVIDER } },
+      );
+    }
     const path = `/sites/${escapePath(siteId)}`;
     const envelope = await getEnvelope(path);
     return toHostingSite(asObject(envelope.data), true);

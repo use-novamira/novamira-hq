@@ -39,6 +39,16 @@
  * for byte what `datastar-go` produced, which is what Go's `ssePatchBlock` test
  * helper asserted against.
  *
+ * **The SDK's disconnect listener is retargeted.** `ServerSentEventGenerator.stream`
+ * registers `req.on("close", () => res.end())` to end the stream when the client
+ * goes away. On Node an `IncomingMessage` emits `close` as soon as its body has
+ * been *consumed*, not only when the peer disappears — so every route that reads
+ * its Datastar signals from the body (which is every `POST` under
+ * `/_dashboard/`) had its response ended before the first patch was written, and
+ * answered a real mutation with a `200` and zero bytes. The disconnect that
+ * matters to a response already being streamed is the response socket closing,
+ * so {@link disconnectView} is what the SDK is handed.
+ *
  * **Headers.** The SDK's constructor calls `res.writeHead(200, sseHeaders)`.
  * Node merges headers previously set with `setHeader` into that call, with
  * `writeHead`'s own entries winning on collision, and the security headers do
@@ -101,7 +111,7 @@ export async function streamSse(
   response.setHeader("Pragma", "no-cache");
 
   await ServerSentEventGenerator.stream(
-    request,
+    disconnectView(request, response),
     response,
     (generator) => {
       let closed = false;
@@ -128,4 +138,39 @@ export async function streamSse(
     },
     options.keepalive === undefined ? {} : { keepalive: options.keepalive },
   );
+}
+
+/**
+ * The request as the SDK should see it: everything delegated, except that a
+ * `close` listener is registered on the *response*.
+ *
+ * A `Proxy` rather than a hand-built object because the SDK stores the value as
+ * its `req` field, and delegating wholesale means a future SDK release that
+ * reaches for another property finds the real one instead of `undefined`.
+ *
+ * The response emits `close` on a normal end too, so the SDK's `() => res.end()`
+ * would run a second `end()` on a finished response; `writableEnded` filters
+ * that out, leaving only the case the listener is for.
+ */
+function disconnectView(
+  request: IncomingMessage,
+  response: ServerResponse,
+): IncomingMessage {
+  return new Proxy(request, {
+    get(target, property, receiver) {
+      if (property !== "on") {
+        return Reflect.get(target, property, receiver) as unknown;
+      }
+      return (event: string, listener: () => void): IncomingMessage => {
+        if (event === "close") {
+          response.on("close", () => {
+            if (!response.writableEnded) listener();
+          });
+          return receiver as IncomingMessage;
+        }
+        target.on(event, listener);
+        return receiver as IncomingMessage;
+      };
+    },
+  });
 }

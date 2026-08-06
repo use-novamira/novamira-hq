@@ -42,9 +42,26 @@ import {
 function stubs() {
   const message = new EventEmitter();
   const headers = new Map();
+  // `streamSse` registers the SDK's disconnect listener on the *response*, so
+  // the stub has to be an emitter too. It was not, and a plain object silently
+  // satisfied every assertion here while the real server answered every POST
+  // with zero bytes — which is why `writableEnded` is modelled as well.
+  const responseEvents = new EventEmitter();
   let written = "";
   let ended = false;
   const response = {
+    on: (event, listener) => {
+      responseEvents.on(event, listener);
+      return response;
+    },
+    once: (event, listener) => {
+      responseEvents.once(event, listener);
+      return response;
+    },
+    emit: (event, ...args) => responseEvents.emit(event, ...args),
+    get writableEnded() {
+      return ended;
+    },
     setHeader: (name, value) => headers.set(name.toLowerCase(), value),
     getHeader: (name) => headers.get(name.toLowerCase()),
     writeHead: (status, extra) => {
@@ -60,6 +77,7 @@ function stubs() {
     },
     end: () => {
       ended = true;
+      responseEvents.emit("close");
     },
     statusCode: 0,
   };

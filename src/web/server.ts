@@ -824,7 +824,7 @@ export function createDashboardServer(
     message: IncomingMessage,
     response: ServerResponse,
   ): Promise<void> => {
-    const request = dashboardRequestFrom(message);
+    const request = dashboardRequestFrom(message, response);
     const result = await dispatch(request);
     if (result.kind === "sse") {
       await streamSse(message, response, (stream) => result.run(stream));

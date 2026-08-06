@@ -1115,8 +1115,18 @@ test("29: every routed page carries main, nav and toast", async () => {
 async function sseBody(handler) {
   const message = new EventEmitter();
   let written = "";
+  let ended = false;
+  // `streamSse` registers the SDK's disconnect listener on the response, so the
+  // stub has to be an emitter with a `writableEnded` — see the regression test
+  // in `web-server-contract.test.mjs`.
+  const events = new EventEmitter();
   const response = {
     statusCode: 0,
+    on: (event, listener) => (events.on(event, listener), response),
+    once: (event, listener) => (events.once(event, listener), response),
+    get writableEnded() {
+      return ended;
+    },
     setHeader: () => undefined,
     getHeader: () => undefined,
     writeHead: () => response,
@@ -1125,7 +1135,10 @@ async function sseBody(handler) {
       written += chunk;
       return true;
     },
-    end: () => undefined,
+    end: () => {
+      ended = true;
+      events.emit("close");
+    },
   };
   await streamSse(message, response, handler);
   return written;

@@ -241,10 +241,16 @@ export function createAccessHandlers(
     sshConfig: (values, options) =>
       runHostingCommand(dependencies, options, async ({ client }) =>
         renderRaw(
+          // Neither id is required here, and neither was in Go
+          // (`access.go:129` passes both through verbatim). Which one a
+          // provider needs is the provider's business: Kinsta reads both,
+          // Cloudways and Rocket.net take `--env` and fall back to `--site`,
+          // and requiring both made `ssh config` unreachable on the two
+          // providers that only ever have one.
           await client.read({
             kind: "ssh-config",
-            siteId: requireOption(values.site, "--site"),
-            envId: requireOption(values.env, "--env"),
+            siteId: values.site ?? "",
+            envId: values.env ?? "",
           }),
         ),
       ),
