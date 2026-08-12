@@ -380,7 +380,8 @@ test("1: the page is an empty state without a target and a work panel with one",
     'id="setup-work"',
     'data-bind="setup.enableAiAbilities"',
     "checked",
-    "Danger: AI Abilities let agents execute PHP code",
+    "Security note:",
+    "When enabled, AI agents can execute PHP code",
     ">Start Setup</button>",
     // `&` inside a JavaScript string literal in an attribute is hardened to
     // `&` by `jsString`, so the query separator is not an entity here.

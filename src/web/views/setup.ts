@@ -240,7 +240,7 @@ const SETUP_DESCRIPTION =
   "This checks for PHP 8.0 or newer, installs and activates the Novamira plugin on this environment, enables Novamira AI Abilities, and verifies the site against the Novamira compatibility matrix. Connecting your agent is a separate step: run the printed";
 
 const AI_ABILITIES_WARNING =
-  "Danger: AI Abilities let agents execute PHP code and access the filesystem. This is dangerous on production sites; leave this checked only for development or staging sites you trust.";
+  "When enabled, AI agents can execute PHP code and perform filesystem operations on this site. Use AI Abilities only on development or staging sites with a current backup.";
 
 /** Go's action panel (`views.go:1237-1247`), with one label and no `Fix set up`. */
 function renderActionPanel(view: SetupView): Html {
@@ -261,7 +261,7 @@ function renderActionPanel(view: SetupView): Html {
     "setup.enableAiAbilities",
   )}${flagAttr(
     "checked",
-  )}><span>Enable AI Abilities after setup</span></label><p class="notice warn setup-warning">${AI_ABILITIES_WARNING}</p><button class="button primary" type="button"${ds.on(
+  )}><span>Enable AI Abilities after setup</span></label><p class="field-help setup-warning"><strong>Security note:</strong> ${AI_ABILITIES_WARNING}</p><button class="button primary" type="button"${ds.on(
     "click",
     action,
   )}>Start Setup</button></section>`;

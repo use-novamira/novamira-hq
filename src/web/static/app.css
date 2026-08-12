@@ -415,6 +415,10 @@ select:focus {
   line-height: 1.45;
 }
 
+.setup-warning strong {
+  color: var(--danger);
+}
+
 .check-row input,
 .toggle input {
   width: 16px;
