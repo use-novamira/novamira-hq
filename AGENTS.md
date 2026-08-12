@@ -121,6 +121,17 @@ calls just to test.
   `errors.ts` and `json.ts`, and imports nothing, because `src/integration/`
   computes those values and `src/web/` renders them and the two are peers that
   may share only a root module.
+- `src/site-profiles.ts` is the second root module of that kind, and answers a
+  different question: not "is this hosting environment connected?" but "what
+  does the operator's `novamira` hold, and what can be done to it?". It declares
+  `SiteProfileState` / `SiteProfileSummary` / `SiteProfileListing` /
+  `SiteProfileOutcome` and the site CLI's own profile-name grammar, and imports
+  exactly one thing, `UnavailableReason`. The grammar is not politeness: a
+  profile name becomes an argv element of `sites remove <name>` and of
+  `--site <name>`, so an unchecked leading `-` would run a different command
+  than the one HQ meant. Nothing on these types can hold a credential;
+  `expiresAt` is a time, carried because it is what an operator needs in order
+  to decide whether to reconnect.
 - `src/output/` renders the success/failure envelope and redacts diagnostics.
 - `src/config/` resolves HQ paths and owns locks, atomic writes, owner-only file
   security, the `config.json` v1 schema, and the config store.
@@ -155,10 +166,26 @@ calls just to test.
   `src/connection-state.ts` and `src/integration/`'s public surface, and may not
   import `src/web/views/` or `src/web/handlers/`. `services/sites.ts` owns the
   five-minute provider-listing cache and the single `connectionStates` round per
-  listing; the deploy-path pages read that cache **warm only** and must never
+  listing; it also keeps that round's `profiles` inverted as `siteProfileLinks`,
+  which is how `/site-profiles` draws its back-links to hosting environments
+  without comparing a domain itself — both directions of that cross-link are the
+  _one_ origin match `src/integration/` already made, and `src/web/` must never
+  grow a second. The deploy-path pages and `siteProfileLinks` read the cache
+  **warm only** and must never
   trigger a provider call, and `/_dashboard/connect` spawns
   `novamira auth login <url>` through `src/integration/` and renders no child
-  output, ever. `services/setup-jobs.ts` is the Novamira-setup job registry: it
+  output, ever. `views/site-profiles.ts` and `handlers/site-profiles.ts` are the
+  `/site-profiles` page and its `#cli-sites` fragment: what the **site CLI**
+  holds, as opposed to what the hosting providers report. It is a page and not a
+  panel on `/sites` — it was one briefly, and the two listings share nothing but
+  the word "site": different subject, different cost, different refresh
+  lifetime. Its four routes are the only ones that manage a site profile, they
+  reach `src/integration/` and never a provider API, and each ends by re-listing
+  and patching `#cli-sites` (outer) and `#toast` (outer) — never `#main`, which
+  carries the page's own Refresh button. Do not confuse them with Go's deleted
+  `/_dashboard/sites/{save,remove}`, which wrote HQ's own site profiles; the
+  route conventions test still asserts those two paths appear nowhere.
+  `services/setup-jobs.ts` is the Novamira-setup job registry: it
   calls `provisionNovamira` from `src/provisioning/` **whole** — no second copy
   of the sequence, no Application Password, no site-profile write — runs it
   detached from the request, and bounds both the registry and each job's event
@@ -187,12 +214,23 @@ calls just to test.
   `not_configured` / `connected` / `reconnect_required` / `unavailable`, plus
   `connect.ts`'s Connect action (`novamira auth login <url>`, the non-secret URL
   as its only argument) and `classify.ts`, the child-outcome classification both
-  share. Every
-  failure mode is a state, never a hosting error; `@novamira/cli` is never
+  share. `profiles.ts` is the site-profile management service the dashboard's
+  panel calls — `sites list`, `auth status --site`, `auth logout --site` and
+  `sites remove` — and it is composed into `SiteCliIntegration` rather than
+  constructed separately, so there is one spawn seam and one resolver.
+  `verdict.ts` and `pool.ts` are the two leaves `connection.ts` and
+  `profiles.ts` share: the reading of a single `auth status` answer, and bounded
+  concurrency. A second copy of either is how the connection cell and the panel
+  would end up disagreeing about the same profile on the same page. Every
+  failure mode is a state, never a hosting error — the one exception is a
+  profile name the site CLI's grammar cannot represent, which throws
+  `usage_error` before anything is spawned, because that is a caller bug and not
+  an unreachable CLI. `@novamira/cli` is never
   imported and never a dependency of any kind; the site CLI's config,
   credential storage and `NOVAMIRA_HOME` are never read; child output is never
-  persisted or logged. It is a peer of `src/web/` and `src/cli/` and imports
-  neither.
+  persisted or logged. Adding a fifth command means adding an argv builder to
+  `site-cli.ts` and a method to `profiles.ts` — never a spawn anywhere else. It
+  is a peer of `src/web/` and `src/cli/` and imports neither.
 - `src/index.ts`, `src/main.ts`, and `src/cli/` are the entry point, the
   composition root, and the commander program plus its handlers.
 - `src/cli/hosting/` is one module per command group; `src/cli/hosting/index.ts`

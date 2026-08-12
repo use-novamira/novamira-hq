@@ -28,7 +28,7 @@ diagnostics, the eight provider clients, the whole `config` and `hosting`
 command line, the provisioning flow behind `hosting novamira setup`, the bundled
 agent skills behind `skills`, the local installation report behind `doctor`,
 npm-only self-update behind `update`, the two installer scripts, and the local
-dashboard — all seven pages, including Diagnostics, which runs the same report
+dashboard — all eight pages, including Diagnostics, which runs the same report
 `doctor` does, and Settings, which carries the update card.
 
 One thing is deliberately _not_ frozen: the markup inside a dashboard page,
@@ -181,9 +181,16 @@ What it does:
   profile's API credential. The credential is posted once and handed to the
   credential store; the page only ever shows the reference (`env:NAME`,
   `stored:ID`), never a value.
-- **Sites** — browse every site and environment across your configured hosts,
-  filtered by whether Novamira is connected, cached for five minutes so
-  navigating does not cost provider rate limit.
+- **Hosting Sites** — browse every site and environment across your configured
+  hosts, filtered by whether Novamira is connected, cached for five minutes so
+  navigating does not cost provider rate limit. A connected environment names
+  the site-CLI profile behind it and links to the page that manages it.
+- **Novamira CLI sites** — what `novamira` itself is configured for, which is a
+  different list: one row per site profile with its credential state and expiry,
+  and Reconnect, Sign out and Remove, plus a box for connecting a site no
+  hosting API lists. Rows link back to the matching hosting environment once you
+  have opened Hosting Sites. Every control runs one `novamira` command — HQ
+  stores nothing and never talks to the site itself.
 - **Deploy paths** — create and remove the environment-to-environment paths.
   Running one is not part of this release.
 - **Novamira Setup** — install and activate the plugin on an environment with

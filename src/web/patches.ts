@@ -71,6 +71,7 @@ export type StaticPatchSelectorId =
   | "provider-flash"
   | "sites-status"
   | "sites-result"
+  | "cli-sites"
   | "setup-work"
   | "diagnostics-output"
   | "updates-card";
@@ -91,6 +92,15 @@ export const SSE_PATCH_FRAGMENTS: readonly PatchFragment[] = Object.freeze([
   // load, while the status line — which changes on every spinner — must not.
   { selectorId: "sites-status", mode: "inner" },
   { selectorId: "sites-result", mode: "outer" },
+  // The site-profile panel on the same page, and a *different* subject: this
+  // one is what `novamira sites list` holds, where `sites-result` is what the
+  // hosting providers report. Outer, because the panel's root carries the
+  // `data-init` that loads it and an inner patch would leave the pre-load root
+  // in place, re-firing the listing on every repaint — the same reason
+  // `updates-card` is outer. It is a sibling of `#sites-result`, never inside
+  // it: `sites-filter.js` observes that element for mutations and buckets
+  // `.site-row` children, and neither concerns this panel.
+  { selectorId: "cli-sites", mode: "outer" },
   // The one id that appears twice, because two handlers replace two different
   // things about the same element. `/_dashboard/setup/jobs/<id>` replaces the
   // element **outer**, wrapper included, because the wrapper carries the

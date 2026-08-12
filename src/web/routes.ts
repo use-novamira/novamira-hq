@@ -78,6 +78,12 @@ import {
   createSetupStartHandler,
   SETUP_JOBS_PREFIX,
 } from "./handlers/setup.js";
+import {
+  createSiteProfileConnectHandler,
+  createSiteProfileLogoutHandler,
+  createSiteProfileRemoveHandler,
+  createSiteProfilesHandler,
+} from "./handlers/site-profiles.js";
 import { createSitesHandler } from "./handlers/sites.js";
 import {
   createUpdateCheckHandler,
@@ -244,6 +250,7 @@ const PAGE_PATHS: Readonly<Record<string, DashboardPage>> = {
   "/": "providers",
   "/providers": "providers",
   "/sites": "sites",
+  "/site-profiles": "site-profiles",
   "/deploy-paths": "deploy-paths",
   "/deploy-paths/new": "deploy-path-new",
   "/novamira-setup": "novamira-setup",
@@ -451,6 +458,36 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
       path: "/_dashboard/connect",
       auth: "token",
       handler: createConnectHandler(context),
+    },
+    // The site-profile panel on the same page, and a different subject: these
+    // four operate on what `novamira sites list` holds, by spawning `novamira`,
+    // where the row above lists what the hosting providers report. The GET is
+    // guarded like every other row under the prefix even though it reaches no
+    // provider API: it reports which sites this machine is authorized against,
+    // which is not a thing a cross-origin page may enumerate.
+    {
+      method: "GET",
+      path: "/_dashboard/site-profiles",
+      auth: "token",
+      handler: createSiteProfilesHandler(context),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/site-profiles/connect",
+      auth: "token",
+      handler: createSiteProfileConnectHandler(context),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/site-profiles/logout",
+      auth: "token",
+      handler: createSiteProfileLogoutHandler(context),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/site-profiles/remove",
+      auth: "token",
+      handler: createSiteProfileRemoveHandler(context),
     },
     {
       method: "POST",

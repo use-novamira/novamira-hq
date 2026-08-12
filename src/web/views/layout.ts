@@ -110,12 +110,21 @@ export function renderSidebar(view: ConfigView, page: DashboardPage): Html {
  * `#nav`, one of the three catalogued patch targets.
  *
  * `navLink` marks a link active for its own page **plus two aliases**, exactly
- * as Go's did: `novamira-setup` highlights Sites, and `deploy-path-new`
- * highlights Deploy paths. The five links and their order are Go's.
+ * as Go's did: `novamira-setup` highlights Hosting Sites, and `deploy-path-new`
+ * highlights Deploy paths. Five of the six links and their order are Go's; the
+ * sixth, "Novamira CLI sites", sits directly under it because the two are the
+ * same question asked of the hosting providers and of the site CLI, and because
+ * it started life as a panel on that page.
+ *
+ * Go's first link was labelled "Sites", and it is "Hosting Sites" here: with a
+ * second site listing beside it the bare word stopped saying which of the two it
+ * meant. The **path** is still `/sites` — the label is what an operator reads,
+ * and renaming the route would break every bookmark for a wording change.
  */
 export function renderNav(page: DashboardPage): Html {
   return html`<nav${idAttr("nav")} class="nav" aria-label="Dashboard sections">${[
-    navLink(page, "sites", "/sites", "Sites"),
+    navLink(page, "sites", "/sites", "Hosting Sites"),
+    navLink(page, "site-profiles", "/site-profiles", "Novamira CLI sites"),
     navLink(page, "deploy-paths", "/deploy-paths", "Deploy paths"),
     navLink(page, "providers", "/providers", "Hosting Providers"),
     navLink(page, "diagnostics", "/diagnostics", "Diagnostics"),

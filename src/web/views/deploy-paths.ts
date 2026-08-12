@@ -128,11 +128,11 @@ export function deployPathsStatusLine(
       }
     }
     if (eligible > 0) {
-      return `You're ready — open the Sites page and expand one of your ${String(eligible)} site(s) with more than one environment, then use Add deploy path.`;
+      return `You're ready — open the Hosting Sites page and expand one of your ${String(eligible)} site(s) with more than one environment, then use Add deploy path.`;
     }
     return `Your deploy-capable host(s) ${capable.join(", ")} have no site with more than one environment yet, so there's nothing to deploy between.`;
   }
-  return `You have a deploy-capable host: ${capable.join(", ")}. Open the Sites page to find a site with more than one environment.`;
+  return `You have a deploy-capable host: ${capable.join(", ")}. Open the Hosting Sites page to find a site with more than one environment.`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -151,7 +151,7 @@ export function renderDeployPathsPage(
       warm,
     )}</p><a class="button primary"${hrefAttr(
       url("/sites"),
-    )}>Open the Sites page</a></div></section>`;
+    )}>Open the Hosting Sites page</a></div></section>`;
   }
   return html`<section class="page"><header class="page-head"><div><h1>Deploy paths</h1></div></header>${flash}<section class="panel"><div class="table-wrap"><table><thead><tr><th>Name</th><th>Site</th><th>Direction</th><th>Pushes</th><th></th></tr></thead><tbody>${view.deployPaths.map(
     (path) => renderDeployPathRow(path),
@@ -238,9 +238,9 @@ export function renderDeployPathNewPage(
   )}>Back to Sites</a></header>`;
 
   if (view.envs.length < 2) {
-    return html`<section class="page">${head}<div class="empty empty-block"><p>Open this from the Sites page: expand a site with more than one environment and use “+ Deploy path”.</p><a class="button primary"${hrefAttr(
+    return html`<section class="page">${head}<div class="empty empty-block"><p>Open this from the Hosting Sites page: expand a site with more than one environment and use “+ Deploy path”.</p><a class="button primary"${hrefAttr(
       url("/sites"),
-    )}>Open the Sites page</a></div></section>`;
+    )}>Open the Hosting Sites page</a></div></section>`;
   }
 
   // Go's `deployFormInit` (`views.go:1143-1147`) followed by the `@post`. The

@@ -367,7 +367,9 @@ test("1: the page is an empty state without a target and a work panel with one",
   const { server } = await fixture();
 
   const bare = await page(server, "/novamira-setup");
-  assert.ok(bare.includes("Select an environment from Sites to start setup."));
+  assert.ok(
+    bare.includes("Select an environment from Hosting Sites to start setup."),
+  );
   assert.ok(!bare.includes('id="setup-work"'));
 
   const targeted = await page(

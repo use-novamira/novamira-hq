@@ -170,6 +170,30 @@ export function parseSiteBrowser(
 }
 
 /* -------------------------------------------------------------------------- */
+/* cliSites                                                                   */
+/* -------------------------------------------------------------------------- */
+
+export interface CliSitesInput {
+  /** A site URL typed into the panel's "connect another site" box; `""` for none. */
+  readonly url: string;
+}
+
+/**
+ * The site-profile panel's one posted signal.
+ *
+ * Trimmed, like every field but the provider credential: a pasted URL routinely
+ * carries a leading or trailing space, and it is about to be validated by
+ * `normalizeSiteUrl` on its way to an argv array. `loading` is not parsed
+ * because it is the indicator Datastar writes, never something a client sends
+ * HQ an opinion about.
+ */
+export function parseCliSites(
+  signals: Readonly<Record<string, unknown>>,
+): CliSitesInput {
+  return { url: trimmedString(subtree(signals, "cliSites"), "url") };
+}
+
+/* -------------------------------------------------------------------------- */
 /* diagnostics                                                                */
 /* -------------------------------------------------------------------------- */
 

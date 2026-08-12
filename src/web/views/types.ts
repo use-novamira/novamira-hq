@@ -70,6 +70,11 @@ import {
   type ConnectionResult,
   type ConnectionState,
 } from "../../connection-state.js";
+import type {
+  SiteProfileListing,
+  SiteProfileState,
+  SiteProfileSummary,
+} from "../../site-profiles.js";
 import {
   credentialSource,
   isProviderKind,
@@ -93,18 +98,33 @@ export type {
   UnavailableReason,
 } from "../../connection-state.js";
 
+export type {
+  SiteProfileListing,
+  SiteProfileOutcome,
+  SiteProfileState,
+  SiteProfileSummary,
+} from "../../site-profiles.js";
+
 /* -------------------------------------------------------------------------- */
 /* Pages and notices                                                          */
 /* -------------------------------------------------------------------------- */
 
 /**
- * The seven routed pages, and Go's `currentDashboardPage` return values
- * (server.go:205-222) unchanged. `deploy-path-new` and `novamira-setup` are
- * pages in their own right but highlight another nav link; see `navLink`.
+ * The routed pages. Seven of them are Go's `currentDashboardPage` return values
+ * (server.go:205-222) unchanged; `deploy-path-new` and `novamira-setup` are
+ * pages in their own right but highlight another nav link, see `navLink`.
+ *
+ * `site-profiles` is the one addition, and it has no Go counterpart: Go managed
+ * *its own* site profiles from a form on the Sites page, which is deleted under
+ * the boundary rule. This page manages the **site CLI's** profiles by running
+ * `novamira`, and it is a page rather than a panel on `/sites` because the two
+ * listings have different subjects, different costs and different refresh
+ * lifetimes — see `views/site-profiles.ts`.
  */
 export type DashboardPage =
   | "providers"
   | "sites"
+  | "site-profiles"
   | "deploy-paths"
   | "deploy-path-new"
   | "novamira-setup"
@@ -114,6 +134,7 @@ export type DashboardPage =
 export const DASHBOARD_PAGES: readonly DashboardPage[] = Object.freeze([
   "providers",
   "sites",
+  "site-profiles",
   "deploy-paths",
   "deploy-path-new",
   "novamira-setup",
@@ -365,4 +386,87 @@ export function connectionView(
     };
   }
   return { state: result.state, profiles: result.profiles };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Site-CLI profiles, as a view                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One site-CLI profile, projected for rendering.
+ *
+ * It stands to {@link SiteProfileSummary} exactly as {@link ConnectionView}
+ * stands to {@link ConnectionResult}: the model carries a *reason enum* and the
+ * view carries the fixed sentence that reason selects. Both projections live
+ * here for one reason — this is the only module under `src/web/` that calls
+ * `unavailableHint`, so there is a single place to check that no child output,
+ * no error message and no path can reach a `title=` attribute.
+ *
+ * `origin` is not projected: it exists so the integration can match a profile
+ * against a hosting domain, and a panel that showed both it and `siteUrl` would
+ * be showing the same address twice.
+ */
+export interface SiteProfileRowView {
+  readonly name: string;
+  readonly siteUrl: string;
+  readonly state: SiteProfileState;
+  /** ISO-8601, straight from the site CLI. Rendered as text, never parsed. */
+  readonly expiresAt?: string;
+  /** Present only for `unknown` and `unreachable`: a fixed, non-secret sentence. */
+  readonly hint?: string;
+}
+
+/** Why one row cannot say more than "Unknown". */
+const UNREACHABLE_HINT = unavailableHint("site_unreachable");
+
+export function siteProfileRowView(
+  summary: SiteProfileSummary,
+): SiteProfileRowView {
+  const expiresAt =
+    summary.expiresAt === undefined ? {} : { expiresAt: summary.expiresAt };
+  if (summary.state === "unreachable") {
+    return {
+      name: summary.name,
+      siteUrl: summary.siteUrl,
+      state: summary.state,
+      ...expiresAt,
+      hint: UNREACHABLE_HINT,
+    };
+  }
+  if (summary.state === "unknown") {
+    return {
+      name: summary.name,
+      siteUrl: summary.siteUrl,
+      state: summary.state,
+      ...expiresAt,
+      hint:
+        summary.reason === undefined
+          ? SITE_CLI_INSTALL_HINT
+          : unavailableHint(summary.reason),
+    };
+  }
+  return {
+    name: summary.name,
+    siteUrl: summary.siteUrl,
+    state: summary.state,
+    ...expiresAt,
+  };
+}
+
+/**
+ * Why the *listing* could not be trusted, or `undefined` when it can.
+ *
+ * `cliAvailable: false` wins over the recorded reason, for the same reason
+ * {@link connectionView} lets it win: `CLAUDE.md` requires a missing
+ * `@novamira/cli` to disable the feature with an install hint rather than to
+ * report an empty list, which would be a wrong answer rather than a degraded
+ * one.
+ */
+export function siteProfilesHint(
+  listing: SiteProfileListing,
+): string | undefined {
+  if (!listing.cliAvailable) return SITE_CLI_INSTALL_HINT;
+  return listing.reason === undefined
+    ? undefined
+    : unavailableHint(listing.reason);
 }

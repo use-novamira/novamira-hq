@@ -88,6 +88,56 @@ export function authStatusArgs(
 }
 
 /**
+ * `novamira --json --quiet --timeout <ms> --site <name> auth logout`.
+ *
+ * The site CLI removes its own local credential and, when it can, revokes the
+ * refresh token with the site's authorization server. Both happen in the child,
+ * under the child's credential; HQ passes a profile name and reads the
+ * envelope's `ok`. The payload — `remoteRevoked`, an optional warning — is
+ * deliberately not read: it is the CLI's account of its own credential store.
+ */
+export function authLogoutArgs(
+  timeoutMs: number,
+  site: string,
+): readonly string[] {
+  return [
+    "--json",
+    "--quiet",
+    "--timeout",
+    String(timeoutMs),
+    "--site",
+    site,
+    "auth",
+    "logout",
+  ];
+}
+
+/**
+ * `novamira --json --quiet --timeout <ms> sites remove <name>`.
+ *
+ * No `--site`: the name is the command's positional argument, and passing it
+ * twice would let the two disagree. No `--yes` either — the site CLI gates only
+ * *Ability execution* behind confirmation, and `sites remove` is
+ * non-interactive, so there is no prompt for HQ to answer and nothing to
+ * approve on the operator's behalf. The confirmation an operator sees is the
+ * dashboard's own `confirm()`.
+ */
+export function sitesRemoveArgs(
+  timeoutMs: number,
+  name: string,
+): readonly string[] {
+  return [
+    "--json",
+    "--quiet",
+    "--timeout",
+    String(timeoutMs),
+    "sites",
+    "remove",
+    name,
+  ];
+}
+
+/**
  * The environment every site-CLI child runs with.
  *
  * `NOVAMIRA_UPDATE_CHECK=0` is required, not cosmetic: after a successful

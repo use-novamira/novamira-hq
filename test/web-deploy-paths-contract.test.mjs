@@ -328,7 +328,7 @@ test("1: the empty page explains why, with Go's four sentences", async () => {
   const cold = await fixture();
   assert.ok(
     (await line(cold.server)).includes(
-      "You have a deploy-capable host: prod (Kinsta). Open the Sites page",
+      "You have a deploy-capable host: prod (Kinsta). Open the Hosting Sites page",
     ),
   );
   assert.equal(cold.listCalls.length, 0, "a page render lists no sites");
@@ -338,7 +338,7 @@ test("1: the empty page explains why, with Go's four sentences", async () => {
   await warmCache(warm.server);
   assert.ok(
     (await line(warm.server)).includes(
-      "You're ready — open the Sites page and expand one of your 1 site(s)",
+      "You're ready — open the Hosting Sites page and expand one of your 1 site(s)",
     ),
   );
 
@@ -437,13 +437,13 @@ test("5: without two resolvable environments the page is guidance, not a form", 
     "/deploy-paths/new?profile=prod&site=nope",
   ]) {
     const markup = await page(server, path);
-    assert.ok(markup.includes("Open this from the Sites page"), path);
+    assert.ok(markup.includes("Open this from the Hosting Sites page"), path);
     assert.ok(!markup.includes("deployForm.sourceEnvId"), path);
   }
   // A single-environment site is still fewer than two.
   await warmCache(server);
   const single = await page(server, "/deploy-paths/new?profile=prod&site=s2");
-  assert.ok(single.includes("Open this from the Sites page"));
+  assert.ok(single.includes("Open this from the Hosting Sites page"));
   assert.ok(!single.includes("deployForm.sourceEnvId"));
 });
 

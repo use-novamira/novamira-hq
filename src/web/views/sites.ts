@@ -124,6 +124,12 @@ const NO_DOMAIN_TITLE =
  * `SitesView` on `PageModel`, because a page-level model would have to be filled
  * with something, and the honest something is "nothing yet".
  *
+ * **What the site CLI holds is a different page.** `/site-profiles` lists
+ * `novamira sites list` and manages it; this page lists what the *hosting
+ * providers* report. The two were briefly one page and should not be again —
+ * see `views/site-profiles.ts` for the difference in subject, cost and refresh
+ * lifetime that separates them.
+ *
  * The `@get`'s include scope is `sites` and nothing else. It may never carry
  * `token` or `providerForm`: a `@get`'s filtered signals are serialized into
  * `?datastar=…`, and `expr.get` refuses both outright.
@@ -136,7 +142,7 @@ export function renderSitesPage(view: ConfigView): Html {
     url("/_dashboard/sites", { include_envs: true, refresh: true }),
     { include: ["sites"] },
   );
-  return html`<section class="page"><header class="page-head"><div><h1>Sites</h1></div></header><form class="toolbar"${ds.indicator(
+  return html`<section class="page"><header class="page-head"><div><h1>Hosting Sites</h1></div></header><form class="toolbar"${ds.indicator(
     "sites.loading",
   )}${ds.init(load)}${ds.on("change", load)}${ds.onSubmit(
     refresh,
@@ -343,13 +349,13 @@ function renderStateCell(
 
   switch (connection.state) {
     case "connected":
-      return html`<span class="pill ok">Connected</span>`;
-    case "reconnect_required":
-      return html`<span class="pill warn">Reconnect</span>${renderConnectButton(
+      return html`<span class="pill ok">Connected</span>${renderProfileLink(
         connection,
-        address,
-        view,
       )}`;
+    case "reconnect_required":
+      return html`<span class="pill warn">Reconnect</span>${renderProfileLink(
+        connection,
+      )}${renderConnectButton(connection, address, view)}`;
     case "not_configured":
       return html`<span class="pill">Not connected</span>${renderConnectButton(
         connection,
@@ -370,6 +376,36 @@ function renderStateCell(
 /** `title="…"` when there is a sentence, and no attribute when there is not. */
 function titleAttr(text: string | undefined) {
   return text === undefined || text === "" ? false : attr("title", text);
+}
+
+/**
+ * The site-CLI profile behind this environment's state, linked to the page that
+ * manages it.
+ *
+ * `ConnectionResult.profiles` has carried these names since 6a and no view has
+ * ever rendered one: the cell said "Connected" without saying *what* was
+ * connected, which left an operator with two site listings and no visible
+ * relation between them. The names come from the integration's origin match —
+ * the environment's `primaryDomain` normalized against the site CLI's own
+ * `origin` — so this is the answer the pill was already computed from, not a
+ * second guess at it.
+ *
+ * It renders whenever the list is non-empty, which in practice is `connected`
+ * and `reconnect_required`; `not_configured` has none by definition, and an
+ * `unavailable` result usually has none either. More than one profile can match
+ * one environment — two `novamira auth login`s against the same URL under
+ * different names — and all of them are named, because hiding the second would
+ * make "Connected" look like it came from the first.
+ */
+function renderProfileLink(connection: ConnectionView): Html | false {
+  if (connection.profiles.length === 0) return false;
+  const names = connection.profiles.join(", ");
+  return html`<a class="deploy-hint"${hrefAttr(url("/site-profiles"))}${attr(
+    "title",
+    connection.profiles.length === 1
+      ? `Novamira CLI site profile ${names}. Manage it on the Novamira CLI sites page.`
+      : `Novamira CLI site profiles ${names}. Manage them on the Novamira CLI sites page.`,
+  )}>${names}</a>`;
 }
 
 /**

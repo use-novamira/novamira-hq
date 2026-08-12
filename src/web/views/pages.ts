@@ -10,7 +10,7 @@
  * showed the wrong page — and because the same function also wrapped the body in
  * `<main id="main">`, the wrapper and the dispatch could not be tested apart.
  *
- * **What HQ does instead.** {@link DashboardPage} is a seven-member union, the
+ * **What HQ does instead.** {@link DashboardPage} is a closed union, the
  * `switch` below is exhaustive with a `never` default, and the wrapper lives in
  * `views/layout.ts`'s `renderMain`. A new page is a compile error here rather
  * than a silent fallback, and `renderPageBody` is a pure function a test can
@@ -31,12 +31,13 @@
  * that owns it, rather than typed as `unknown` here: a field typed loosely
  * enough to be filled in later is a field a handler can fill in wrongly today.
  *
- * **The sites page has no model field, and that is deliberate.** Go's
+ * **Two pages have no model field, and that is deliberate.** Go's
  * `renderSitesPage` rendered no site data either: the toolbar's `data-init`
  * fires a `@get` on mount and the inventory arrives as a patch into
- * `#sites-result`. A `sites?: SitesView` here would have to be filled with
- * something on every page render, and the honest something is "nothing yet",
- * which the page already says out loud.
+ * `#sites-result`. `site-profiles` works the same way, into `#cli-sites`. A
+ * `sites?: SitesView` here would have to be filled with something on every page
+ * render, and the honest something is "nothing yet", which both pages already
+ * say out loud.
  */
 
 import { CliError } from "../../errors.js";
@@ -52,6 +53,7 @@ import { renderDiagnosticsPage } from "./diagnostics.js";
 import { renderProvidersPage } from "./providers.js";
 import { renderSettingsPage } from "./settings.js";
 import { renderSetupPage, type SetupView } from "./setup.js";
+import { renderSiteProfilesPage } from "./site-profiles.js";
 import { renderSitesPage } from "./sites.js";
 import type { ConfigView, DashboardNotice, DashboardPage } from "./types.js";
 
@@ -95,6 +97,10 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
       });
     case "sites":
       return renderSitesPage(model.view);
+    case "site-profiles":
+      // No model, for the same reason `sites` has none: the page's own panel
+      // loads itself on mount and the answer arrives as a patch.
+      return renderSiteProfilesPage();
     case "deploy-paths":
       return renderDeployPathsPage(model.view, model.notice, model.deployPaths);
     case "deploy-path-new":

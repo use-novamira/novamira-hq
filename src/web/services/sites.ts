@@ -112,6 +112,27 @@ export interface ResolvedSite {
   readonly envs: readonly HostingEnvironment[];
 }
 
+/**
+ * One hosting environment a site-CLI profile was matched to, for the Novamira
+ * CLI sites page's back-link.
+ *
+ * It is the reverse of what the Hosting Sites page renders from
+ * `ConnectionResult.profiles`, and it is built from exactly the same answer:
+ * the integration matched the environment's domain against the profile's
+ * origin, and {@link SitesService.refreshConnections} keeps the result rather
+ * than throwing it away. Nothing here re-derives a match, and in particular
+ * `src/web/` never normalizes an origin — that is `src/integration/`'s job and
+ * `src/web/` may not import it.
+ */
+export interface HostingEnvLink {
+  /** The *hosting* profile name, not the site-CLI one. */
+  readonly profile: string;
+  readonly siteId: string;
+  readonly siteLabel: string;
+  readonly envId: string;
+  readonly envLabel: string;
+}
+
 export interface SitesListOptions {
   readonly profile: string;
   readonly includeEnvs: boolean;
@@ -136,6 +157,17 @@ export interface SitesService {
   refreshConnections(
     groups: readonly SiteGroup[],
   ): Promise<ConnectionSnapshot | null>;
+  /**
+   * Site-CLI profile name → the hosting environments it was last matched to.
+   *
+   * **Warm only, and it never triggers anything.** The map is a by-product of
+   * the most recent {@link refreshConnections}; before one has run it is empty,
+   * and the Novamira CLI sites page renders no back-link at all. That is the
+   * honest state — "nobody has listed hosting sites in this process yet" — and
+   * it is the same rule the deploy-path pages follow. Making this reader fetch
+   * would turn opening one page into a fan-out across every hosting API.
+   */
+  siteProfileLinks(): ReadonlyMap<string, readonly HostingEnvLink[]>;
 }
 
 /**
@@ -305,26 +337,59 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
     return tracked;
   };
 
+  /**
+   * The last `refreshConnections`' profile→environment map. Replaced whole on
+   * each successful round, so it never accumulates environments a provider has
+   * stopped reporting; empty until the first round runs.
+   */
+  let profileLinks = new Map<string, readonly HostingEnvLink[]>();
+
   const refreshConnections = async (
     groups: readonly SiteGroup[],
   ): Promise<ConnectionSnapshot | null> => {
     const queries: ConnectionQuery[] = [];
+    // The environment each query key stands for, so the snapshot's matched
+    // profile names can be turned back into something a page can link to.
+    const byQueryKey = new Map<string, HostingEnvLink>();
     for (const group of groups) {
       for (const site of group.sites) {
         for (const env of site.environments ?? []) {
+          const key = connectionKey(group.profile, site.id, env.id);
           queries.push({
-            key: connectionKey(group.profile, site.id, env.id),
+            key,
             // Most specific first. They are heterogeneous by provider — a bare
             // hostname or a full URL — and `src/integration/origin.ts`
             // normalizes them, so nothing here parses a URL.
             origins: [env.primaryDomain, site.primaryDomain].filter(nonEmpty),
+          });
+          byQueryKey.set(key, {
+            profile: group.profile,
+            siteId: site.id,
+            siteLabel: displayLabel(site.displayName, site.name, site.id),
+            envId: env.id,
+            envLabel: displayLabel(env.displayName, env.name, env.id),
           });
         }
       }
     }
     if (queries.length === 0) return null;
     try {
-      return await options.integration.connectionStates(queries);
+      const snapshot = await options.integration.connectionStates(queries);
+      // Invert it: the Hosting Sites page reads `result.profiles` forwards, and
+      // the Novamira CLI sites page reads this map backwards. Both are the same
+      // origin match, made once.
+      const inverted = new Map<string, HostingEnvLink[]>();
+      for (const [key, result] of snapshot.byKey) {
+        const link = byQueryKey.get(key);
+        if (link === undefined) continue;
+        for (const name of result.profiles) {
+          const existing = inverted.get(name);
+          if (existing === undefined) inverted.set(name, [link]);
+          else existing.push(link);
+        }
+      }
+      profileLinks = inverted;
+      return snapshot;
     } catch {
       // See this file's header: an empty map with `cliAvailable: false` renders
       // as "Unknown" plus the install hint, which is the honest degradation. An
@@ -381,7 +446,13 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
 
     invalidate: () => {
       cache.clear();
+      // The links describe environments that came out of the listing being
+      // dropped, so they go with it: a back-link to a hosting profile that was
+      // just removed is worse than no back-link at all.
+      profileLinks = new Map<string, readonly HostingEnvLink[]>();
     },
+
+    siteProfileLinks: () => profileLinks,
 
     envResolver: () => {
       const known = new Map<string, EnvDisplay>();
