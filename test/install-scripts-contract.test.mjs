@@ -152,30 +152,65 @@ test("6: the agent skill is registered from the packaged directory, never writte
   }
 });
 
-test("7: @novamira/cli appears only as the optional closing hint", () => {
-  for (const [name, source] of Object.entries(scripts)) {
+test("7: the site CLI is installed by default, as a separate global package", () => {
+  for (const [name, source] of Object.entries(code)) {
     assert.ok(source.includes("@novamira/cli"), name);
-    assert.ok(source.includes("Optional:"), name);
-    // It is never installed, never required, and its absence never fails.
-    assert.ok(!/npm install --global[^\n]*@novamira\/cli/.test(source), name);
+    assert.ok(source.includes("--ignore-scripts"), name);
+    // Installed unpinned, like @novamira/hq itself: same publisher, same trust
+    // domain. The exact pin rule is for the third-party `skills` CLI alone.
+    assert.ok(!/@novamira\/cli@/.test(source), name);
+    // Opt-out, so a default-on install is still the user's call.
+    assert.ok(source.includes("NOVAMIRA_HQ_SKIP_SITE_CLI"), name);
+  }
+  assert.match(
+    shell,
+    /if npm install --global --ignore-scripts "\$site_package"; then/,
+    "install.sh",
+  );
+  assert.match(
+    powershell,
+    /& \$npm @\("install", "--global", "--ignore-scripts", \$sitePackage\)/,
+    "install.ps1",
+  );
+});
+
+test("8: a failed site CLI install is reported, never fatal", () => {
+  // HQ is installed and smoke-tested before this step, and its contract is that
+  // `novamira` being absent degrades exactly one dashboard panel. So the
+  // optional integration failing must not fail an install that already worked.
+
+  // install.sh runs under `set -eu`, so the install has to sit in an `if`
+  // condition — a bare command would abort the script.
+  assert.match(code["install.sh"], /if npm install [^\n]*; then\n/);
+  assert.ok(
+    !/^\s*npm install --global --ignore-scripts "\$site_package"\s*$/m.test(
+      code["install.sh"],
+    ),
+  );
+
+  // install.ps1 must not route it through Invoke-Checked, which throws.
+  for (const line of powershell.split("\n")) {
+    if (!line.includes("$sitePackage")) continue;
     assert.ok(
-      !/Invoke-Checked \$npm @\("install"[^\n]*@novamira\/cli/.test(source),
-      name,
+      !line.includes("Invoke-Checked"),
+      `install.ps1: the site CLI install must not be checked: ${line}`,
     );
-    // The one mention is inside a message, not a command.
-    for (const line of source.split("\n")) {
-      if (!line.includes("@novamira/cli")) continue;
-      assert.ok(
-        line.includes("printf") ||
-          line.includes("Write-Output") ||
-          line.trimStart().startsWith("#"),
-        `${name}: @novamira/cli outside a message: ${line}`,
-      );
-    }
+  }
+  // …and it catches, because PowerShell 7.4+ throws on a nonzero native exit
+  // under $ErrorActionPreference = "Stop".
+  assert.match(code["install.ps1"], /\$LASTEXITCODE -eq 0/);
+  assert.match(code["install.ps1"], /\}\s*catch\s*\{/);
+
+  // Neither script makes HQ's own success depend on the site CLI, and neither
+  // invokes its executable: HQ smoke-tests HQ.
+  for (const [name, source] of Object.entries(code)) {
+    assert.ok(!/fail "[^"]*@novamira\/cli/.test(source), name);
+    assert.ok(!/Fail "[^"]*\$sitePackage/.test(source), name);
+    assert.ok(!/\bnovamira auth login "\$/.test(source), name);
   }
 });
 
-test("8: neither script carries a secret or fetches an unpinned URL", () => {
+test("9: neither script carries a secret or fetches an unpinned URL", () => {
   for (const [name, source] of Object.entries(code)) {
     // No `curl … | sh`, no `iwr … | iex`: an installer that pipes another
     // download into a shell is an unbounded trust delegation.
@@ -190,7 +225,7 @@ test("8: neither script carries a secret or fetches an unpinned URL", () => {
   }
 });
 
-test("9: the installers are not shipped inside the package they install", () => {
+test("10: the installers are not shipped inside the package they install", () => {
   assert.deepEqual(manifest.files, ["dist", "skills", "README.md", "LICENSE"]);
   for (const entry of manifest.files) {
     assert.ok(!entry.includes("install.sh"), entry);
@@ -203,6 +238,23 @@ test("9: the installers are not shipped inside the package they install", () => 
     "@starfederation/datastar-sdk",
     "commander",
   ]);
+  // The installers install the site CLI by default (test 7); that must never
+  // leak back into the manifest. `@novamira/cli` is not a runtime, dev,
+  // optional, peer or bundled dependency, in any field.
+  for (const field of [
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies",
+    "bundledDependencies",
+    "bundleDependencies",
+  ]) {
+    const value = manifest[field] ?? {};
+    assert.ok(
+      !JSON.stringify(value).includes("@novamira/cli"),
+      `${field} must not reference the site CLI`,
+    );
+  }
   // No lifecycle script, so `--ignore-scripts` costs the user nothing.
   for (const lifecycle of ["preinstall", "install", "postinstall", "prepare"])
     assert.equal(manifest.scripts[lifecycle], undefined, lifecycle);

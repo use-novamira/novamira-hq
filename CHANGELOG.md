@@ -55,8 +55,12 @@
 - `install.sh` and `install.ps1`, published as GitHub release assets. They
   install the package with `--ignore-scripts`, smoke-test it with
   `novamira-hq doctor --offline`, and register the bundled agent skill through an
-  exactly pinned `skills@1.5.18`. `@novamira/cli` is named only as an optional
-  closing hint and is never installed.
+  exactly pinned `skills@1.5.18`. They then install `@novamira/cli` globally as
+  a last step, so connected-state detection and the dashboard's Connect action
+  work on a fresh machine. It is a separate global package and never a
+  dependency of `@novamira/hq`: `NOVAMIRA_HQ_SKIP_SITE_CLI` skips the step, a
+  failure is reported without failing the install, and neither script ever runs
+  the `novamira` executable.
 - `bun run package:acceptance`: packs the tarball, installs it into a throwaway
   prefix and exercises the installed executable offline. It runs on Linux, macOS
   and Windows in CI, and again in the release job against the published version.

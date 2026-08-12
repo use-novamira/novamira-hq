@@ -45,9 +45,9 @@ Rocket.net, Hostinger, and Cloudways.
 
 ## Install
 
-Once published, the installers set up HQ **and** register its agent skill with
-the agent of your choice, then smoke-test the result with
-`novamira-hq doctor --offline`:
+Once published, the installers set up HQ, register its agent skill with the
+agent of your choice, smoke-test the result with `novamira-hq doctor --offline`,
+and install the `@novamira/cli` site CLI alongside it:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/use-novamira/novamira-hq/main/install.sh | sh
@@ -61,7 +61,14 @@ Both require Node.js 22+, `npm` and `npx`. Set `NOVAMIRA_HQ_AGENT` (for example
 `NOVAMIRA_HQ_AGENT=opencode`) to pick the agent non-interactively; without it the
 skill step asks, and needs a terminal to ask on.
 
-Or install the package alone, without the agent skill:
+The site CLI is installed last, as a separate global package — never a
+dependency of `@novamira/hq` — so that connected-state detection and the
+dashboard's Connect action work on a fresh machine. Set
+`NOVAMIRA_HQ_SKIP_SITE_CLI=1` to skip it. If that step fails, the installer says
+so and still exits 0: HQ is already installed at that point, and everything
+except the one dashboard panel works without the site CLI.
+
+Or install the package alone, without the agent skill or the site CLI:
 
 ```sh
 npm install -g @novamira/hq --ignore-scripts
@@ -196,9 +203,10 @@ Stop it with Ctrl-C. `--open` launches your default browser and is never fatal
 if it cannot.
 
 Connected-state detection — whether a provisioned site is actually connected to
-your agent — needs `@novamira/cli` installed alongside HQ. Without it that one
-panel reports "unavailable" with an install hint; provider inventory, deploy
-paths, provisioning and everything else are unaffected.
+your agent — needs `@novamira/cli` installed alongside HQ, which the installers
+do by default. Without it that one panel reports "unavailable" with an install
+hint; provider inventory, deploy paths, provisioning and everything else are
+unaffected.
 
 ## Provision a site
 
@@ -235,9 +243,13 @@ authorization, the OAuth grant, and the credential storage for the site. HQ
 writes no site credential, stores no site profile, and creates no WordPress
 user.
 
-`@novamira/cli` is an optional integration, not a dependency. Hosting inventory,
-provider actions, provisioning, and plugin-installed status all work without it;
-only the dashboard's connected-state detection and Connect action require it.
+`@novamira/cli` is an optional integration, not a dependency. The installers
+install it by default because the two tools are meant to be used together, but
+that is a convenience of the install step and nothing more: it is not a runtime,
+package, or peer dependency, HQ never imports it, and uninstalling it breaks
+nothing. Hosting inventory, provider actions, provisioning, and plugin-installed
+status all work without it; only the dashboard's connected-state detection and
+Connect action require it.
 
 ## Agent skills
 

@@ -53,6 +53,13 @@ connected-state detection with an install hint; nothing else degrades. HQ never
 reads the site CLI's config or credential storage and couples only to its public
 v1 command grammar and JSON output.
 
+`install.sh` and `install.ps1` install it by default as a **separate global npm
+package**, which is a convenience of the install step and changes none of the
+above. Do not turn that into a dependency: it belongs in no field of
+`package.json`, and the runtime must keep behaving exactly as it does when
+`novamira` is absent, because a user can uninstall it or install HQ with plain
+`npm i -g @novamira/hq`.
+
 ## Provider API calls
 
 Live provider API calls stay explicitly gated behind an environment variable
@@ -208,7 +215,12 @@ calls just to test.
   circular. They are served from the repository's raw URL and attached to each
   GitHub release. They install the package with `--ignore-scripts`, smoke-test it
   with `novamira-hq doctor --offline` — which is why a `warn` report must exit 0
-  — and then register the bundled skill with an exactly pinned `skills@x.y.z`.
+  — then register the bundled skill with an exactly pinned `skills@x.y.z`, and
+  finally install `@novamira/cli` globally: last, unpinned (same publisher, same
+  trust domain — the exact pin is for the third-party `skills` CLI alone),
+  skippable with `NOVAMIRA_HQ_SKIP_SITE_CLI`, and **non-fatal**, because HQ is
+  already installed and smoke-tested by then. Neither installer ever runs the
+  `novamira` executable.
   `scripts/package-acceptance.mjs` packs the tarball, installs it into a
   throwaway prefix and drives the installed executable; `bun run
 package:acceptance` runs it, and all three packaging jobs plus the release job

@@ -38,6 +38,15 @@ executable or addon, and no native keychain module: OS credential storage uses
 inbox platform commands. `@novamira/cli` is an optional integration and is never
 a runtime, package, or peer dependency.
 
+The installers do install `@novamira/cli` by default, as a **separate global npm
+package** installed after HQ itself. That is an install-step convenience and
+changes no other rule in this document: HQ never imports it, it appears in no
+dependency field of `package.json`, and every runtime behavior below that is
+specified to work with `novamira` absent still does. The step is skipped when
+`NOVAMIRA_HQ_SKIP_SITE_CLI` is set, its failure is reported and never fatal —
+HQ is installed and smoke-tested before it runs — and the installers never
+invoke the `novamira` executable.
+
 ## Boundary
 
 HQ never holds a WordPress site token, never calls a WordPress REST route on a
