@@ -1291,6 +1291,10 @@ test("35b: ?new=cli opens the custom CLI-site form", async () => {
   );
   assert.ok(markup.includes("Custom name"));
   assert.ok(markup.includes('data-bind="cliSites.name"'));
+  assert.ok(markup.includes("<h1>New site</h1>"));
+  assert.ok(markup.includes('href="/sites">Back to Sites</a>'));
+  assert.ok(!markup.includes('id="sites-result"'));
+  assert.ok(!markup.includes("Search by name or domain"));
 });
 
 test("36: the site browser defaults to every provider, environments included", async () => {

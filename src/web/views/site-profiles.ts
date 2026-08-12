@@ -35,7 +35,7 @@
  */
 
 import * as ds from "../datastar.js";
-import { confirmThen, post, signal } from "../expr.js";
+import { confirmThen, post, signal, type Expr } from "../expr.js";
 import { attr, classAttr, flagAttr, html, url, type Html } from "../html.js";
 import { siteProfileRenameSignal } from "../signals.js";
 import { type SiteProfileRowView, type SiteProfileState } from "./types.js";
@@ -86,15 +86,34 @@ function titleAttr(text: string | undefined) {
   return text === undefined || text === "" ? false : attr("title", text);
 }
 
+/** Reconnect-required is rendered as one action, not as a pill plus an action. */
+function renderConnectionControl(row: SiteProfileRowView, connect: Expr): Html {
+  const pill = PILLS[row.state];
+  if (row.state === "reconnect_required") {
+    return html`<button class="status-action warn" type="button"${attr(
+      "title",
+      `novamira auth login ${row.siteUrl}`,
+    )}${ds.on("click", connect)}>Reconnect</button>`;
+  }
+  const status = html`<span${classAttr("pill", pill.modifier)}${titleAttr(
+    row.hint,
+  )}>${pill.text}</span>`;
+  if (row.state === "connected") return status;
+  return html`${status}<button class="button tiny" type="button"${attr(
+    "title",
+    `novamira auth login ${row.siteUrl}`,
+  )}${ds.on("click", connect)}>Reconnect</button>`;
+}
+
 /**
  * One profile.
  *
  * Reconnect is absent from a `connected` row for the same reason the Setup CTA
  * is absent from a connected environment above: a profile that already answers
  * is not one you re-authorize, and offering it would invite an operator to burn
- * a working credential to fix nothing. Sign out and Remove are offered in every
- * state, including `unknown` — "I cannot reach this site any more, get it out of
- * my list" is the case that most needs them.
+ * a working credential to fix nothing. Disconnect and Remove from list are
+ * offered in every state, including `unknown` — "I cannot reach this site any
+ * more, get it out of my list" is the case that most needs them.
  *
  * `listContext` keeps every action on the hosting inventory currently rendered.
  */
@@ -102,7 +121,6 @@ export function renderSiteProfileRow(
   row: SiteProfileRowView,
   listContext?: { readonly profile: string; readonly includeEnvs: boolean },
 ): Html {
-  const pill = PILLS[row.state];
   const routeContext =
     listContext === undefined
       ? {}
@@ -112,50 +130,59 @@ export function renderSiteProfileRow(
           unified: true,
         };
   const connect = post(
-    url(CONNECT_PATH, { url: row.siteUrl, ...routeContext }),
+    url(CONNECT_PATH, { url: row.siteUrl, name: row.name, ...routeContext }),
     {
       include: [],
     },
   );
   const logout = confirmThen(
-    `Sign out of ${row.name}? The Novamira site CLI will delete its credential and revoke it with the site.`,
+    `Disconnect ${row.name} from Novamira? Its authorization will be revoked, but the site will stay in this list so you can reconnect it later.`,
     post(url(LOGOUT_PATH, { name: row.name, ...routeContext }), {
       include: [],
     }),
   );
   const remove = confirmThen(
-    `Remove the site profile ${row.name}? The Novamira site CLI will forget the site entirely.`,
+    `Remove ${row.name} from this list? Its saved site profile will be deleted from this computer.`,
     post(url(REMOVE_PATH, { name: row.name, ...routeContext }), {
       include: [],
     }),
   );
 
-  return html`<article${
-    listContext === undefined ? false : classAttr("site-row", "cli-site-row")
-  }${listContext === undefined ? false : ds.novamiraState("installed")}><div><strong>${row.name}</strong><small>${row.siteUrl}${
+  if (listContext !== undefined) {
+    return html`<article class="site-row cli-site-row"${ds.novamiraState(
+      row.state === "connected" ? "installed" : "install",
+    )}><strong class="cli-site-name">${row.name}</strong><small class="cli-site-url">${row.siteUrl}</small><div class="site-state">${renderConnectionControl(
+      row,
+      connect,
+    )}${renderRenameControl(
+      row.name,
+      routeContext,
+    )}<button class="button tiny quiet" type="button"${attr(
+      "title",
+      `novamira --site ${row.name} auth logout`,
+    )}${ds.on("click", logout)}>Disconnect</button><button class="button tiny danger quiet" type="button"${attr(
+      "title",
+      `novamira sites remove ${row.name}`,
+    )}${ds.on("click", remove)}>Remove from list</button></div></article>`;
+  }
+
+  return html`<article><div><strong>${row.name}</strong><small>${row.siteUrl}${
     row.expiresAt === undefined
       ? false
       : html` · credential expires ${row.expiresAt}`
-  }</small></div><div class="env-actions"><span${classAttr(
-    "pill",
-    pill.modifier,
-  )}${titleAttr(row.hint)}>${pill.text}</span>${renderRenameControl(
+  }</small></div><div class="env-actions">${renderConnectionControl(
+    row,
+    connect,
+  )}${renderRenameControl(
     row.name,
     routeContext,
-  )}${
-    row.state === "connected"
-      ? false
-      : html`<button class="button tiny" type="button"${attr(
-          "title",
-          `novamira auth login ${row.siteUrl}`,
-        )}${ds.on("click", connect)}>Reconnect</button>`
-  }<button class="button tiny" type="button"${attr(
+  )}<button class="button tiny" type="button"${attr(
     "title",
     `novamira --site ${row.name} auth logout`,
-  )}${ds.on("click", logout)}>Sign out</button><button class="button tiny danger" type="button"${attr(
+  )}${ds.on("click", logout)}>Disconnect</button><button class="button tiny danger" type="button"${attr(
     "title",
     `novamira sites remove ${row.name}`,
-  )}${ds.on("click", remove)}>Remove</button></div></article>`;
+  )}${ds.on("click", remove)}>Remove from list</button></div></article>`;
 }
 
 /** Actions for a CLI profile already represented by a hosting environment row. */
@@ -169,17 +196,17 @@ export function renderSiteProfileActions(
     unified: true,
   };
   const reconnect = post(
-    url(CONNECT_PATH, { url: row.siteUrl, ...routeContext }),
+    url(CONNECT_PATH, { url: row.siteUrl, name: row.name, ...routeContext }),
     { include: [] },
   );
   const logout = confirmThen(
-    `Sign out of ${row.name}? The Novamira site CLI will delete its credential and revoke it with the site.`,
+    `Disconnect ${row.name} from Novamira? Its authorization will be revoked, but the site will stay in this list so you can reconnect it later.`,
     post(url(LOGOUT_PATH, { name: row.name, ...routeContext }), {
       include: [],
     }),
   );
   const remove = confirmThen(
-    `Remove the site profile ${row.name}? The Novamira site CLI will forget the site entirely.`,
+    `Remove ${row.name} from this list? Its saved site profile will be deleted from this computer.`,
     post(url(REMOVE_PATH, { name: row.name, ...routeContext }), {
       include: [],
     }),
@@ -190,17 +217,17 @@ export function renderSiteProfileActions(
   )}${
     row.state === "connected"
       ? false
-      : html`<button class="button tiny" type="button"${ds.on(
-          "click",
-          reconnect,
-        )}>Reconnect</button>`
+      : html`<button${classAttr(
+          row.state === "reconnect_required" ? "status-action" : "button",
+          row.state === "reconnect_required" ? "warn" : "tiny",
+        )} type="button"${ds.on("click", reconnect)}>Reconnect</button>`
   }<button class="button tiny" type="button"${ds.on(
     "click",
     logout,
-  )}>Sign out</button><button class="button tiny danger" type="button"${ds.on(
+  )}>Disconnect</button><button class="button tiny danger" type="button"${ds.on(
     "click",
     remove,
-  )}>Remove</button></span>`;
+  )}>Remove from list</button></span>`;
 }
 
 /**
@@ -239,7 +266,7 @@ export function renderConnectForm(
     open && "open",
   )}${ds.classes({ open: signal("cliSites.open") })}${ds.onSubmit(
     submit,
-  )}><div class="panel-head"><div><h2>Connect a CLI site</h2><p>The Novamira site CLI opens your browser to authorize; HQ stores no site credential.</p></div></div><div class="form-grid"><label><span>Site URL</span><input type="url"${ds.bind(
+  )}><div class="panel-head"><div><h2>Add a site by URL</h2><p>Your browser will open so you can authorize the connection. The connection will be saved on your computer.</p></div></div><div class="form-grid"><label><span>Site URL</span><input type="url"${ds.bind(
     "cliSites.url",
   )} placeholder="https://example.com" required${disabled}></label><label><span>Custom name <small>(optional)</small></span><input type="text"${ds.bind(
     "cliSites.name",

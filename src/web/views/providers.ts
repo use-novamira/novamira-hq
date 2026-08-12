@@ -26,10 +26,8 @@
  * - The onboarding page's **first card**, "Connect a single site — URL +
  *   application password" (`views.go:242-250`), and `renderSiteForm`
  *   (`views.go:622-650`) with it. Under the boundary rule HQ never holds a
- *   WordPress credential, so there is nothing for that card to open. Go's
- *   condition was `len(res.Providers)==0 && len(res.SiteProfiles)==0`; the
- *   second clause is gone, and so is the "pick how to start" copy that only made
- *   sense when there were two ways to start.
+ *   WordPress credential, so that credential form is gone. The current URL
+ *   path delegates authorization and storage to the site CLI instead.
  * - Every `SiteProfiles` reference (`views.go:177-183, 200, 242-250, 261`).
  * - The `#provider-form` **API base URL** field and the "Overwrite if it exists"
  *   checkbox — Go had neither, and `force` is set by Edit alone. Adding either
@@ -252,12 +250,14 @@ function providerAction(path: string, profile: string): Expr {
 export interface ProvidersPageModel {
   readonly view: ConfigView;
   readonly notice: DashboardNotice;
+  /** True only for `/` when neither hosting nor the site CLI has any sites. */
+  readonly onboarding: boolean;
   /** The rendered `open` class, so an opened form does not flash shut on paint. */
   readonly formOpen: boolean;
 }
 
 export function renderProvidersPage(model: ProvidersPageModel): Html {
-  if (model.view.profiles.length === 0) {
+  if (model.onboarding) {
     return renderOnboarding(model);
   }
   const addProfile = seq(resetProviderForm(true), focusElementById("profile"));
@@ -274,25 +274,23 @@ export function renderProvidersPage(model: ProvidersPageModel): Html {
 }
 
 /**
- * Go's `renderOnboarding` (`views.go:228-264`), with one card instead of two.
- *
- * The headline and lede are rewritten because Go's offered a choice ("Pick how
- * to start") between connecting a single site and connecting a host, and the
- * first of those no longer exists. The remaining card keeps its `feat` class:
- * it is the only card, so it should look like the primary action rather than
- * like one of a pair.
+ * Go's `renderOnboarding` (`views.go:228-264`), with two safe starting paths:
+ * discover environments through a hosting provider, or ask the site CLI to
+ * authorize a site by URL. Neither path gives HQ a WordPress credential.
  */
 function renderOnboarding(model: ProvidersPageModel): Html {
   const openForm = seq(
     set("providerForm.open", jsBoolean(true)),
     focusElementById("profile"),
   );
-  return html`<section class="page onboarding"><header class="page-head"><div><span class="eyebrow">Welcome</span><h1>Let's connect your first hosting account</h1><p class="lede">Novamira HQ manages the sites on your hosting accounts. Connect a host to get started.</p></div></header>${renderProviderFlash(
+  return html`<section class="page onboarding"><header class="page-head"><div><span class="eyebrow">Welcome to Novamira HQ</span><h1>Your site. Your AI.<br>Nothing in between.</h1><p class="lede">Manage your hosting environments and prepare sites for Novamira. Choose how you want to start.</p></div></header>${renderProviderFlash(
     model.notice,
-  )}<div class="onboard-cards"><button class="onboard-card feat" type="button"${ds.on(
+  )}<div class="onboard-cards"><button class="onboard-card" type="button"${ds.on(
     "click",
     openForm,
-  )}><span class="kicker">Many sites</span><h2>Connect a hosting provider</h2><p>Manage every site on an account from a provider supported by Novamira HQ.</p><span class="button primary">Connect a hosting provider</span></button></div>${renderProviderForm(
+  )}><span class="kicker">Hosting account</span><h2>Connect a hosting provider</h2><p>Discover sites and environments from an existing account with a provider supported by Novamira HQ.</p><span class="button primary">Connect a hosting provider</span></button><a class="onboard-card"${hrefAttr(
+    url("/sites", { new: "cli" }),
+  )}><span class="kicker">Site URL</span><h2>Add a site by URL</h2><p>Add a site directly when Novamira is already installed and you know its URL.</p><span class="button primary">Add a site by URL</span></a></div>${renderProviderForm(
     model.formOpen,
   )}</section>`;
 }

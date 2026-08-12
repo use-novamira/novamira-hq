@@ -143,6 +143,15 @@ const NO_DOMAIN_TITLE =
  * `?datastar=…`, and `expr.get` refuses both outright.
  */
 export function renderSitesPage(view: ConfigView, cliFormOpen = false): Html {
+  if (cliFormOpen) {
+    return html`<section class="page"><header class="page-head"><div><h1>New site</h1><p>Add a site directly using its URL.</p></div><a class="button secondary"${hrefAttr(
+      url("/sites"),
+    )}>Back to Sites</a></header>${renderConnectForm(
+      true,
+      true,
+      true,
+    )}</section>`;
+  }
   const load = get(url("/_dashboard/sites", { include_envs: true }), {
     include: ["sites"],
   });
@@ -150,10 +159,10 @@ export function renderSitesPage(view: ConfigView, cliFormOpen = false): Html {
     url("/_dashboard/sites", { include_envs: true, refresh: true }),
     { include: ["sites"] },
   );
-  return html`<section class="page"><header class="page-head"><div><h1>Sites</h1><p>Hosting environments and Novamira CLI sites in one inventory.</p></div></header>${renderConnectForm(
+  return html`<section class="page"><header class="page-head"><div><h1>Sites</h1><p>Hosting environments and their Novamira connections.</p></div></header>${renderConnectForm(
     true,
     true,
-    cliFormOpen,
+    false,
   )}<form class="toolbar"${ds.indicator(
     "sites.loading",
   )}${ds.init(load)}${ds.on("change", load)}${ds.onSubmit(
@@ -175,11 +184,11 @@ export function renderSitesPage(view: ConfigView, cliFormOpen = false): Html {
     "all",
   )}>All</button><button type="button" class="seg-btn"${ds.sitesFilterStatus(
     "with",
-  )}>With Novamira <span class="seg-count"${ds.sitesFilterCount(
+  )}>Connected <span class="seg-count"${ds.sitesFilterCount(
     "with",
   )}>0</span></button><button type="button" class="seg-btn"${ds.sitesFilterStatus(
     "without",
-  )}>To install <span class="seg-count"${ds.sitesFilterCount(
+  )}>Needs attention <span class="seg-count"${ds.sitesFilterCount(
     "without",
   )}>0</span></button></div><div${idAttr(
     "sites-result",
@@ -257,9 +266,9 @@ function renderCliOnly(
   view: SitesResultView,
 ): Html | false {
   if (profiles.length === 0) return false;
-  return html`<section class="provider-sites cli-only-sites"><div class="group-head"><div><h2>CLI only</h2><p>Sites not matched to a hosting environment.</p></div><span class="pill">${String(
+  return html`<section class="provider-sites cli-sites"><div class="group-head"><div><h2>Sites added by URL</h2><p>Added directly instead of discovered through a hosting provider.</p></div><span class="pill">${String(
     profiles.length,
-  )} sites</span></div><div class="compact-list">${profiles.map((profile) =>
+  )} sites</span></div><div class="site-grid cli-site-grid">${profiles.map((profile) =>
     renderSiteProfileRow(siteProfileRowView(profile), {
       profile: view.profile,
       includeEnvs: view.includeEnvs,
@@ -357,7 +366,8 @@ function renderEnvironment(
  * four states back, and renders the pill plus the actions that state admits:
  *
  * - `connected` — `pill ok` "Connected", and nothing to do.
- * - `reconnect_required` — `pill warn` "Reconnect", and Connect.
+ * - `reconnect_required` — one yellow Reconnect action on the matched profile;
+ *   a warning pill only when the integration returned no profile to act on.
  * - `not_configured` — `pill` "Not connected", Connect, then the Setup CTA.
  * - `unavailable` — `pill` "Unknown" titled with the hint, Connect **disabled**
  *   with the same title, and the Setup CTA, which does not depend on knowing
@@ -393,11 +403,12 @@ function renderStateCell(
         connection,
         view,
       )}`;
-    case "reconnect_required":
-      return html`<span class="pill warn">Reconnect</span>${renderProfileLink(
-        connection,
-        view,
-      )}`;
+    case "reconnect_required": {
+      const profiles = renderProfileLink(connection, view);
+      return profiles === false
+        ? html`<span class="pill warn">Reconnect required</span>`
+        : profiles;
+    }
     case "not_configured":
       return html`<span class="pill">Not connected</span>${renderConnectButton(
         connection,

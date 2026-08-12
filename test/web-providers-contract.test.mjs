@@ -270,23 +270,61 @@ const PROFILE_CONFIG = {
 /* 1-5: the page                                                              */
 /* -------------------------------------------------------------------------- */
 
-test("1: with no profiles the page is the onboarding state, with one card", async () => {
+test("1: only an empty root shows onboarding; Providers remains a section", async () => {
   const { server } = await fixture();
-  const markup = await page(server, "/providers");
+  const markup = await page(server, "/");
   assert.ok(markup.includes('class="page onboarding"'));
-  assert.equal(markup.split('class="onboard-card feat"').length - 1, 1);
-  assert.ok(markup.includes("Let's connect your first hosting account"));
-  assert.ok(markup.includes("Connect a host"));
+  assert.equal(markup.split('class="onboard-card"').length - 1, 2);
+  assert.ok(markup.includes("Welcome to Novamira HQ"));
+  assert.ok(markup.includes("Your site. Your AI."));
+  assert.ok(markup.includes("Nothing in between."));
+  assert.ok(markup.includes("Connect a hosting provider"));
+  assert.ok(markup.includes("Add a site by URL"));
+  assert.ok(markup.includes('href="/sites?new=cli"'));
   assert.ok(markup.includes('id="provider-flash"'));
-  // The deleted card, and everything it implied.
-  for (const gone of [
-    "Connect a single site",
-    "Single site",
-    "site-name",
-    "siteForm",
-  ])
+  assert.ok(!markup.includes('nav-link active'));
+  // The old credential-holding site form remains deleted.
+  for (const gone of ["Connect a single site", "site-name", "siteForm"])
     assert.ok(!markup.includes(gone), gone);
   assert.ok(!/application[-_ ]?password/i.test(markup));
+
+  const providers = await page(server, "/providers");
+  assert.ok(providers.includes("<h1>Hosting Providers</h1>"));
+  assert.ok(providers.includes('nav-link active'));
+  assert.ok(!providers.includes('class="page onboarding"'));
+
+  const listing = {
+    profiles: [
+      {
+        name: "direct",
+        siteUrl: "https://direct.example.test",
+        origin: "https://direct.example.test",
+        state: "connected",
+      },
+    ],
+    checkedAt: NOW,
+    cliAvailable: true,
+  };
+  const snapshot = {
+    byKey: new Map(),
+    checkedAt: NOW,
+    cliAvailable: true,
+  };
+  const { server: withDirectSite } = await fixture({
+    overrides: {
+      integration: {
+        connectionStates: async () => snapshot,
+        siteInventory: async () => ({ connections: snapshot, profiles: listing }),
+        listProfiles: async () => listing,
+        connect: async () => ({ kind: "connected" }),
+        logoutProfile: async () => ({ kind: "done" }),
+        removeProfile: async () => ({ kind: "done" }),
+      },
+    },
+  });
+  const populatedRoot = await page(withDirectSite, "/");
+  assert.ok(populatedRoot.includes("<h1>Sites</h1>"));
+  assert.ok(!populatedRoot.includes('class="page onboarding"'));
 });
 
 test("2: with profiles the form renders Go's four fields and no others", async () => {

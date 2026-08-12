@@ -182,7 +182,9 @@ function requireName(request: DashboardRequest): string {
 /* -------------------------------------------------------------------------- */
 
 /**
- * `?url=` wins, then the `cliSites.url` signal.
+ * `?url=` wins, then the `cliSites.url` signal. A row also carries `?name=` so
+ * reconnecting updates that exact profile instead of creating a new one from
+ * the URL-derived default name.
  *
  * Two inputs because there are two callers and they differ in kind: a row's
  * Reconnect button knows the address already and puts it on the link, while the
@@ -207,7 +209,8 @@ export function createSiteProfileConnectHandler(
       // the raw string in the error.
       const site = normalizeSiteUrl(raw, context.environment, "--url");
 
-      const name = parseCliSites(signals).name;
+      const name =
+        (request.query.get("name") ?? "").trim() || parseCliSites(signals).name;
       if (name !== "" && !isSiteProfileName(name)) {
         throw new CliError(
           "usage_error",

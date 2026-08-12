@@ -706,6 +706,7 @@ test("5: a PHP-too-old run is an error job with a humanized sentence", async () 
 
   const markup = await page(server, `/novamira-setup?job=${id}`);
   assert.ok(markup.includes("<h2>Setup failed</h2>"));
+  assert.ok(markup.includes('<div class="setup-failure-body">'));
   assert.ok(
     markup.includes(
       "The site isn&#39;t ready for Novamira yet. Update WordPress and the Novamira plugin, then try again.",

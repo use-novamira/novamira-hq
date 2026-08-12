@@ -257,7 +257,11 @@ const PAGE_PATHS: Readonly<Record<string, DashboardPage>> = {
   "/settings": "settings",
 };
 
-/** Go's `currentDashboardPage` (server.go:205-222); `/` is the providers page. */
+/**
+ * Go's `currentDashboardPage` (server.go:205-222). `/` starts from the
+ * providers page id, then `pageHandler` resolves it to onboarding or Sites
+ * after checking both inventories.
+ */
 export function pageForPath(path: string): DashboardPage | undefined {
   return Object.hasOwn(PAGE_PATHS, path) ? PAGE_PATHS[path] : undefined;
 }
@@ -370,6 +374,15 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
   const pageHandler = (page: DashboardPage): RouteHandler => {
     return async (request) => {
       const view = await context.loadConfigView();
+      let renderedPage = page;
+      let providerOnboarding = false;
+      if (request.path === "/") {
+        if (view.profiles.length === 0) {
+          const inventory = await context.sites.refreshInventory([]);
+          providerOnboarding = inventory.profiles.profiles.length === 0;
+        }
+        if (!providerOnboarding) renderedPage = "sites";
+      }
       // Go accepted `?new=host` and `?new=site`. The second opened the site
       // form, which no longer exists; an unknown value is ignored in silence
       // rather than turned into an error page, because the only way to send one
@@ -382,19 +395,26 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
         // expression all start on the same kind.
         firstProviderKind: PROVIDER_KINDS[0],
       });
-      const extras = pageExtras(page, request);
+      const extras = pageExtras(renderedPage, request);
       // The extras go first so the three fields every page must have cannot be
       // overwritten by one, and so the notice reaching the toast and the notice
       // reaching the body are one value.
       const notice = extras.notice ?? EMPTY_NOTICE;
-      const model: PageModel = { ...extras, view, notice, signals };
+      const model: PageModel = {
+        ...extras,
+        view,
+        notice,
+        signals,
+        providerOnboarding,
+      };
       return htmlResponse(
         renderDocument({
-          page,
+          page: renderedPage,
           view,
           signals,
           notice,
-          body: renderPageBody(page, model),
+          activeNav: !providerOnboarding,
+          body: renderPageBody(renderedPage, model),
         }),
       );
     };

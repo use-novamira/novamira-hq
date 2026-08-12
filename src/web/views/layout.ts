@@ -64,6 +64,8 @@ export interface DocumentInput {
   readonly view: ConfigView;
   readonly signals: DashboardSignals;
   readonly notice: DashboardNotice;
+  /** False only on the global first-run onboarding screen. */
+  readonly activeNav?: boolean;
   /** The page body, from `views/pages.ts`'s `renderPageBody`. */
   readonly body: Html;
 }
@@ -90,7 +92,7 @@ export function renderDocument(input: DocumentInput): Html {
 <script src="/assets/sites-filter.js" defer></script>
 </head>
 <body>
-<div class="shell"${ds.signals(toSignalRecord(input.signals))}>${renderSidebar(input.view, input.page)}${renderMain(input.page, input.body)}</div>
+<div class="shell"${ds.signals(toSignalRecord(input.signals))}>${renderSidebar(input.view, input.page, input.activeNav)}${renderMain(input.page, input.body)}</div>
 ${renderToast(input.notice)}
 </body>
 </html>
@@ -103,7 +105,11 @@ ${renderToast(input.notice)}
  * `view` is taken whole rather than as a version string so that 6b can put the
  * profile and deploy-path counts back without changing the signature.
  */
-export function renderSidebar(view: ConfigView, page: DashboardPage): Html {
+export function renderSidebar(
+  view: ConfigView,
+  page: DashboardPage,
+  activeNav = true,
+): Html {
   return html`<aside class="sidebar"><a class="brand"${hrefAttr(url("/providers"))} aria-label="Novamira HQ dashboard home"><img class="brand-logo" src="/assets/novamira-hq-logo-white.svg" alt="Novamira HQ" width="170" height="25"></a><div class="new-menu"${ds.on(
     "click",
     set("sites.newMenuOpen", jsBoolean(false)),
@@ -115,9 +121,9 @@ export function renderSidebar(view: ConfigView, page: DashboardPage): Html {
     "new-pop",
   )}${ds.classes({ open: signal("sites.newMenuOpen") })} role="menu"><a${hrefAttr(
     url("/providers", { new: "host" }),
-  )}><strong>Hosting account</strong><span>Add a provider profile</span></a><a${hrefAttr(
+  )}><strong>Hosting provider</strong><span>Connect an existing account</span></a><a${hrefAttr(
     url("/sites", { new: "cli" }),
-  )}><strong>CLI site</strong><span>Connect a site by URL</span></a></div></div>${renderNav(page)}<div class="sidebar-foot"><span class="version-pill">v${view.version}</span></div></aside>`;
+  )}><strong>Site</strong><span>Add using its URL</span></a></div></div>${renderNav(page, activeNav)}<div class="sidebar-foot"><div class="sidebar-legal"><span>Novamira HQ v${view.version}</span><span>© 2026 Ovation S.r.l.</span><span>AGPL-3.0-or-later</span></div></div></aside>`;
 }
 
 /**
@@ -127,18 +133,19 @@ export function renderSidebar(view: ConfigView, page: DashboardPage): Html {
  * `novamira-setup` highlights Sites, and `deploy-path-new` highlights Deploy
  * paths. `/sites` is the unified hosting and site-CLI inventory.
  */
-export function renderNav(page: DashboardPage): Html {
+export function renderNav(page: DashboardPage, showActive = true): Html {
+  const current = showActive ? page : undefined;
   return html`<nav${idAttr("nav")} class="nav" aria-label="Dashboard sections">${[
-    navLink(page, "sites", "/sites", "Sites"),
-    navLink(page, "deploy-paths", "/deploy-paths", "Deploy paths"),
-    navLink(page, "providers", "/providers", "Hosting Providers"),
-    navLink(page, "diagnostics", "/diagnostics", "Diagnostics"),
-    navLink(page, "settings", "/settings", "Settings"),
+    navLink(current, "sites", "/sites", "Sites"),
+    navLink(current, "deploy-paths", "/deploy-paths", "Deploy paths"),
+    navLink(current, "providers", "/providers", "Hosting Providers"),
+    navLink(current, "diagnostics", "/diagnostics", "Diagnostics"),
+    navLink(current, "settings", "/settings", "Settings"),
   ]}</nav>`;
 }
 
 function navLink(
-  current: DashboardPage,
+  current: DashboardPage | undefined,
   page: DashboardPage,
   href: string,
   label: string,

@@ -407,11 +407,11 @@ export function humanizeSetupError(code: ErrorCode): string {
  * than a page that silently omits the panel.
  */
 function renderSetupFailure(failure: SetupJobFailure | null): Html {
-  return html`<section class="panel"><div class="panel-head"><h2>Setup failed</h2></div><div class="empty error">${
+  return html`<section class="panel"><div class="panel-head"><h2>Setup failed</h2></div><div class="setup-failure-body"><div class="empty error">${
     failure === null ? HUMANIZED_DEFAULT : humanizeSetupError(failure.code)
   }</div>${
     failure === null
       ? false
       : html`<details class="setup-detail"><summary>Technical details</summary><pre>${failure.code}: ${failure.message}</pre></details>`
-  }</section>`;
+  }</div></section>`;
 }

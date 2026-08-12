@@ -58,6 +58,8 @@ import type { ConfigView, DashboardNotice, DashboardPage } from "./types.js";
 export interface PageModel {
   readonly view: ConfigView;
   readonly notice: DashboardNotice;
+  /** The root-page first-run state, after checking both hosting and direct sites. */
+  readonly providerOnboarding?: boolean;
   /**
    * The signals the page was rendered with.
    *
@@ -91,6 +93,7 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
       return renderProvidersPage({
         view: model.view,
         notice: model.notice,
+        onboarding: model.providerOnboarding ?? false,
         formOpen: model.signals.providerForm.open,
       });
     case "sites":

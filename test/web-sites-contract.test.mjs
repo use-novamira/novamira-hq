@@ -423,8 +423,8 @@ test("2: the segmented control carries the five frozen data-sf-* values", async 
     'data-sf-status="without"',
     'data-sf-count="with"',
     'data-sf-count="without"',
-    "With Novamira ",
-    "To install ",
+    "Connected ",
+    "Needs attention ",
     'class="seg-btn on"',
   ])
     assert.ok(markup.includes(want), want);
@@ -881,10 +881,10 @@ test("16: matched CLI profiles stay in the hosting row and CLI-only sites are se
   // look like it came from the first.
   assert.ok(markup.includes("<strong>staging</strong>"));
   assert.ok(markup.includes("<strong>staging-2</strong>"));
-  assert.ok(markup.includes(">Sign out</button>"));
+  assert.ok(markup.includes(">Disconnect</button>"));
   assert.ok(markup.includes(">Rename</button>"));
   assert.ok(markup.includes("novamira sites rename prod &lt;new-name&gt;"));
-  assert.ok(markup.includes(">Remove</button>"));
+  assert.ok(markup.includes(">Remove from list</button>"));
 
   // A cell with no match renders no link — `not_configured` has no profile by
   // definition, and inventing one would be worse than saying nothing.
@@ -897,7 +897,7 @@ test("16: matched CLI profiles stay in the hosting row and CLI-only sites are se
   assert.ok(!cold.find("sites-result").markup.includes("/site-profiles"));
 });
 
-test("18: the unified list renders only unmatched CLI profiles in CLI only", async () => {
+test("18: the unified list renders unmatched CLI profiles as an inventory group", async () => {
   const siteProfiles = {
     profiles: [
       {
@@ -910,7 +910,7 @@ test("18: the unified list renders only unmatched CLI profiles in CLI only", asy
         name: "direct",
         siteUrl: "https://direct.example.com",
         origin: "https://direct.example.com",
-        state: "connected",
+        state: "reconnect_required",
       },
     ],
     checkedAt: NOW,
@@ -921,8 +921,16 @@ test("18: the unified list renders only unmatched CLI profiles in CLI only", asy
     profiles: { "env-a": ["cli-prod"] },
     siteProfiles,
   });
-  assert.ok(markup.includes("<h2>CLI only</h2>"));
+  assert.ok(markup.includes('<section class="provider-sites cli-sites">'));
+  assert.ok(markup.includes("<h2>Sites added by URL</h2>"));
   assert.ok(markup.includes("direct.example.com"));
+  assert.ok(
+    markup.includes(
+      'data-nm-state="install"><strong class="cli-site-name">direct</strong>',
+    ),
+  );
+  assert.ok(!markup.includes("Reconnect required"));
+  assert.ok(markup.includes("name=direct"));
   assert.equal(markup.split(">cli-prod<").length - 1, 1);
 });
 
