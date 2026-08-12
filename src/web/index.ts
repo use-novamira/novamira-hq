@@ -179,6 +179,12 @@ export {
 } from "./views/sites.js";
 
 export {
+  renderSiteProfiles,
+  renderSiteProfilesPage,
+  type SiteProfilesView,
+} from "./views/site-profiles.js";
+
+export {
   deployPathsStatusLine,
   deployPushesSummary,
   renderDeployPathNewPage,

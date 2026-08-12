@@ -102,6 +102,7 @@ import {
   renderSetupWork,
   renderSetupWorkBody,
 } from "../dist/web/views/setup.js";
+import { renderSiteProfiles } from "../dist/web/views/site-profiles.js";
 import {
   renderSitesResult,
   renderSitesStatus,
@@ -211,6 +212,7 @@ const CORPUS_PATHS = [
   "/providers?new=host",
   "/sites",
   "/sites?new=site",
+  "/site-profiles",
   "/deploy-paths",
   "/deploy-paths/new",
   "/novamira-setup?profile=dev&env=env-1",
@@ -1016,6 +1018,9 @@ const FRAGMENT_RENDERERS = {
       connections: null,
       notice: { level: "neutral", message: "" },
     }),
+  // The panel before its first load: `listing: null` is the state whose root
+  // carries the `data-init`, which is why the fragment is catalogued outer.
+  "cli-sites/outer": () => renderSiteProfiles({ listing: null }),
   "setup-work/outer": () => renderSetupWork(SETUP_VIEW),
   "setup-work/inner": () => renderSetupWorkBody(SETUP_VIEW),
   "diagnostics-output/outer": () =>
@@ -1050,6 +1055,7 @@ test("27: the catalog is non-empty and every selector id is a legal target", () 
     "provider-flash/outer",
     "sites-status/inner",
     "sites-result/outer",
+    "cli-sites/outer",
     "setup-work/outer",
     "setup-work/inner",
     "diagnostics-output/outer",
@@ -1087,6 +1093,7 @@ test("29: every routed page carries main, nav and toast", async () => {
       path: "/sites",
       ids: ["main", "nav", "toast", "sites-status", "sites-result"],
     },
+    { path: "/site-profiles", ids: ["main", "nav", "toast", "cli-sites"] },
     { path: "/deploy-paths", ids: ["main", "nav", "toast"] },
     { path: "/deploy-paths/new", ids: ["main", "nav", "toast"] },
     {
@@ -1240,9 +1247,13 @@ function rootSignals(markup) {
   return JSON.parse(values[0]);
 }
 
-test("33: the root signal object carries exactly the seven keys, and no siteForm", async () => {
+test("33: the root signal object carries exactly the eight keys, and no siteForm", async () => {
   const signals = rootSignals(await page(await dashboard(), "/sites?new=site"));
+  // `cliSites` is the site-profile panel's subtree — a site URL box and a
+  // loading flag. It is *not* Go's `siteForm`, which held a WordPress
+  // Application Password; the assertion below still pins that one absent.
   assert.deepEqual(Object.keys(signals).sort(), [
+    "cliSites",
     "deployForm",
     "diagnostics",
     "providerForm",

@@ -335,6 +335,7 @@ test("#main carries its per-page class, and renderPlaceholderBody is gone", asyn
       ["/", "providers"],
       ["/providers", "providers"],
       ["/sites", "sites"],
+      ["/site-profiles", "site-profiles"],
       ["/deploy-paths", "deploy-paths"],
       ["/deploy-paths/new", "deploy-path-new"],
       ["/novamira-setup", "novamira-setup"],
@@ -367,6 +368,9 @@ test("the nav active link follows the two page aliases", async () => {
       ["/providers", "/providers"],
       ["/sites", "/sites"],
       ["/novamira-setup", "/sites"],
+      // Its own link, and no alias: the CLI-sites page is not a detail view of
+      // the hosting inventory, which is the whole reason it left that page.
+      ["/site-profiles", "/site-profiles"],
       ["/deploy-paths", "/deploy-paths"],
       ["/deploy-paths/new", "/deploy-paths"],
       ["/diagnostics", "/diagnostics"],
@@ -603,6 +607,7 @@ test("the token appears exactly once, inside the root data-signals", async () =>
     const parsed = JSON.parse(unescapeHtml(signals[1]));
     assert.equal(parsed.token, server.token);
     assert.deepEqual(Object.keys(parsed).sort(), [
+      "cliSites",
       "deployForm",
       "diagnostics",
       "providerForm",
@@ -846,6 +851,14 @@ const SHIPPED_ROUTES = [
   "GET /_dashboard/providers/validate",
   "GET /_dashboard/setup/jobs/",
   "GET /_dashboard/setup/start",
+  // The site-profile panel's four rows. They manage the *site CLI's* profiles
+  // by spawning `novamira`; they are not Go's deleted `/_dashboard/sites/save`
+  // and `/_dashboard/sites/remove`, which wrote HQ's own site profiles and are
+  // asserted absent by the test below.
+  "GET /_dashboard/site-profiles",
+  "GET /_dashboard/site-profiles/connect",
+  "GET /_dashboard/site-profiles/logout",
+  "GET /_dashboard/site-profiles/remove",
   "GET /_dashboard/sites",
   "GET /_dashboard/updates/check",
   "GET /_dashboard/updates/install",
@@ -856,6 +869,7 @@ const SHIPPED_ROUTES = [
   "GET /novamira-setup",
   "GET /providers",
   "GET /settings",
+  "GET /site-profiles",
   "GET /sites",
   "HEAD /assets/",
 ];

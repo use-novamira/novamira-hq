@@ -142,9 +142,9 @@ export function setupViewForJob(
 export function renderSetupPage(view: SetupView = EMPTY_SETUP): Html {
   const head = html`<header class="page-head"><div><h1>Novamira Setup</h1></div><a class="button secondary"${hrefAttr(
     url("/sites"),
-  )}>Sites</a></header>`;
+  )}>Hosting Sites</a></header>`;
   if (view.profile === "" && view.envId === "" && view.jobId === "") {
-    return html`<section class="page">${head}<div class="empty">Select an environment from Sites to start setup.</div></section>`;
+    return html`<section class="page">${head}<div class="empty">Select an environment from Hosting Sites to start setup.</div></section>`;
   }
   return html`<section class="page">${head}${renderSetupWork(view)}</section>`;
 }

@@ -32,7 +32,10 @@ import { ConfigStore } from "../dist/config/profiles.js";
 import { SITE_CLI_INSTALL_HINT } from "../dist/connection-state.js";
 import { CliError } from "../dist/errors.js";
 import { createHostingClientFactory } from "../dist/hosting/factory.js";
-import { createDashboardServer } from "../dist/web/index.js";
+import {
+  createDashboardServer,
+  createSitesService,
+} from "../dist/web/index.js";
 
 const TOKEN = "f".repeat(64);
 const TOKEN_HEADER = "x-novamira-dashboard-token";
@@ -130,12 +133,13 @@ const ENVIRONMENT = {
  * anything not listed is left out of the map (which the view reads as
  * `not_configured`).
  */
-function snapshotFor(queries, states, cliAvailable = true) {
+function snapshotFor(queries, states, cliAvailable = true, profiles = {}) {
   const byKey = new Map();
   for (const query of queries) {
     const envId = query.key.split("/").at(-1);
     const state = states[envId];
-    if (state !== undefined) byKey.set(query.key, { state, profiles: [] });
+    if (state !== undefined)
+      byKey.set(query.key, { state, profiles: profiles[envId] ?? [] });
   }
   return { byKey, checkedAt: NOW, cliAvailable };
 }
@@ -207,6 +211,7 @@ async function fixture(options = {}) {
           queries,
           options.states ?? {},
           options.cliAvailable ?? true,
+          options.profiles ?? {},
         ),
       connect: async (siteUrl) => {
         connectCalls.push(siteUrl);
@@ -666,4 +671,100 @@ test("15: both routes refuse a missing or wrong token", async () => {
   }
   assert.deepEqual(connectCalls, []);
   assert.equal(listCalls.length, 0);
+});
+
+test("16: a connected cell names the site-CLI profile and links to its page", async () => {
+  const { server } = await fixture({
+    states: { "env-a": "connected", "env-c": "reconnect_required" },
+    profiles: { "env-a": ["prod"], "env-c": ["staging", "staging-2"] },
+  });
+  const recorder = fakeSseStream();
+  const response = await server.dispatch(
+    authorized("/_dashboard/sites?include_envs=true"),
+  );
+  await response.run(recorder.stream);
+  const markup = recorder.find("sites-result").markup;
+
+  // `ConnectionResult.profiles` has carried these names since 6a and no view
+  // rendered one until now: the cell said "Connected" without saying what was
+  // connected, which left two site listings with no visible relation.
+  assert.ok(
+    markup.includes('<a class="deploy-hint" href="/site-profiles"'),
+    "a connected cell links to the Novamira CLI sites page",
+  );
+  assert.ok(markup.includes(">prod</a>"));
+  // Every matching profile is named. Two `auth login`s against one URL under
+  // different names both match, and hiding the second would make "Connected"
+  // look like it came from the first.
+  assert.ok(markup.includes(">staging, staging-2</a>"));
+  assert.ok(markup.includes("Novamira CLI site profiles staging, staging-2."));
+
+  // A cell with no match renders no link — `not_configured` has no profile by
+  // definition, and inventing one would be worse than saying nothing.
+  const { server: bare } = await fixture({ states: { "env-a": "connected" } });
+  const cold = fakeSseStream();
+  const plain = await bare.dispatch(
+    authorized("/_dashboard/sites?include_envs=true"),
+  );
+  await plain.run(cold.stream);
+  assert.ok(!cold.find("sites-result").markup.includes("/site-profiles"));
+});
+
+test("17: the service inverts the match into profile → hosting environments", async () => {
+  // The Novamira CLI sites page reads this map backwards to draw its own
+  // back-link. Both directions are the same origin match, made once by the
+  // integration, so the two pages can never disagree about a pairing.
+  const groups = [
+    {
+      profile: "prod",
+      provider: "kinsta",
+      sites: [
+        {
+          id: "s1",
+          name: "s1",
+          displayName: "Multi Site",
+          status: "live",
+          primaryDomain: "multi.example.com",
+          environments: [env("env-a")],
+        },
+      ],
+    },
+  ];
+  const service = createSitesService({
+    store: { listHostingProfiles: async () => [] },
+    hosting: {},
+    integration: {
+      connectionStates: async (queries) => ({
+        byKey: new Map(
+          queries.map((query) => [
+            query.key,
+            { state: "connected", profiles: ["cli-prod"] },
+          ]),
+        ),
+        checkedAt: NOW,
+        cliAvailable: true,
+      }),
+    },
+    now: () => NOW,
+  });
+
+  // Empty until a round has run: "nobody has listed hosting sites in this
+  // process yet" is a state, not a missing link to be invented.
+  assert.equal(service.siteProfileLinks().size, 0);
+
+  await service.refreshConnections(groups);
+  assert.deepEqual(service.siteProfileLinks().get("cli-prod"), [
+    {
+      profile: "prod",
+      siteId: "s1",
+      siteLabel: "Multi Site",
+      envId: "env-a",
+      envLabel: "env-a display",
+    },
+  ]);
+
+  // The links describe the listing, so dropping the listing drops them: a
+  // back-link to a hosting profile that was just removed is worse than none.
+  service.invalidate();
+  assert.equal(service.siteProfileLinks().size, 0);
 });

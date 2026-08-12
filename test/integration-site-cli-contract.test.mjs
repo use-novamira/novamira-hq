@@ -1091,3 +1091,256 @@ test("the dashboard command builds the service from the real seams", async () =>
   );
   assert.equal((await replaced.connectionStates([])).checkedAt, 1);
 });
+
+/* -------------------------------------------------------------------------- */
+/* Site-profile management: list, sign out, forget                            */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * The panel's half of the integration. Everything below is still injected: no
+ * `novamira` child ever starts, and the assertions are about the argv HQ would
+ * build, the states it derives, and what it refuses to build at all.
+ *
+ * The boundary rule is asserted structurally rather than by inspection — a
+ * `SiteProfileSummary` has no field a token could go in — so what these cases
+ * pin instead is the other half of it: that HQ passes a profile name and a
+ * non-secret URL and nothing else, and that a failure is a reason enum with no
+ * child text attached to it.
+ */
+
+const OTHER_PROFILE = {
+  name: "staging",
+  siteUrl: "https://staging.example.com",
+  origin: "https://staging.example.com",
+};
+
+test("listProfiles lists once, then asks auth status per profile", async () => {
+  const { integration, calls } = harness(
+    scripted({
+      list: exited(success([PROFILE, OTHER_PROFILE])),
+      status: (invocation) =>
+        exited(
+          success(
+            siteOf(invocation) === "prod"
+              ? AUTH_OK
+              : { ...AUTH_OK, site: "staging", credentialState: "expired" },
+          ),
+        ),
+    }),
+  );
+  const listing = await integration.listProfiles();
+
+  assert.equal(listing.cliAvailable, true);
+  assert.equal(listing.reason, undefined);
+  assert.equal(listing.checkedAt, NOW);
+  // The site CLI's own order is preserved: a panel whose rows reorder between
+  // two refreshes is a panel whose buttons move under the cursor.
+  assert.deepEqual(
+    listing.profiles.map((profile) => [profile.name, profile.state]),
+    [
+      ["prod", "connected"],
+      ["staging", "reconnect_required"],
+    ],
+  );
+  assert.equal(listing.profiles[0].siteUrl, "https://example.com");
+  assert.equal(listing.profiles[0].origin, "https://example.com");
+
+  // One `sites list`, then one `auth status` per profile — and `--site` is
+  // always explicit, which is what stops an operator's NOVAMIRA_SITE redirecting
+  // the probe.
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls[0].args, sitesListArgs(10_000));
+  assert.deepEqual(calls.slice(1).map(siteOf).sort(), ["prod", "staging"]);
+  for (const invocation of calls)
+    assert.equal(invocation.env.NOVAMIRA_UPDATE_CHECK, "0");
+});
+
+test("a listing that cannot be trusted is a reason, never an empty list", async () => {
+  // An absent CLI: `cliAvailable: false` plus the reason the panel renders as
+  // the install hint. Reporting zero profiles here would be a *wrong* answer.
+  const { integration, calls } = harness(() => exited(success([])), {
+    resolve: async () => undefined,
+  });
+  const absent = await integration.listProfiles();
+  assert.deepEqual(absent, {
+    profiles: [],
+    checkedAt: NOW,
+    cliAvailable: false,
+    reason: "cli_absent",
+  });
+  assert.equal(calls.length, 0);
+
+  // An old CLI that does not know the command answers `usage_error`, which
+  // classifies as "update the site CLI" rather than as a transport failure.
+  const old = harness(() => exited(failure("usage_error"), 2));
+  const incompatible = await old.integration.listProfiles();
+  assert.deepEqual(incompatible.profiles, []);
+  assert.equal(incompatible.cliAvailable, true);
+  assert.equal(incompatible.reason, "cli_incompatible");
+
+  // A payload HQ does not know is `malformed_output`, not a partial list.
+  const malformed = harness(() => exited(success([{ name: "prod" }])));
+  const unreadable = await malformed.integration.listProfiles();
+  assert.deepEqual(unreadable.profiles, []);
+  assert.equal(unreadable.reason, "malformed_output");
+});
+
+test("one profile's own failure degrades that row and no other", async () => {
+  const { integration } = harness(
+    scripted({
+      list: exited(success([PROFILE, OTHER_PROFILE])),
+      status: (invocation) =>
+        siteOf(invocation) === "prod"
+          ? exited(
+              success({
+                ...AUTH_OK,
+                restReachable: false,
+                restError: "http_error",
+              }),
+            )
+          : stopped("timed_out"),
+    }),
+  );
+  const listing = await integration.listProfiles();
+
+  // A usable credential the site would not confirm is `unreachable`, split out
+  // from `unknown` because it is the failure an operator can act on without
+  // touching the profile at all.
+  assert.equal(listing.profiles[0].state, "unreachable");
+  assert.equal(listing.profiles[0].reason, undefined);
+  // A timed-out child is `unknown` plus the reason that selects its hint.
+  assert.equal(listing.profiles[1].state, "unknown");
+  assert.equal(listing.profiles[1].reason, "cli_timeout");
+  // The whole list still rendered: one bad profile is not an outage.
+  assert.equal(listing.cliAvailable, true);
+  assert.equal(listing.reason, undefined);
+});
+
+test("expiresAt rides along as a time, and nothing else does", async () => {
+  const { integration } = harness(
+    scripted({
+      list: exited(success([PROFILE])),
+      status: () =>
+        exited(
+          success({
+            ...AUTH_OK,
+            credentialState: "near_expiry",
+            expiresAt: "2026-09-01T00:00:00.000Z",
+            // Members HQ does not read are ignored, never rejected — and never
+            // carried onto the summary either.
+            accessToken: "must-never-appear",
+            refreshToken: "must-never-appear",
+          }),
+        ),
+    }),
+  );
+  const [profile] = (await integration.listProfiles()).profiles;
+  assert.equal(profile.state, "connected");
+  assert.equal(profile.expiresAt, "2026-09-01T00:00:00.000Z");
+  assert.deepEqual(Object.keys(profile).sort(), [
+    "expiresAt",
+    "name",
+    "origin",
+    "siteUrl",
+    "state",
+  ]);
+  assert.ok(!JSON.stringify(profile).includes("must-never-appear"));
+});
+
+test("logout and remove build the documented argv and read only ok", async () => {
+  const { integration, calls } = harness(() => exited(success({})));
+
+  assert.deepEqual(await integration.logoutProfile("prod"), { kind: "done" });
+  assert.deepEqual(calls[0].args, [
+    "--json",
+    "--quiet",
+    "--timeout",
+    "30000",
+    "--site",
+    "prod",
+    "auth",
+    "logout",
+  ]);
+
+  assert.deepEqual(await integration.removeProfile("prod"), { kind: "done" });
+  // No `--site` on remove: the name is the positional argument, and passing it
+  // twice would let the two disagree. No `--yes`: the command is not
+  // interactive, so there is no prompt for HQ to answer on the operator's behalf.
+  assert.deepEqual(calls[1].args, [
+    "--json",
+    "--quiet",
+    "--timeout",
+    "30000",
+    "sites",
+    "remove",
+    "prod",
+  ]);
+  assert.ok(!calls[1].args.includes("--yes"));
+  // One child per action, and never a retry: a silent second attempt at "revoke
+  // this credential" is a remote effect nobody asked for.
+  assert.equal(calls.length, 2);
+});
+
+test("site_not_found is `missing`, and every other failure is a reason", async () => {
+  const gone = harness(() => exited(failure("site_not_found"), 5));
+  assert.deepEqual(await gone.integration.removeProfile("prod"), {
+    kind: "missing",
+  });
+
+  const broken = harness(() => stopped("spawn_failed"));
+  assert.deepEqual(await broken.integration.logoutProfile("prod"), {
+    kind: "failed",
+    reason: "cli_failed",
+  });
+
+  // The failure arm carries a reason enum and has nowhere to put child text.
+  const noisy = harness(() => ({
+    kind: "exited",
+    code: 1,
+    stdout: JSON.stringify({
+      ok: false,
+      error: { code: "http_error", message: "Bearer sk-must-never-appear" },
+    }),
+    stderr: "stderr must never appear",
+  }));
+  const outcome = await noisy.integration.logoutProfile("prod");
+  assert.deepEqual(outcome, { kind: "failed", reason: "cli_failed" });
+  assert.ok(!JSON.stringify(outcome).includes("must-never-appear"));
+
+  const absent = harness(() => exited(success({})), {
+    resolve: async () => undefined,
+  });
+  assert.deepEqual(await absent.integration.removeProfile("prod"), {
+    kind: "failed",
+    reason: "cli_absent",
+  });
+  assert.equal(absent.calls.length, 0);
+});
+
+test("a name the CLI's grammar refuses never reaches an argv array", async () => {
+  const { integration, calls } = harness(() => exited(success({})));
+  // A leading `-` is the case that matters: commander would read it as an
+  // option, so `sites remove --json` would run a different command than the one
+  // HQ meant. It is refused before anything is spawned, and the message names
+  // the grammar rather than echoing the value.
+  for (const name of ["--json", "-x", "", "a".repeat(65), "a b", ".dot"]) {
+    await assert.rejects(
+      () => integration.removeProfile(name),
+      (error) => {
+        assert.equal(error.code, "usage_error");
+        assert.ok(!error.message.includes(name) || name === "");
+        return true;
+      },
+      name,
+    );
+    await assert.rejects(() => integration.logoutProfile(name), {
+      code: "usage_error",
+    });
+  }
+  assert.equal(calls.length, 0);
+
+  // The names the CLI does allow are passed straight through.
+  for (const name of ["prod", "a.b", "a_b", "a-b", "0"]) {
+    assert.deepEqual(await integration.logoutProfile(name), { kind: "done" });
+  }
+});

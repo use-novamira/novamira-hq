@@ -111,6 +111,10 @@ import type {
   ConnectionSnapshot,
   ConnectOutcome,
 } from "../connection-state.js";
+import type {
+  SiteProfileListing,
+  SiteProfileOutcome,
+} from "../site-profiles.js";
 
 /* -------------------------------------------------------------------------- */
 /* Dependencies                                                               */
@@ -141,6 +145,23 @@ export interface DashboardIntegration {
    * only place HQ runs the site CLI.
    */
   connect(siteUrl: string): Promise<ConnectOutcome>;
+  /**
+   * The Sites page's site-profile panel: what `novamira sites list` holds, with
+   * one `auth status` per entry. Resolves for every failure and never throws —
+   * an absent CLI is `cliAvailable: false` plus a reason, never an empty list,
+   * because "you have no sites" and "HQ cannot tell" are different answers.
+   */
+  listProfiles(): Promise<SiteProfileListing>;
+  /**
+   * `novamira auth logout --site <name>` and `novamira sites remove <name>`.
+   *
+   * Both are performed by the site CLI in its own process under its own
+   * credentials; HQ passes a profile name and reads the envelope's `ok`. Both
+   * resolve for every integration failure; both throw `usage_error` for a name
+   * the site CLI's grammar cannot represent, before anything is spawned.
+   */
+  logoutProfile(name: string): Promise<SiteProfileOutcome>;
+  removeProfile(name: string): Promise<SiteProfileOutcome>;
 }
 
 /**

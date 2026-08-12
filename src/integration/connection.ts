@@ -51,6 +51,16 @@
  * is a page concern and belongs with the page that owns it (6b's
  * `src/web/services/sites.ts`).
  *
+ * **Two pieces moved down to leaves, and one service moved out.** The reading
+ * of a single `auth status` answer — the credential-usability table, the
+ * authentication-error codes, `verdictForStatus` — is now `verdict.ts`, and the
+ * bounded-concurrency helper is `pool.ts`, because `profiles.ts` asks the same
+ * question per *site-CLI profile* that this module asks per *hosting
+ * environment* and a second copy of either is how the two surfaces would end up
+ * disagreeing about the same profile on the same page. `profiles.ts` itself is
+ * composed in below, so `SiteCliIntegration` carries `listProfiles`,
+ * `logoutProfile` and `removeProfile` without this file knowing their argv.
+ *
  * **The state union lives at the root.** `ConnectionState`,
  * `UnavailableReason`, `ConnectionResult`, `ConnectionQuery`,
  * `ConnectionSnapshot`, `ConnectOutcome` and `unavailableHint` are declared in
@@ -78,21 +88,24 @@ import {
 } from "./classify.js";
 import { createConnectAction } from "./connect.js";
 import { normalizeOrigins, originOf } from "./origin.js";
+import { runPool } from "./pool.js";
+import {
+  createSiteProfileService,
+  type SiteProfileService,
+} from "./profiles.js";
 import { type ResolveSiteCli, type SiteCliResolution } from "./resolve.js";
 import {
   authStatusArgs,
-  parseAuthStatus,
   parseSitesList,
   siteCliChildEnv,
   sitesListArgs,
-  type CredentialState,
-  type SiteCliAuthStatus,
 } from "./site-cli.js";
 import {
   DEFAULT_MAX_STDERR_BYTES,
   DEFAULT_MAX_STDOUT_BYTES,
   type SpawnChild,
 } from "./spawn.js";
+import { verdictFor, type ProfileVerdict } from "./verdict.js";
 
 export type {
   ConnectionQuery,
@@ -119,80 +132,6 @@ export function integrationUnavailableError(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Per-profile verdict                                                        */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Whether a credential state can possibly back a connection. Exhaustive by
- * construction: a sixth upstream state is a compile error here rather than a
- * silent "connected".
- */
-const CREDENTIAL_USABILITY: Readonly<
-  Record<CredentialState, "usable" | "reconnect">
-> = {
-  absent: "reconnect",
-  invalid: "reconnect",
-  expired: "reconnect",
-  fresh: "usable",
-  near_expiry: "usable",
-};
-
-/**
- * The site CLI error codes that mean "authorize again", as opposed to "the site
- * could not be reached". Compared as opaque strings: they are the *site CLI's*
- * codes, not HQ's, and an unrecognized one degrades to a reachability failure
- * rather than to a false "reconnect".
- */
-const AUTH_ERROR_CODES: ReadonlySet<string> = new Set([
-  "auth_required",
-  "auth_denied",
-  "auth_expired",
-  "insufficient_scope",
-]);
-
-type ProfileVerdict =
-  | { readonly kind: "connected" }
-  | { readonly kind: "reconnect" }
-  | { readonly kind: "unavailable"; readonly reason: UnavailableReason }
-  | { readonly kind: "missing" };
-
-const CONNECTED: ProfileVerdict = Object.freeze({ kind: "connected" as const });
-const RECONNECT: ProfileVerdict = Object.freeze({ kind: "reconnect" as const });
-
-function verdictForStatus(status: SiteCliAuthStatus): ProfileVerdict {
-  if (CREDENTIAL_USABILITY[status.credentialState] === "reconnect") {
-    return RECONNECT;
-  }
-  if (status.restReachable === true) return CONNECTED;
-  if (status.restReachable === null) {
-    // The CLI reports `null` only for `absent`/`invalid`, which the line above
-    // has already handled. `null` beside a usable credential is a shape HQ does
-    // not know, and guessing either way would be worse than saying so.
-    return { kind: "unavailable", reason: "malformed_output" };
-  }
-  const restError = status.restError;
-  if (restError !== undefined && AUTH_ERROR_CODES.has(restError)) {
-    return RECONNECT;
-  }
-  return { kind: "unavailable", reason: "site_unreachable" };
-}
-
-function verdictFor(result: ChildResult): ProfileVerdict {
-  switch (result.kind) {
-    case "site_missing":
-      return { kind: "missing" };
-    case "failure":
-      return { kind: "unavailable", reason: result.reason };
-    case "data": {
-      const status = parseAuthStatus(result.data);
-      return status === undefined
-        ? { kind: "unavailable", reason: "malformed_output" }
-        : verdictForStatus(status);
-    }
-  }
-}
-
-/* -------------------------------------------------------------------------- */
 /* The service                                                                */
 /* -------------------------------------------------------------------------- */
 
@@ -211,12 +150,28 @@ export interface SiteCliIntegrationOptions {
   readonly overallDeadlineMs?: number;
   /** The Connect action's own budget; see `connect.ts`'s five-minute default. */
   readonly connectTimeoutMs?: number;
+  /**
+   * `auth logout` and `sites remove`'s own budget; see `profiles.ts`'s
+   * thirty-second default. Longer than a query because a logout may revoke a
+   * refresh token upstream, far shorter than a login because no human is in it.
+   */
+  readonly actionTimeoutMs?: number;
   readonly concurrency?: number;
   readonly maxStdoutBytes?: number;
   readonly maxStderrBytes?: number;
 }
 
-export interface SiteCliIntegration {
+/**
+ * The integration's whole public behaviour: the connected-state question, the
+ * Connect action, and the three site-profile management operations.
+ *
+ * The last three are {@link SiteProfileService}, composed in rather than
+ * reimplemented. They are on this one interface because a composition root
+ * builds *one* integration — `src/cli/dashboard.ts` does — and splitting them
+ * across two objects would only mean two constructions of the same spawn seam,
+ * the same resolver and the same environment.
+ */
+export interface SiteCliIntegration extends SiteProfileService {
   connectionStates(
     queries: readonly ConnectionQuery[],
   ): Promise<ConnectionSnapshot>;
@@ -233,33 +188,6 @@ export const DEFAULT_CONCURRENCY = 4;
 
 function unavailable(reason: UnavailableReason): ConnectionResult {
   return { state: "unavailable", profiles: [], reason };
-}
-
-/**
- * Run `worker` over `items` with at most `limit` in flight.
- *
- * Deliberately hand-rolled rather than chunked: a chunked `Promise.all` runs at
- * the speed of the slowest member of each chunk, which with a ten-second
- * per-child timeout is exactly the case that matters.
- */
-async function runPool<T>(
-  items: readonly T[],
-  limit: number,
-  worker: (item: T) => Promise<void>,
-): Promise<void> {
-  if (items.length === 0) return;
-  const width = Math.max(1, Math.min(limit, items.length));
-  let next = 0;
-  const lane = async (): Promise<void> => {
-    for (;;) {
-      const index = next++;
-      if (index >= items.length) return;
-      const item = items[index];
-      if (item === undefined) return;
-      await worker(item);
-    }
-  };
-  await Promise.all(Array.from({ length: width }, lane));
 }
 
 export function createSiteCliIntegration(
@@ -287,8 +215,32 @@ export function createSiteCliIntegration(
     maxStderrBytes,
   });
 
+  // Composed for the same reason `connect` is: `profiles.ts` owns the argv, the
+  // budgets and the boundary-rule reasoning for the three management commands,
+  // and it shares this integration's spawn seam, resolver and environment.
+  const profileService = createSiteProfileService({
+    spawn: options.spawn,
+    resolve: options.resolve,
+    environment: options.environment,
+    now: options.now,
+    perChildTimeoutMs,
+    overallDeadlineMs,
+    ...(options.actionTimeoutMs === undefined
+      ? {}
+      : { actionTimeoutMs: options.actionTimeoutMs }),
+    concurrency,
+    maxStdoutBytes,
+    maxStderrBytes,
+  });
+
   return {
     connect,
+    // Delegated through arrows rather than by reference: an unbound method
+    // handed to a caller is a `this` waiting to be wrong, even when — as here —
+    // the implementation is a closure that never reads one.
+    listProfiles: () => profileService.listProfiles(),
+    logoutProfile: (name) => profileService.logoutProfile(name),
+    removeProfile: (name) => profileService.removeProfile(name),
     connectionStates: async (queries) => {
       // One deadline for the whole refresh, shared by every child. The
       // per-child timeout and this signal both apply; whichever fires first
@@ -373,10 +325,12 @@ export function createSiteCliIntegration(
       const candidates = [...new Set([...matched.values()].flat())];
       const verdicts = new Map<string, ProfileVerdict>();
       await runPool(candidates, concurrency, async (name) => {
-        verdicts.set(
-          name,
-          verdictFor(await run(authStatusArgs(perChildTimeoutMs, name))),
+        // Only the verdict is used here: `expiresAt` is the site-profile
+        // panel's business, and a connection cell has nowhere to render it.
+        const { verdict } = verdictFor(
+          await run(authStatusArgs(perChildTimeoutMs, name)),
         );
+        verdicts.set(name, verdict);
       });
 
       /* Aggregate: any connected wins, then any reconnect, then the first

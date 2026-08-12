@@ -96,6 +96,22 @@ export interface SiteBrowserSignals {
   readonly search: string;
 }
 
+/**
+ * The Sites page's site-profile panel.
+ *
+ * `url` is the "connect a site the providers do not list" box. It holds a site
+ * URL — a public address, never a credential — which is why it is a `@post`'s
+ * include scope rather than a query parameter: it is typed, not rendered, and a
+ * `@get` would put whatever the operator pasted into a URL.
+ *
+ * There is deliberately no `name` signal. Profile naming belongs to the site
+ * CLI, and `auth login` is spawned with the URL as its only argument.
+ */
+export interface CliSitesSignals {
+  readonly url: string;
+  readonly loading: boolean;
+}
+
 export interface DiagnosticsSignals {
   readonly profile: string;
 }
@@ -123,6 +139,7 @@ export interface DashboardSignals {
   readonly providerForm: ProviderFormSignals;
   readonly deployForm: DeployFormSignals;
   readonly sites: SiteBrowserSignals;
+  readonly cliSites: CliSitesSignals;
   readonly diagnostics: DiagnosticsSignals;
   readonly updates: UpdateSignals;
   readonly setup: SetupSignals;
@@ -278,6 +295,7 @@ export function defaultDashboardSignals(
       loading: false,
       search: "",
     },
+    cliSites: { url: "", loading: false },
     diagnostics: { profile: "" },
     updates: { loading: false, installing: false },
     setup: { enableAiAbilities: true },
@@ -305,6 +323,7 @@ export function toSignalRecord(
     providerForm: { ...signals.providerForm },
     deployForm: { ...signals.deployForm },
     sites: { ...signals.sites },
+    cliSites: { ...signals.cliSites },
     diagnostics: { ...signals.diagnostics },
     updates: { ...signals.updates },
     setup: { ...signals.setup },

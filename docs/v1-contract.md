@@ -860,6 +860,7 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 | `/` | GET | no |
 | `/providers` | GET | no |
 | `/sites` | GET | no |
+| `/site-profiles` | GET | no |
 | `/deploy-paths` | GET | no |
 | `/deploy-paths/new` | GET | no |
 | `/novamira-setup` | GET | no |
@@ -870,6 +871,10 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 | `/_dashboard/providers/validate` | POST | yes |
 | `/_dashboard/sites` | GET | yes |
 | `/_dashboard/connect` | POST | yes |
+| `/_dashboard/site-profiles` | GET | yes |
+| `/_dashboard/site-profiles/connect` | POST | yes |
+| `/_dashboard/site-profiles/logout` | POST | yes |
+| `/_dashboard/site-profiles/remove` | POST | yes |
 | `/_dashboard/deploy-paths/save` | POST | yes |
 | `/_dashboard/deploy-paths/remove` | POST | yes |
 | `/_dashboard/setup/start` | POST | yes |
@@ -911,6 +916,37 @@ spawned. Child output is read for the envelope's `ok` and then discarded: a
 failure is reported as one fixed sentence chosen by a reason enum, never as
 subprocess text. HQ holds no site token, makes no request to the site, and reads
 none of the site CLI's storage.
+
+The four `/_dashboard/site-profiles*` routes manage the **site CLI's** site
+profiles, and are not a reintroduction of the two deleted routes named below.
+Each one spawns a `novamira` command through the site-CLI integration and reads
+the v1 envelope's `ok`; HQ stores nothing, holds no site token, and makes no
+request to a configured site.
+
+- `GET /_dashboard/site-profiles` runs `sites list` and then one
+  `auth status --site <name>` per profile, bounded by the same concurrency,
+  per-child timeout and overall deadline connected-state detection uses. Each
+  profile is reported as `connected`, `reconnect_required`, `unreachable` or
+  `unknown`, carrying at most its name, its site URL, its origin, the ISO-8601
+  time its credential expires, and — for `unknown` — a reason enum. A listing
+  that cannot be trusted is reported as a reason and **never as an empty list**:
+  an absent `@novamira/cli` renders the install hint, not "you have no sites".
+- `POST /_dashboard/site-profiles/connect` takes `?url=`, falling back to the
+  posted `cliSites.url` signal, and spawns `novamira auth login <url>` under the
+  same rules `/_dashboard/connect` follows.
+- `POST /_dashboard/site-profiles/logout` and
+  `POST /_dashboard/site-profiles/remove` take `?name=` and spawn
+  `novamira auth logout --site <name>` and `novamira sites remove <name>`. The
+  name must match the site CLI's own profile grammar
+  (`[A-Za-z0-9][A-Za-z0-9._-]{0,63}`) before it may become an argv element;
+  anything else is a `usage_error` with nothing spawned. `site_not_found` is
+  reported as "already gone", which is a warning and not a failure.
+
+All four re-run the listing and patch `#cli-sites` (outer) and `#toast` (outer),
+in that order and no other. None of them patches `#main` — a repaint would
+replace the page's own Refresh button out from under the click that fired it —
+and none triggers a provider call or invalidates the sites cache: signing out of
+one site profile is not a reason to call eight hosting APIs.
 
 `/_dashboard/setup/start` takes `?profile=` and `?env=`, plus the optional
 display values `?site=` and `?envname=` the Sites page's link already carries.
@@ -974,14 +1010,18 @@ request-body form of the token even though Go's had one.
 
 **`/_dashboard/sites/save` and `/_dashboard/sites/remove` are deleted, not
 deferred.** They wrote WordPress site profiles; HQ holds no site credential and
-has no site profiles, so the paths do not exist and never will.
+has no site profiles, so the paths do not exist and never will. The
+`/_dashboard/site-profiles*` rows above are a different thing wearing a similar
+name: they operate on the **site CLI's** profiles, by running `novamira`, and
+write nothing anywhere in HQ's own storage.
 
 ### SSE fragments
 
 The dashboard may patch only a fixed catalog of element ids, and every
 catalogued id is rendered by a shipped view. The catalog is
 `main` (outer), `nav` (outer), `toast` (outer), `provider-flash` (outer),
-`sites-status` (inner), `sites-result` (outer), `setup-work` (outer **and**
+`sites-status` (inner), `sites-result` (outer), `cli-sites` (outer),
+`setup-work` (outer **and**
 inner), `diagnostics-output` (outer), `updates-card` (outer), plus one computed
 id per configured provider profile for that profile's connection cell. The
 catalog is closed: every id it names is rendered by a shipped view and patched by
@@ -990,7 +1030,7 @@ uncatalogued selector is a compile error, not a runtime miss.
 
 ### Pages
 
-Seven page paths render one document each: an app shell carrying the root signal
+Eight page paths render one document each: an app shell carrying the root signal
 object, a nav, a `#main` body and a `#toast`. Every mutating control on them
 posts to a `/_dashboard/*` route and receives SSE patches; no page submits a
 form to itself and no page reloads.
@@ -1000,11 +1040,32 @@ form to itself and no page reloads.
   With no profiles configured it is a single onboarding card. Credential
   *references* are rendered, never values; there is no field, column or details
   row that could hold a secret.
-- **Sites** (`/sites`) — a toolbar that requests the inventory on mount, a
-  segmented Novamira filter, and one group per hosting profile. Each environment
-  shows its connected state, a Connect button whose `title` is the literal
-  `novamira auth login <url>` command, and, where the provider supports it, a
-  link into Novamira setup.
+- **Hosting Sites** (`/sites`) — a toolbar that requests the inventory on mount,
+  a segmented Novamira filter, and one group per hosting profile. Each
+  environment shows its connected state, the site-CLI profile behind that state
+  linked to the page that manages it, a Connect button whose `title` is the
+  literal `novamira auth login <url>` command, and, where the provider supports
+  it, a link into Novamira setup.
+- **Novamira CLI sites** (`/site-profiles`) — what `novamira sites list` holds:
+  one row per site profile with its credential state, its expiry, and Reconnect,
+  Sign out and Remove, plus a box for connecting a site no hosting API lists. It
+  requests the listing on mount, from its own route, and holds no HQ state of
+  any kind — every control on it runs one `novamira` command. It is a page
+  rather than a panel on Hosting Sites because the two listings have different
+  subjects (the site CLI's configuration against the hosting providers'
+  inventory), different costs (local against one API round trip per profile) and
+  different refresh lifetimes (always fresh against a five-minute cache). An
+  action here never triggers a provider call and never invalidates the sites
+  cache.
+
+The two pages cross-reference each other, in both directions, from **one** match:
+the origin comparison the integration already makes between an environment's
+domain and a site profile's origin. Hosting Sites renders it forwards out of
+`ConnectionResult.profiles`; the CLI sites page renders it backwards out of the
+inverted map the last hosting listing left behind. That map is **warm only** — a
+page load never fetches to fill it, so before anyone has opened Hosting Sites in
+a given process the back-links are simply absent, which is the same
+"nobody has looked yet" state the deploy-path pages report.
 - **Deploy paths** (`/deploy-paths`, `/deploy-paths/new`) — the configured paths
   with their resolved environment names and domains, and the creation form.
   Execution is not part of v1; the Deploy button renders disabled and says so.

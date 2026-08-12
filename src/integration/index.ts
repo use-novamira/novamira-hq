@@ -44,6 +44,25 @@ export {
 } from "./connect.js";
 
 export {
+  createSiteProfileService,
+  PROFILE_ACTION_TIMEOUT_MS,
+  type SiteProfileListing,
+  type SiteProfileOutcome,
+  type SiteProfileService,
+  type SiteProfileServiceOptions,
+  type SiteProfileState,
+  type SiteProfileSummary,
+} from "./profiles.js";
+
+export { runPool } from "./pool.js";
+
+export {
+  verdictFor,
+  verdictForStatus,
+  type ProfileVerdict,
+} from "./verdict.js";
+
+export {
   envelopeReason,
   interpretChildOutcome,
   OUTCOME_REASONS,
@@ -76,12 +95,14 @@ export {
 } from "./resolve.js";
 
 export {
+  authLogoutArgs,
   authStatusArgs,
   parseAuthStatus,
   parseEnvelope,
   parseSitesList,
   siteCliChildEnv,
   sitesListArgs,
+  sitesRemoveArgs,
   CREDENTIAL_STATES,
   type CredentialState,
   type ParsedEnvelope,
