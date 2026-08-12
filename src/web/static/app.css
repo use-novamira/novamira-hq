@@ -29,8 +29,6 @@
   --gold: #f8ca50;
   --gold-hover: #fad679;
   --gold-ink: #8a6414;
-  --gold-tint: rgba(248, 202, 80, 0.18);
-  --gold-focus: rgba(248, 202, 80, 0.35);
   --success: #166a4f;
   --success-bg: #e6f4ee;
   --warn: #8a6414;
@@ -185,7 +183,7 @@ select {
 
 .nav-link.active {
   color: var(--gold);
-  background: rgba(248, 202, 80, 0.12);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .nav-link.active::before {
@@ -378,7 +376,8 @@ input::placeholder {
 input:focus,
 select:focus {
   border-color: var(--gold);
-  outline: 3px solid var(--gold-focus);
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
 }
 
 .check-row,
@@ -943,8 +942,8 @@ dd {
 }
 
 .onboard-card.feat {
-  border-color: #f0d68a;
-  box-shadow: 0 8px 26px var(--gold-glow, rgba(248, 202, 80, 0.18));
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
 }
 
 .onboard-card .kicker {
@@ -1051,7 +1050,7 @@ dd {
 .env-subrow { display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 34px; border-top: 1px solid #f0f0ee; }
 .env-name { font-weight: 700; font-size: 12.5px; color: #18181b; min-width: 130px; }
 .env-tag { font-weight: 500; font-size: 10px; color: #8a6414; }
-.connected-directly { border-color: #f0d68a; }
+.connected-directly { border-color: var(--border-strong); }
 .connected-directly .group-head h2 { color: #18181b; }
 .button.link { background: transparent; border: 0; color: #8a6414; font-weight: 700; font-size: 12.5px; padding: 2px 6px; cursor: pointer; }
 .toolbar .search { flex: 1; }

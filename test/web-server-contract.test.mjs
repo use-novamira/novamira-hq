@@ -403,6 +403,18 @@ test("the sidebar New menu offers hosting and CLI sites", async () => {
   }
 });
 
+test("the dashboard uses flat gold accents without yellow glows", async () => {
+  const css = await readFile(
+    new URL("../src/web/static/app.css", import.meta.url),
+    "utf8",
+  );
+  assert.ok(!css.includes("gold-glow"));
+  assert.ok(!css.includes("gold-focus"));
+  assert.ok(!css.includes("rgba(248, 202, 80"));
+  assert.match(css, /\.onboard-card\.feat \{[^}]*border-color:\s*var\(--border-strong\)/s);
+  assert.match(css, /input:focus,[^}]*outline:\s*2px solid var\(--gold\)/s);
+});
+
 test("every response carries all five security headers over the wire", async () => {
   const { server, cleanup } = await fixture();
   try {

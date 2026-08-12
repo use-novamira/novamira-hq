@@ -292,7 +292,7 @@ function renderOnboarding(model: ProvidersPageModel): Html {
   )}<div class="onboard-cards"><button class="onboard-card feat" type="button"${ds.on(
     "click",
     openForm,
-  )}><span class="kicker">Many sites</span><h2>Connect a host</h2><p>Manage every site on an account. Connect Kinsta, InstaWP, Rocket.net, Cloudways, Hostinger and more with an API key.</p><span class="button primary">Connect a host</span></button></div>${renderProviderForm(
+  )}><span class="kicker">Many sites</span><h2>Connect a hosting provider</h2><p>Manage every site on an account from a provider supported by Novamira HQ.</p><span class="button primary">Connect a hosting provider</span></button></div>${renderProviderForm(
     model.formOpen,
   )}</section>`;
 }
@@ -324,7 +324,7 @@ export function renderProviderForm(open: boolean): Html {
     open && "open",
   )}${ds.classes({ open: signal("providerForm.open") })}${ds.onSubmit(
     action,
-  )}><div class="panel-head"><div><h2>Connect a host</h2><p>Tip: You can also ask your agent to configure a new provider.</p></div></div><div class="form-grid"><label><span>Profile name</span><input${idAttr(
+  )}><div class="panel-head"><div><h2>Connect a hosting provider</h2><p>Tip: You can also ask your agent to configure a new provider.</p></div></div><div class="form-grid"><label><span>Profile name</span><input${idAttr(
     "profile",
   )} type="text"${ds.bind("providerForm.profile")} required></label><label><span>Provider</span><select${idAttr(
     "provider",

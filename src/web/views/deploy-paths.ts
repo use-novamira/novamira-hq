@@ -146,12 +146,15 @@ export function renderDeployPathsPage(
 ): Html {
   const flash = notice.message === "" ? false : renderNotice(notice);
   if (view.deployPaths.length === 0) {
+    const hasHostingProvider = view.profiles.length > 0;
     return html`<section class="page"><header class="page-head"><div><h1>Deploy paths</h1></div></header>${flash}<div class="empty empty-block"><p>Deploy paths push changes between two environments of the same site — for example staging → live. They need a host that supports environment push and a site with more than one environment.</p><p>${deployPathsStatusLine(
       view.profiles,
       warm,
     )}</p><a class="button primary"${hrefAttr(
-      url("/sites"),
-    )}>Open the Hosting Sites page</a></div></section>`;
+      url(hasHostingProvider ? "/sites" : "/providers"),
+    )}>Open the ${hasHostingProvider
+      ? "Hosting Sites"
+      : "Hosting Providers"} page</a></div></section>`;
   }
   return html`<section class="page"><header class="page-head"><div><h1>Deploy paths</h1></div></header>${flash}<section class="panel"><div class="table-wrap"><table><thead><tr><th>Name</th><th>Site</th><th>Direction</th><th>Pushes</th><th></th></tr></thead><tbody>${view.deployPaths.map(
     (path) => renderDeployPathRow(path),

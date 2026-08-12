@@ -314,6 +314,11 @@ test("1: the empty page explains why, with Go's four sentences", async () => {
       "You haven't connected a hosting provider yet",
     ),
   );
+  assert.ok(
+    (await line(none.server)).includes(
+      'href="/providers">Open the Hosting Providers page',
+    ),
+  );
 
   const incapable = await fixture({
     hostingProfiles: { plain: PROFILES.plain },
