@@ -122,6 +122,7 @@ export function patchSites(
       includeEnvs: options.includeEnvs,
       groups: result?.groups ?? [],
       connections: result?.connections ?? null,
+      siteProfiles: result?.siteProfiles ?? null,
       notice,
     }),
     { selectorId: "sites-result", mode: "outer" },

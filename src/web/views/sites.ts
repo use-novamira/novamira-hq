@@ -70,6 +70,10 @@
  */
 
 import type { ConnectionSnapshot } from "../../connection-state.js";
+import type {
+  SiteProfileListing,
+  SiteProfileSummary,
+} from "../../site-profiles.js";
 import {
   DEPLOY_PUSH_PROVIDERS,
   NOVAMIRA_SETUP_PROVIDERS,
@@ -97,8 +101,14 @@ import {
 } from "../services/sites.js";
 import { renderNotice } from "./layout.js";
 import {
+  renderConnectForm,
+  renderSiteProfileActions,
+  renderSiteProfileRow,
+} from "./site-profiles.js";
+import {
   connectionView,
   providerLabelFor,
+  siteProfileRowView,
   type ConfigView,
   type ConnectionView,
   type DashboardNotice,
@@ -134,7 +144,7 @@ const NO_DOMAIN_TITLE =
  * `token` or `providerForm`: a `@get`'s filtered signals are serialized into
  * `?datastar=…`, and `expr.get` refuses both outright.
  */
-export function renderSitesPage(view: ConfigView): Html {
+export function renderSitesPage(view: ConfigView, cliFormOpen = false): Html {
   const load = get(url("/_dashboard/sites", { include_envs: true }), {
     include: ["sites"],
   });
@@ -142,7 +152,11 @@ export function renderSitesPage(view: ConfigView): Html {
     url("/_dashboard/sites", { include_envs: true, refresh: true }),
     { include: ["sites"] },
   );
-  return html`<section class="page"><header class="page-head"><div><h1>Hosting Sites</h1></div></header><form class="toolbar"${ds.indicator(
+  return html`<section class="page"><header class="page-head"><div><h1>Sites</h1><p>Hosting environments and Novamira CLI sites in one inventory.</p></div></header>${renderConnectForm(
+    true,
+    true,
+    cliFormOpen,
+  )}<form class="toolbar"${ds.indicator(
     "sites.loading",
   )}${ds.init(load)}${ds.on("change", load)}${ds.onSubmit(
     refresh,
@@ -210,6 +224,7 @@ export interface SitesResultView {
   readonly includeEnvs: boolean;
   readonly groups: readonly SiteGroup[];
   readonly connections: ConnectionSnapshot | null;
+  readonly siteProfiles?: SiteProfileListing | null;
   /** Non-empty replaces the whole result with the notice, as Go's did. */
   readonly notice: DashboardNotice;
 }
@@ -220,11 +235,38 @@ export function renderSitesResult(view: SitesResultView): Html {
       view.notice,
     )}</div>`;
   }
+  const cliOnly = cliOnlyProfiles(view);
   return html`<div${idAttr("sites-result")} class="results">${
-    view.groups.length === 0
-      ? html`<div class="empty">No sites returned by the provider.</div>`
+    view.groups.length === 0 && cliOnly.length === 0
+      ? html`<div class="empty">No sites found.</div>`
       : view.groups.map((group) => renderSiteGroup(group, view))
-  }</div>`;
+  }${renderCliOnly(cliOnly, view)}</div>`;
+}
+
+function cliOnlyProfiles(view: SitesResultView): readonly SiteProfileSummary[] {
+  if (view.siteProfiles == null || view.siteProfiles.reason !== undefined) {
+    return [];
+  }
+  const matched = new Set<string>();
+  for (const result of view.connections?.byKey.values() ?? []) {
+    for (const name of result.profiles) matched.add(name);
+  }
+  return view.siteProfiles.profiles.filter(({ name }) => !matched.has(name));
+}
+
+function renderCliOnly(
+  profiles: readonly SiteProfileSummary[],
+  view: SitesResultView,
+): Html | false {
+  if (profiles.length === 0) return false;
+  return html`<section class="provider-sites cli-only-sites"><div class="group-head"><div><h2>CLI only</h2><p>Sites not matched to a hosting environment.</p></div><span class="pill">${String(
+    profiles.length,
+  )} sites</span></div><div class="compact-list">${profiles.map((profile) =>
+    renderSiteProfileRow(siteProfileRowView(profile), [], {
+      profile: view.profile,
+      includeEnvs: view.includeEnvs,
+    }),
+  )}</div></section>`;
 }
 
 /** Go's `renderSiteGroup` (`views.go:927-953`). */
@@ -351,11 +393,13 @@ function renderStateCell(
     case "connected":
       return html`<span class="pill ok">Connected</span>${renderProfileLink(
         connection,
+        view,
       )}`;
     case "reconnect_required":
       return html`<span class="pill warn">Reconnect</span>${renderProfileLink(
         connection,
-      )}${renderConnectButton(connection, address, view)}`;
+        view,
+      )}`;
     case "not_configured":
       return html`<span class="pill">Not connected</span>${renderConnectButton(
         connection,
@@ -365,11 +409,11 @@ function renderStateCell(
     case "unavailable":
       return html`<span class="pill"${titleAttr(
         connection.hint,
-      )}>Unknown</span>${renderConnectButton(
-        connection,
-        address,
-        view,
-      )}${renderSetupCta(group, env, siteLabel)}`;
+      )}>Unknown</span>${renderProfileLink(connection, view)}${
+        connection.profiles.length === 0
+          ? renderConnectButton(connection, address, view)
+          : false
+      }${renderSetupCta(group, env, siteLabel)}`;
   }
 }
 
@@ -397,15 +441,22 @@ function titleAttr(text: string | undefined) {
  * different names — and all of them are named, because hiding the second would
  * make "Connected" look like it came from the first.
  */
-function renderProfileLink(connection: ConnectionView): Html | false {
+function renderProfileLink(
+  connection: ConnectionView,
+  view: SitesResultView,
+): Html | false {
   if (connection.profiles.length === 0) return false;
-  const names = connection.profiles.join(", ");
-  return html`<a class="deploy-hint"${hrefAttr(url("/site-profiles"))}${attr(
-    "title",
-    connection.profiles.length === 1
-      ? `Novamira CLI site profile ${names}. Manage it on the Novamira CLI sites page.`
-      : `Novamira CLI site profiles ${names}. Manage them on the Novamira CLI sites page.`,
-  )}>${names}</a>`;
+  return html`${connection.profiles.map((name) => {
+    const profile = view.siteProfiles?.profiles.find(
+      (candidate) => candidate.name === name,
+    );
+    return profile === undefined
+      ? html`<span class="deploy-hint">${name}</span>`
+      : renderSiteProfileActions(siteProfileRowView(profile), {
+          profile: view.profile,
+          includeEnvs: view.includeEnvs,
+        });
+  })}`;
 }
 
 /**

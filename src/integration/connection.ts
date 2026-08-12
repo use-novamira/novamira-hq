@@ -81,6 +81,11 @@ import {
   type UnavailableReason,
 } from "../connection-state.js";
 import { CliError } from "../errors.js";
+import type {
+  SiteInventorySnapshot,
+  SiteProfileListing,
+  SiteProfileSummary,
+} from "../site-profiles.js";
 import {
   childFailure,
   interpretChildOutcome,
@@ -179,7 +184,11 @@ export interface SiteCliIntegration extends SiteProfileService {
    * Spawns `novamira auth login <url>`. Resolves for every failure and never
    * throws; see `connect.ts` for why the outcome carries a reason and no text.
    */
-  connect(siteUrl: string): Promise<ConnectOutcome>;
+  connect(siteUrl: string, name?: string): Promise<ConnectOutcome>;
+  /** List profiles once and match that same answer to hosting environments. */
+  siteInventory(
+    queries: readonly ConnectionQuery[],
+  ): Promise<SiteInventorySnapshot>;
 }
 
 export const DEFAULT_PER_CHILD_TIMEOUT_MS = 10_000;
@@ -188,6 +197,63 @@ export const DEFAULT_CONCURRENCY = 4;
 
 function unavailable(reason: UnavailableReason): ConnectionResult {
   return { state: "unavailable", profiles: [], reason };
+}
+
+function connectionsFromProfiles(
+  queries: readonly ConnectionQuery[],
+  listing: SiteProfileListing,
+): ConnectionSnapshot {
+  const uniform = (result: ConnectionResult): ConnectionSnapshot => ({
+    byKey: new Map(queries.map((query) => [query.key, result])),
+    checkedAt: listing.checkedAt,
+    cliAvailable: listing.cliAvailable,
+  });
+  if (listing.reason !== undefined) return uniform(unavailable(listing.reason));
+
+  const byOrigin = new Map<string, SiteProfileSummary[]>();
+  for (const profile of listing.profiles) {
+    const origin = originOf(profile.origin) ?? originOf(profile.siteUrl);
+    if (origin === undefined) continue;
+    const profiles = byOrigin.get(origin);
+    if (profiles === undefined) byOrigin.set(origin, [profile]);
+    else profiles.push(profile);
+  }
+
+  const byKey = new Map<string, ConnectionResult>();
+  for (const query of queries) {
+    const matched: SiteProfileSummary[] = [];
+    for (const origin of normalizeOrigins(query.origins)) {
+      for (const profile of byOrigin.get(origin) ?? []) {
+        if (!matched.some(({ name }) => name === profile.name)) {
+          matched.push(profile);
+        }
+      }
+    }
+    const names = matched.map(({ name }) => name);
+    if (names.length === 0) {
+      byKey.set(query.key, NOT_CONFIGURED_CONNECTION);
+    } else if (matched.some(({ state }) => state === "connected")) {
+      byKey.set(query.key, { state: "connected", profiles: names });
+    } else if (matched.some(({ state }) => state === "reconnect_required")) {
+      byKey.set(query.key, {
+        state: "reconnect_required",
+        profiles: names,
+      });
+    } else {
+      const failed = matched.find(
+        ({ state }) => state === "unreachable" || state === "unknown",
+      );
+      byKey.set(query.key, {
+        state: "unavailable",
+        profiles: names,
+        reason:
+          failed?.state === "unreachable"
+            ? "site_unreachable"
+            : (failed?.reason ?? "cli_failed"),
+      });
+    }
+  }
+  return { byKey, checkedAt: listing.checkedAt, cliAvailable: true };
 }
 
 export function createSiteCliIntegration(
@@ -241,6 +307,13 @@ export function createSiteCliIntegration(
     listProfiles: () => profileService.listProfiles(),
     logoutProfile: (name) => profileService.logoutProfile(name),
     removeProfile: (name) => profileService.removeProfile(name),
+    siteInventory: async (queries) => {
+      const profiles = await profileService.listProfiles();
+      return {
+        profiles,
+        connections: connectionsFromProfiles(queries, profiles),
+      };
+    },
     connectionStates: async (queries) => {
       // One deadline for the whole refresh, shared by every child. The
       // per-child timeout and this signal both apply; whichever fires first

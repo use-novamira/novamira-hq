@@ -179,9 +179,9 @@ export {
 } from "./views/sites.js";
 
 export {
-  renderSiteProfiles,
-  renderSiteProfilesPage,
-  type SiteProfilesView,
+  renderConnectForm,
+  renderSiteProfileActions,
+  renderSiteProfileRow,
 } from "./views/site-profiles.js";
 
 export {

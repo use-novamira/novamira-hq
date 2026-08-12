@@ -17,6 +17,7 @@ import { after, test } from "node:test";
 import {
   createSiteCliIntegration,
   createSiteCliResolver,
+  authLoginArgs,
   authStatusArgs,
   nodeSpawnChild,
   originOf,
@@ -1279,6 +1280,69 @@ test("logout and remove build the documented argv and read only ok", async () =>
   // One child per action, and never a retry: a silent second attempt at "revoke
   // this credential" is a remote effect nobody asked for.
   assert.equal(calls.length, 2);
+});
+
+test("connect accepts an optional custom profile name", async () => {
+  assert.deepEqual(authLoginArgs("https://example.com"), [
+    "--json",
+    "--quiet",
+    "auth",
+    "login",
+    "https://example.com",
+  ]);
+  assert.deepEqual(authLoginArgs("https://example.com", "custom-name"), [
+    "--json",
+    "--quiet",
+    "auth",
+    "login",
+    "https://example.com",
+    "--name",
+    "custom-name",
+  ]);
+
+  const { integration, calls } = harness(() => exited(success({})));
+  assert.deepEqual(
+    await integration.connect("https://example.com", "custom-name"),
+    { kind: "connected" },
+  );
+  assert.deepEqual(
+    calls[0].args,
+    authLoginArgs("https://example.com", "custom-name"),
+  );
+});
+
+test("siteInventory lists once and derives matched and CLI-only profiles together", async () => {
+  const cliOnly = {
+    name: "direct",
+    siteUrl: "https://direct.example.com",
+    origin: "https://direct.example.com",
+  };
+  const { integration, calls } = harness(
+    scripted({
+      list: exited(success([PROFILE, cliOnly])),
+      status: (invocation) =>
+        exited(
+          success({
+            ...AUTH_OK,
+            site: siteOf(invocation),
+            siteUrl:
+              siteOf(invocation) === "direct"
+                ? cliOnly.siteUrl
+                : PROFILE.siteUrl,
+          }),
+        ),
+    }),
+  );
+  const inventory = await integration.siteInventory([QUERY]);
+  assert.deepEqual(inventory.connections.byKey.get(QUERY.key), {
+    state: "connected",
+    profiles: ["prod"],
+  });
+  assert.deepEqual(
+    inventory.profiles.profiles.map(({ name }) => name),
+    ["prod", "direct"],
+  );
+  assert.equal(calls.filter(({ args }) => args.includes("list")).length, 1);
 });
 
 test("site_not_found is `missing`, and every other failure is a reason", async () => {

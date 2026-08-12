@@ -191,6 +191,11 @@ async function fixture(options = {}) {
   });
 
   const connectCalls = [];
+  const listing = options.siteProfiles ?? {
+    profiles: [],
+    checkedAt: NOW,
+    cliAvailable: options.cliAvailable ?? true,
+  };
   const server = createDashboardServer({
     version: "0.1.0-test",
     paths,
@@ -213,10 +218,22 @@ async function fixture(options = {}) {
           options.cliAvailable ?? true,
           options.profiles ?? {},
         ),
-      connect: async (siteUrl) => {
-        connectCalls.push(siteUrl);
+      siteInventory: async (queries) => ({
+        connections: snapshotFor(
+          queries,
+          options.states ?? {},
+          options.cliAvailable ?? true,
+          options.profiles ?? {},
+        ),
+        profiles: listing,
+      }),
+      listProfiles: async () => listing,
+      connect: async (siteUrl, name) => {
+        connectCalls.push(name === undefined ? siteUrl : `${siteUrl} ${name}`);
         return options.connect ?? { kind: "connected" };
       },
+      logoutProfile: async () => ({ kind: "done" }),
+      removeProfile: async () => ({ kind: "done" }),
     },
     doctor: async () => {
       throw new Error("the sites suite runs no doctor report");
@@ -673,10 +690,29 @@ test("15: both routes refuse a missing or wrong token", async () => {
   assert.equal(listCalls.length, 0);
 });
 
-test("16: a connected cell names the site-CLI profile and links to its page", async () => {
+test("16: matched CLI profiles stay in the hosting row and CLI-only sites are separate", async () => {
+  const siteProfiles = {
+    profiles: [
+      {
+        name: "prod",
+        siteUrl: "https://env-a.example.com",
+        origin: "https://env-a.example.com",
+        state: "connected",
+      },
+      ...["staging", "staging-2"].map((name) => ({
+        name,
+        siteUrl: "https://env-c.example.com",
+        origin: "https://env-c.example.com",
+        state: "reconnect_required",
+      })),
+    ],
+    checkedAt: NOW,
+    cliAvailable: true,
+  };
   const { server } = await fixture({
     states: { "env-a": "connected", "env-c": "reconnect_required" },
     profiles: { "env-a": ["prod"], "env-c": ["staging", "staging-2"] },
+    siteProfiles,
   });
   const recorder = fakeSseStream();
   const response = await server.dispatch(
@@ -689,15 +725,15 @@ test("16: a connected cell names the site-CLI profile and links to its page", as
   // rendered one until now: the cell said "Connected" without saying what was
   // connected, which left two site listings with no visible relation.
   assert.ok(
-    markup.includes('<a class="deploy-hint" href="/site-profiles"'),
-    "a connected cell links to the Novamira CLI sites page",
+    markup.includes('<span class="cli-profile-actions"><strong>prod</strong>'),
   );
-  assert.ok(markup.includes(">prod</a>"));
   // Every matching profile is named. Two `auth login`s against one URL under
   // different names both match, and hiding the second would make "Connected"
   // look like it came from the first.
-  assert.ok(markup.includes(">staging, staging-2</a>"));
-  assert.ok(markup.includes("Novamira CLI site profiles staging, staging-2."));
+  assert.ok(markup.includes("<strong>staging</strong>"));
+  assert.ok(markup.includes("<strong>staging-2</strong>"));
+  assert.ok(markup.includes(">Sign out</button>"));
+  assert.ok(markup.includes(">Remove</button>"));
 
   // A cell with no match renders no link — `not_configured` has no profile by
   // definition, and inventing one would be worse than saying nothing.
@@ -708,6 +744,50 @@ test("16: a connected cell names the site-CLI profile and links to its page", as
   );
   await plain.run(cold.stream);
   assert.ok(!cold.find("sites-result").markup.includes("/site-profiles"));
+});
+
+test("18: the unified list renders only unmatched CLI profiles in CLI only", async () => {
+  const siteProfiles = {
+    profiles: [
+      {
+        name: "cli-prod",
+        siteUrl: "https://env-a.example.com",
+        origin: "https://env-a.example.com",
+        state: "connected",
+      },
+      {
+        name: "direct",
+        siteUrl: "https://direct.example.com",
+        origin: "https://direct.example.com",
+        state: "connected",
+      },
+    ],
+    checkedAt: NOW,
+    cliAvailable: true,
+  };
+  const { markup } = await resultMarkup({
+    states: { "env-a": "connected" },
+    profiles: { "env-a": ["cli-prod"] },
+    siteProfiles,
+  });
+  assert.ok(markup.includes("<h2>CLI only</h2>"));
+  assert.ok(markup.includes("direct.example.com"));
+  assert.equal(markup.split(">cli-prod<").length - 1, 1);
+});
+
+test("19: adding a CLI site sends the optional custom name", async () => {
+  const { server, connectCalls } = await fixture();
+  await sse(
+    server,
+    authorized("/_dashboard/site-profiles/connect?unified=true", {
+      method: "POST",
+      body: JSON.stringify({
+        cliSites: { url: "https://example.com", name: "my-site" },
+        sites: { profile: "__all__", includeEnvs: true },
+      }),
+    }),
+  );
+  assert.deepEqual(connectCalls, ["https://example.com my-site"]);
 });
 
 test("17: the service inverts the match into profile → hosting environments", async () => {

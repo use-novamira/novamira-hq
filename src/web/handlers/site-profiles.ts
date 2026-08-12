@@ -63,12 +63,53 @@ import type { DashboardRequest } from "../request.js";
 import type { DashboardResponse } from "../responses.js";
 import type { RouteContext, RouteHandler } from "../routes.js";
 import { parseCliSites } from "../signals-input.js";
+import { parseSiteBrowser } from "../signals-input.js";
 import type { SseStream } from "../sse.js";
-import { renderSiteProfiles } from "../views/site-profiles.js";
-import { EMPTY_NOTICE, type DashboardNotice } from "../views/types.js";
+import type { DashboardNotice } from "../views/types.js";
+import { patchSites } from "./sites.js";
 
 function danger(message: string): DashboardNotice {
   return { level: "danger", message };
+}
+
+function listOptions(
+  request: DashboardRequest,
+  signals: Readonly<Record<string, unknown>>,
+) {
+  const sites = parseSiteBrowser(signals);
+  return {
+    profile: (request.query.get("profile") ?? "").trim() || sites.profile,
+    includeEnvs: request.query.has("include_envs")
+      ? request.query.get("include_envs") !== "false"
+      : sites.includeEnvs,
+    refresh: false,
+  };
+}
+
+async function patchDestination(
+  request: DashboardRequest,
+  signals: Readonly<Record<string, unknown>>,
+  stream: SseStream,
+  context: RouteContext,
+  notice: DashboardNotice,
+): Promise<void> {
+  const options = listOptions(request, signals);
+  const warm = context.sites.warm(options.profile, options.includeEnvs);
+  if (warm === undefined) {
+    patchToast(stream, notice);
+    return;
+  }
+  const inventory = await context.sites.refreshInventory(warm.groups);
+  patchSites(
+    stream,
+    options,
+    {
+      ...warm,
+      connections: inventory.connections,
+      siteProfiles: inventory.profiles,
+    },
+    notice,
+  );
 }
 
 /**
@@ -78,26 +119,6 @@ function danger(message: string): DashboardNotice {
  * pair, and a fifth spelling would be a route that patched the same element in
  * a different mode.
  */
-export async function patchSiteProfiles(
-  stream: SseStream,
-  context: RouteContext,
-  notice: DashboardNotice,
-): Promise<void> {
-  // `listProfiles` resolves for every failure, so the listing itself is always
-  // renderable; `siteProfilesHint` turns an untrustworthy one into a sentence.
-  const listing = await context.integration.listProfiles();
-  // Warm only, and it never triggers anything: the back-links to hosting
-  // environments are a by-product of the last Hosting Sites load. Before one
-  // has happened the map is empty and the rows carry no link, which is the
-  // honest answer — fetching here would make this page open with a round trip
-  // to every configured hosting API.
-  stream.patchElements(
-    renderSiteProfiles({ listing, links: context.sites.siteProfileLinks() }),
-    { selectorId: "cli-sites", mode: "outer" },
-  );
-  patchToast(stream, notice);
-}
-
 /**
  * Run one handler body, and turn anything it throws into a toast.
  *
@@ -118,15 +139,7 @@ function siteProfileRoute(
       } catch (error) {
         const cliError = asCliError(error);
         context.onDiagnostic?.("dashboard", { path, code: cliError.code });
-        // The panel is still repainted: the operator asked for an action, and
-        // leaving the pre-action list on screen beside a failure toast is how a
-        // dashboard ends up disagreeing with the CLI it reports on. A second
-        // failure inside the repaint is caught by the outer `run`'s own guard.
-        try {
-          await patchSiteProfiles(stream, context, danger(cliError.message));
-        } catch {
-          patchToast(stream, danger(cliError.message));
-        }
+        patchToast(stream, danger(cliError.message));
       }
       stream.close();
     },
@@ -171,23 +184,6 @@ function requireName(request: DashboardRequest): string {
 }
 
 /* -------------------------------------------------------------------------- */
-/* GET /_dashboard/site-profiles                                              */
-/* -------------------------------------------------------------------------- */
-
-export function createSiteProfilesHandler(context: RouteContext): RouteHandler {
-  return siteProfileRoute(
-    context,
-    "/_dashboard/site-profiles",
-    async (_request, stream) => {
-      // A plain load says nothing: the panel's own body carries the hint when
-      // the listing could not be trusted, and a toast on every page mount would
-      // be noise.
-      await patchSiteProfiles(stream, context, EMPTY_NOTICE);
-    },
-  );
-}
-
-/* -------------------------------------------------------------------------- */
 /* POST /_dashboard/site-profiles/connect                                     */
 /* -------------------------------------------------------------------------- */
 
@@ -217,8 +213,20 @@ export function createSiteProfileConnectHandler(
       // the raw string in the error.
       const site = normalizeSiteUrl(raw, context.environment, "--url");
 
-      const outcome = await context.integration.connect(site.siteUrl);
-      await patchSiteProfiles(
+      const name = parseCliSites(signals).name;
+      if (name !== "" && !isSiteProfileName(name)) {
+        throw new CliError(
+          "usage_error",
+          "A Novamira site profile name must start with a letter or digit and may contain only letters, digits, '.', '_' and '-'.",
+        );
+      }
+      const outcome = await context.integration.connect(
+        site.siteUrl,
+        name === "" ? undefined : name,
+      );
+      await patchDestination(
+        request,
+        signals,
         stream,
         context,
         outcome.kind === "failed"
@@ -240,10 +248,12 @@ export function createSiteProfileLogoutHandler(
     context,
     "/_dashboard/site-profiles/logout",
     async (request, stream) => {
-      await readSignals(request);
+      const signals = await readSignals(request);
       const name = requireName(request);
       const outcome = await context.integration.logoutProfile(name);
-      await patchSiteProfiles(
+      await patchDestination(
+        request,
+        signals,
         stream,
         context,
         noticeFor(
@@ -267,10 +277,12 @@ export function createSiteProfileRemoveHandler(
     context,
     "/_dashboard/site-profiles/remove",
     async (request, stream) => {
-      await readSignals(request);
+      const signals = await readSignals(request);
       const name = requireName(request);
       const outcome = await context.integration.removeProfile(name);
-      await patchSiteProfiles(
+      await patchDestination(
+        request,
+        signals,
         stream,
         context,
         noticeFor(

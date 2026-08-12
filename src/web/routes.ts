@@ -82,7 +82,6 @@ import {
   createSiteProfileConnectHandler,
   createSiteProfileLogoutHandler,
   createSiteProfileRemoveHandler,
-  createSiteProfilesHandler,
 } from "./handlers/site-profiles.js";
 import { createSitesHandler } from "./handlers/sites.js";
 import {
@@ -250,7 +249,6 @@ const PAGE_PATHS: Readonly<Record<string, DashboardPage>> = {
   "/": "providers",
   "/providers": "providers",
   "/sites": "sites",
-  "/site-profiles": "site-profiles",
   "/deploy-paths": "deploy-paths",
   "/deploy-paths/new": "deploy-path-new",
   "/novamira-setup": "novamira-setup",
@@ -377,6 +375,7 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
       // is a stale bookmark.
       const signals = defaultDashboardSignals(context.token, {
         openProviderForm: request.query.get("new") === "host",
+        openCliSiteForm: request.query.get("new") === "cli",
         // Go's `defaultProviderFormSignals` preselected `providerKinds()[0]`,
         // so the provider `<select>`, the metadata expressions and the reset
         // expression all start on the same kind.
@@ -465,12 +464,6 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
     // guarded like every other row under the prefix even though it reaches no
     // provider API: it reports which sites this machine is authorized against,
     // which is not a thing a cross-origin page may enumerate.
-    {
-      method: "GET",
-      path: "/_dashboard/site-profiles",
-      auth: "token",
-      handler: createSiteProfilesHandler(context),
-    },
     {
       method: "POST",
       path: "/_dashboard/site-profiles/connect",

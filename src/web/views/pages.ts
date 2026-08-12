@@ -53,7 +53,6 @@ import { renderDiagnosticsPage } from "./diagnostics.js";
 import { renderProvidersPage } from "./providers.js";
 import { renderSettingsPage } from "./settings.js";
 import { renderSetupPage, type SetupView } from "./setup.js";
-import { renderSiteProfilesPage } from "./site-profiles.js";
 import { renderSitesPage } from "./sites.js";
 import type { ConfigView, DashboardNotice, DashboardPage } from "./types.js";
 
@@ -96,11 +95,7 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
         formOpen: model.signals.providerForm.open,
       });
     case "sites":
-      return renderSitesPage(model.view);
-    case "site-profiles":
-      // No model, for the same reason `sites` has none: the page's own panel
-      // loads itself on mount and the answer arrives as a patch.
-      return renderSiteProfilesPage();
+      return renderSitesPage(model.view, model.signals.cliSites.open);
     case "deploy-paths":
       return renderDeployPathsPage(model.view, model.notice, model.deployPaths);
     case "deploy-path-new":

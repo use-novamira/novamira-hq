@@ -112,6 +112,7 @@ import type {
   ConnectOutcome,
 } from "../connection-state.js";
 import type {
+  SiteInventorySnapshot,
   SiteProfileListing,
   SiteProfileOutcome,
 } from "../site-profiles.js";
@@ -144,7 +145,10 @@ export interface DashboardIntegration {
    * failure and never throws — see `src/integration/connect.ts`, which is the
    * only place HQ runs the site CLI.
    */
-  connect(siteUrl: string): Promise<ConnectOutcome>;
+  connect(siteUrl: string, name?: string): Promise<ConnectOutcome>;
+  siteInventory(
+    queries: readonly ConnectionQuery[],
+  ): Promise<SiteInventorySnapshot>;
   /**
    * The Sites page's site-profile panel: what `novamira sites list` holds, with
    * one `auth status` per entry. Resolves for every failure and never throws —

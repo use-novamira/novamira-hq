@@ -100,14 +100,14 @@ export function createConnectHandler(context: RouteContext): RouteHandler {
             // stale listing alone rather than fanning out across the providers.
             patchToast(stream, connected);
           } else {
+            const inventory = await context.sites.refreshInventory(warm.groups);
             patchSites(
               stream,
               options,
               {
                 ...warm,
-                connections: await context.sites.refreshConnections(
-                  warm.groups,
-                ),
+                connections: inventory.connections,
+                siteProfiles: inventory.profiles,
               },
               connected,
             );

@@ -335,7 +335,6 @@ test("#main carries its per-page class, and renderPlaceholderBody is gone", asyn
       ["/", "providers"],
       ["/providers", "providers"],
       ["/sites", "sites"],
-      ["/site-profiles", "site-profiles"],
       ["/deploy-paths", "deploy-paths"],
       ["/deploy-paths/new", "deploy-path-new"],
       ["/novamira-setup", "novamira-setup"],
@@ -368,9 +367,6 @@ test("the nav active link follows the two page aliases", async () => {
       ["/providers", "/providers"],
       ["/sites", "/sites"],
       ["/novamira-setup", "/sites"],
-      // Its own link, and no alias: the CLI-sites page is not a detail view of
-      // the hosting inventory, which is the whole reason it left that page.
-      ["/site-profiles", "/site-profiles"],
       ["/deploy-paths", "/deploy-paths"],
       ["/deploy-paths/new", "/deploy-paths"],
       ["/diagnostics", "/diagnostics"],
@@ -384,18 +380,17 @@ test("the nav active link follows the two page aliases", async () => {
   }
 });
 
-test("the sidebar's one New action is a link the stylesheet gives a box to", async () => {
+test("the sidebar New menu offers hosting and CLI sites", async () => {
   const { server, cleanup } = await fixture();
   try {
     const markup = (await server.dispatch(request("/providers"))).body.markup;
     // Go rendered a <button>, which is inline-block; HQ renders an <a>, which is
     // inline. The pair that keeps it a full-width 38px button is this element
     // plus `.new-button`'s `display` in app.css, so pin both together.
-    assert.match(
-      markup,
-      /<div class="new-menu"><a class="button primary new-button" href="\/providers\?new=host">/,
-    );
-    assert.ok(!markup.includes("new-pop"), "the deleted popover stays deleted");
+    assert.ok(markup.includes(">+ New</button>"));
+    assert.ok(markup.includes('class="new-pop"'));
+    assert.ok(markup.includes('href="/providers?new=host"'));
+    assert.ok(markup.includes('href="/sites?new=cli"'));
     const css = await readFile(
       new URL("../src/web/static/app.css", import.meta.url),
       "utf8",
@@ -855,7 +850,6 @@ const SHIPPED_ROUTES = [
   // by spawning `novamira`; they are not Go's deleted `/_dashboard/sites/save`
   // and `/_dashboard/sites/remove`, which wrote HQ's own site profiles and are
   // asserted absent by the test below.
-  "GET /_dashboard/site-profiles",
   "GET /_dashboard/site-profiles/connect",
   "GET /_dashboard/site-profiles/logout",
   "GET /_dashboard/site-profiles/remove",
@@ -869,7 +863,6 @@ const SHIPPED_ROUTES = [
   "GET /novamira-setup",
   "GET /providers",
   "GET /settings",
-  "GET /site-profiles",
   "GET /sites",
   "HEAD /assets/",
 ];

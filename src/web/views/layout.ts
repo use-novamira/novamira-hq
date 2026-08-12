@@ -50,6 +50,7 @@
 
 import * as ds from "../datastar.js";
 import { classAttr, hrefAttr, html, idAttr, url, type Html } from "../html.js";
+import { jsBoolean, set, signal, toggle } from "../expr.js";
 import { toSignalRecord, type DashboardSignals } from "../signals.js";
 import {
   statusClass,
@@ -103,7 +104,20 @@ ${renderToast(input.notice)}
  * profile and deploy-path counts back without changing the signature.
  */
 export function renderSidebar(view: ConfigView, page: DashboardPage): Html {
-  return html`<aside class="sidebar"><a class="brand"${hrefAttr(url("/providers"))} aria-label="Novamira HQ dashboard home"><img class="brand-logo" src="/assets/novamira-hq-logo-white.svg" alt="Novamira HQ" width="170" height="25"></a><div class="new-menu"><a class="button primary new-button"${hrefAttr(url("/providers", { new: "host" }))}>+ New hosting</a></div>${renderNav(page)}<div class="sidebar-foot"><span class="version-pill">v${view.version}</span></div></aside>`;
+  return html`<aside class="sidebar"><a class="brand"${hrefAttr(url("/providers"))} aria-label="Novamira HQ dashboard home"><img class="brand-logo" src="/assets/novamira-hq-logo-white.svg" alt="Novamira HQ" width="170" height="25"></a><div class="new-menu"${ds.on(
+    "click",
+    set("sites.newMenuOpen", jsBoolean(false)),
+    "outside",
+  )}><button class="button primary new-button" type="button" aria-haspopup="menu"${ds.on(
+    "click",
+    toggle("sites.newMenuOpen"),
+  )}>+ New</button><div${classAttr(
+    "new-pop",
+  )}${ds.classes({ open: signal("sites.newMenuOpen") })} role="menu"><a${hrefAttr(
+    url("/providers", { new: "host" }),
+  )}><strong>Hosting account</strong><span>Add a provider profile</span></a><a${hrefAttr(
+    url("/sites", { new: "cli" }),
+  )}><strong>CLI site</strong><span>Connect a site by URL</span></a></div></div>${renderNav(page)}<div class="sidebar-foot"><span class="version-pill">v${view.version}</span></div></aside>`;
 }
 
 /**
@@ -123,8 +137,7 @@ export function renderSidebar(view: ConfigView, page: DashboardPage): Html {
  */
 export function renderNav(page: DashboardPage): Html {
   return html`<nav${idAttr("nav")} class="nav" aria-label="Dashboard sections">${[
-    navLink(page, "sites", "/sites", "Hosting Sites"),
-    navLink(page, "site-profiles", "/site-profiles", "Novamira CLI sites"),
+    navLink(page, "sites", "/sites", "Sites"),
     navLink(page, "deploy-paths", "/deploy-paths", "Deploy paths"),
     navLink(page, "providers", "/providers", "Hosting Providers"),
     navLink(page, "diagnostics", "/diagnostics", "Diagnostics"),

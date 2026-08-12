@@ -65,6 +65,10 @@ import {
 import { asCliError } from "../../errors.js";
 import type { HostingClientFactory } from "../../hosting/factory.js";
 import type { HostingEnvironment, HostingSite } from "../../hosting/types.js";
+import type {
+  SiteInventorySnapshot,
+  SiteProfileListing,
+} from "../../site-profiles.js";
 import { ALL_PROFILES_SENTINEL } from "../signals.js";
 
 /** Five minutes — Go's `sitesCacheTTL` (`server.go:49`), unchanged. */
@@ -91,6 +95,8 @@ export interface SitesResult {
   readonly groups: readonly SiteGroup[];
   /** `null` when there was no environment to ask about. */
   readonly connections: ConnectionSnapshot | null;
+  /** The same site-CLI round used to compute `connections`. */
+  readonly siteProfiles: SiteProfileListing;
 }
 
 /** Go's `envDisplay` (`server.go:1534-1552`). */
@@ -157,6 +163,10 @@ export interface SitesService {
   refreshConnections(
     groups: readonly SiteGroup[],
   ): Promise<ConnectionSnapshot | null>;
+  /** Refresh CLI profiles and matching for warm hosting groups, without providers. */
+  refreshInventory(
+    groups: readonly SiteGroup[],
+  ): Promise<SiteInventorySnapshot>;
   /**
    * Site-CLI profile name → the hosting environments it was last matched to.
    *
@@ -179,9 +189,13 @@ export interface SitesService {
  * `src/integration/`, which is a peer layer.
  */
 export interface ConnectedStateSource {
+  siteInventory?(
+    queries: readonly ConnectionQuery[],
+  ): Promise<SiteInventorySnapshot>;
   connectionStates(
     queries: readonly ConnectionQuery[],
   ): Promise<ConnectionSnapshot>;
+  listProfiles?(): Promise<SiteProfileListing>;
 }
 
 export interface SitesServiceOptions {
@@ -344,9 +358,9 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
    */
   let profileLinks = new Map<string, readonly HostingEnvLink[]>();
 
-  const refreshConnections = async (
+  const refreshInventory = async (
     groups: readonly SiteGroup[],
-  ): Promise<ConnectionSnapshot | null> => {
+  ): Promise<SiteInventorySnapshot> => {
     const queries: ConnectionQuery[] = [];
     // The environment each query key stands for, so the snapshot's matched
     // profile names can be turned back into something a page can link to.
@@ -372,9 +386,22 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
         }
       }
     }
-    if (queries.length === 0) return null;
     try {
-      const snapshot = await options.integration.connectionStates(queries);
+      const inventory =
+        options.integration.siteInventory === undefined
+          ? {
+              connections: await options.integration.connectionStates(queries),
+              profiles:
+                options.integration.listProfiles === undefined
+                  ? {
+                      profiles: [],
+                      checkedAt: options.now(),
+                      cliAvailable: true,
+                    }
+                  : await options.integration.listProfiles(),
+            }
+          : await options.integration.siteInventory(queries);
+      const snapshot = inventory.connections;
       // Invert it: the Hosting Sites page reads `result.profiles` forwards, and
       // the Novamira CLI sites page reads this map backwards. Both are the same
       // origin match, made once.
@@ -389,15 +416,24 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
         }
       }
       profileLinks = inverted;
-      return snapshot;
+      return inventory;
     } catch {
       // See this file's header: an empty map with `cliAvailable: false` renders
       // as "Unknown" plus the install hint, which is the honest degradation. An
       // empty map with `cliAvailable: true` would claim "Not connected".
+      const checkedAt = options.now();
       return {
-        byKey: new Map<string, ConnectionResult>(),
-        checkedAt: options.now(),
-        cliAvailable: false,
+        connections: {
+          byKey: new Map<string, ConnectionResult>(),
+          checkedAt,
+          cliAvailable: false,
+        },
+        profiles: {
+          profiles: [],
+          checkedAt,
+          cliAvailable: false,
+          reason: "cli_failed",
+        },
       };
     }
   };
@@ -407,7 +443,7 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
     includeEnvs: boolean,
     entry: CacheEntry,
     cached: boolean,
-    connections: ConnectionSnapshot | null,
+    inventory: SiteInventorySnapshot,
   ): SitesResult => ({
     profile,
     includeEnvs,
@@ -415,8 +451,14 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
     storedAt: entry.storedAt,
     expiresAt: entry.expiresAt,
     groups: entry.groups,
-    connections,
+    connections: queriesExist(entry.groups) ? inventory.connections : null,
+    siteProfiles: inventory.profiles,
   });
+
+  const queriesExist = (groups: readonly SiteGroup[]): boolean =>
+    groups.some((group) =>
+      group.sites.some((site) => (site.environments?.length ?? 0) > 0),
+    );
 
   /** The warm `__all__` inventory every deploy-path resolution reads. */
   const warmAll = (): CacheEntry | undefined =>
@@ -433,7 +475,7 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
         request.includeEnvs,
         entry,
         warmEntry !== undefined,
-        await refreshConnections(entry.groups),
+        await refreshInventory(entry.groups),
       );
     },
 
@@ -441,7 +483,19 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
       const entry = read(cacheKey(profile, includeEnvs));
       return entry === undefined
         ? undefined
-        : resultFrom(profile, includeEnvs, entry, true, null);
+        : resultFrom(profile, includeEnvs, entry, true, {
+            connections: {
+              byKey: new Map(),
+              checkedAt: options.now(),
+              cliAvailable: false,
+            },
+            profiles: {
+              profiles: [],
+              checkedAt: options.now(),
+              cliAvailable: false,
+              reason: "cli_failed",
+            },
+          });
     },
 
     invalidate: () => {
@@ -493,6 +547,8 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
       return undefined;
     },
 
-    refreshConnections,
+    refreshConnections: async (groups) =>
+      (await refreshInventory(groups)).connections,
+    refreshInventory,
   };
 }

@@ -124,7 +124,6 @@ export type {
 export type DashboardPage =
   | "providers"
   | "sites"
-  | "site-profiles"
   | "deploy-paths"
   | "deploy-path-new"
   | "novamira-setup"
@@ -134,7 +133,6 @@ export type DashboardPage =
 export const DASHBOARD_PAGES: readonly DashboardPage[] = Object.freeze([
   "providers",
   "sites",
-  "site-profiles",
   "deploy-paths",
   "deploy-path-new",
   "novamira-setup",

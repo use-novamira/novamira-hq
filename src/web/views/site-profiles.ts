@@ -53,57 +53,23 @@
  */
 
 import * as ds from "../datastar.js";
-import { confirmThen, get, post, signal } from "../expr.js";
+import { confirmThen, post, signal } from "../expr.js";
 import {
   attr,
   classAttr,
   flagAttr,
   hrefAttr,
   html,
-  idAttr,
   url,
   type Html,
 } from "../html.js";
-// Type-only, and the direction is views → services: a service may never import
-// a view. The link shape is declared where it is produced so the map
-// `services/sites.ts` inverts and the one this renders cannot drift.
 import type { HostingEnvLink } from "../services/sites.js";
-import {
-  siteProfileRowView,
-  siteProfilesHint,
-  type SiteProfileListing,
-  type SiteProfileRowView,
-  type SiteProfileState,
-} from "./types.js";
+import { type SiteProfileRowView, type SiteProfileState } from "./types.js";
 
 /** The panel's own routes. Spelled once; the handlers pin the same strings. */
-const LIST_PATH = "/_dashboard/site-profiles";
 const CONNECT_PATH = "/_dashboard/site-profiles/connect";
 const LOGOUT_PATH = "/_dashboard/site-profiles/logout";
 const REMOVE_PATH = "/_dashboard/site-profiles/remove";
-
-/** What the operator is told when there is nothing to manage yet. */
-const EMPTY_TEXT =
-  "The Novamira site CLI has no site profiles yet. Connect one from an environment on the Hosting Sites page, or by URL below.";
-
-export interface SiteProfilesView {
-  /**
-   * `null` before the first load. It is what makes the root carry `data-init`,
-   * and it is a state the panel has words for rather than a hole filled with an
-   * invented empty list.
-   */
-  readonly listing: SiteProfileListing | null;
-  /**
-   * Site-CLI profile name → the hosting environments it was matched to, from
-   * `services/sites.ts`'s **warm** map.
-   *
-   * Absent or empty means "nobody has listed hosting sites in this process
-   * yet", and the rows simply carry no back-link. It is deliberately not
-   * fetched: a page that is otherwise local and instant should not open with a
-   * round trip to every configured hosting API just to draw a link.
-   */
-  readonly links?: ReadonlyMap<string, readonly HostingEnvLink[]>;
-}
 
 /**
  * The pill's text and `pill` modifier, exhaustive over the four states, so a
@@ -126,80 +92,6 @@ function titleAttr(text: string | undefined) {
   return text === undefined || text === "" ? false : attr("title", text);
 }
 
-/** The `@get` that loads the panel: its own route, and no signals in the URL. */
-function loadExpr() {
-  return get(url(LIST_PATH), { include: [] });
-}
-
-/**
- * `/site-profiles`.
- *
- * Like the Sites page, it renders **no data**: the panel's `data-init` fires the
- * moment it mounts and the answer arrives as a patch, which is why this renderer
- * takes no arguments and there is no `siteProfiles` field on `PageModel`. A
- * page-level model would have to be filled with something, and the honest
- * something is "nothing yet".
- *
- * Refresh lives in the page header, **outside** `#cli-sites`, so an outer patch
- * of the panel does not replace the button that fired it. That is the providers
- * page's arrangement, and the reason `#cli-sites` is a fragment rather than the
- * whole page body.
- */
-export function renderSiteProfilesPage(): Html {
-  const load = loadExpr();
-  return html`<section class="page"><header class="page-head"><div><h1>Novamira CLI sites</h1><p>The site profiles the Novamira site CLI holds on this machine. Every action here runs one <code>novamira</code> command — Novamira HQ stores nothing and never talks to the site itself.</p></div><div class="toolbar inline-toolbar"><span class="loading-inline ds-toggle"${ds.classes(
-    { open: signal("cliSites.loading") },
-  )}><span class="spinner" aria-hidden="true"></span><span>Checking</span></span><button class="button secondary" type="button"${ds.indicator(
-    "cliSites.loading",
-  )}${ds.on("click", load)}>Refresh</button></div></header>${renderSiteProfiles(
-    {
-      listing: null,
-    },
-  )}</section>`;
-}
-
-/** `#cli-sites`: the panel itself, and the whole of what a route patches. */
-export function renderSiteProfiles(view: SiteProfilesView): Html {
-  const { listing } = view;
-  const hint = listing === null ? undefined : siteProfilesHint(listing);
-  // A hint means the list cannot be trusted, so no row and no action is
-  // offered: every button on this panel spawns a `novamira` command, and there
-  // is no point offering one when HQ has just been told it cannot run any.
-  const usable = listing !== null && hint === undefined;
-
-  return html`<section${idAttr("cli-sites")} class="panel"${
-    listing === null ? ds.init(loadExpr()) : false
-  }${ds.indicator(
-    "cliSites.loading",
-  )}><div class="panel-head"><div><h2>Site profiles</h2><small class="last-updated">Last checked: ${
-    listing === null
-      ? "never"
-      : html`<span${ds.checkedAt(listing.checkedAt)}>just now</span>`
-  }</small></div>${
-    listing !== null && hint === undefined
-      ? html`<span class="pill">${String(
-          listing.profiles.length,
-        )} profiles</span>`
-      : false
-  }</div>${renderBody(view, hint)}${renderConnectForm(usable)}</section>`;
-}
-
-function renderBody(view: SiteProfilesView, hint: string | undefined): Html {
-  const { listing } = view;
-  if (listing === null) {
-    return html`<div class="empty">Checking the Novamira site CLI…</div>`;
-  }
-  if (hint !== undefined) {
-    return html`<div class="empty">${hint}</div>`;
-  }
-  if (listing.profiles.length === 0) {
-    return html`<div class="empty">${EMPTY_TEXT}</div>`;
-  }
-  return html`<div class="compact-list">${listing.profiles.map((profile) =>
-    renderRow(siteProfileRowView(profile), view.links?.get(profile.name) ?? []),
-  )}</div>`;
-}
-
 /**
  * One profile.
  *
@@ -214,24 +106,42 @@ function renderBody(view: SiteProfilesView, hint: string | undefined): Html {
  * whenever nobody has listed hosting sites in this process yet. See
  * {@link renderHostingLinks} for why an absent link is left absent.
  */
-function renderRow(
+export function renderSiteProfileRow(
   row: SiteProfileRowView,
   links: readonly HostingEnvLink[],
+  listContext?: { readonly profile: string; readonly includeEnvs: boolean },
 ): Html {
   const pill = PILLS[row.state];
-  const connect = post(url(CONNECT_PATH, { url: row.siteUrl }), {
-    include: [],
-  });
+  const routeContext =
+    listContext === undefined
+      ? {}
+      : {
+          profile: listContext.profile,
+          include_envs: listContext.includeEnvs,
+          unified: true,
+        };
+  const connect = post(
+    url(CONNECT_PATH, { url: row.siteUrl, ...routeContext }),
+    {
+      include: [],
+    },
+  );
   const logout = confirmThen(
     `Sign out of ${row.name}? The Novamira site CLI will delete its credential and revoke it with the site.`,
-    post(url(LOGOUT_PATH, { name: row.name }), { include: [] }),
+    post(url(LOGOUT_PATH, { name: row.name, ...routeContext }), {
+      include: [],
+    }),
   );
   const remove = confirmThen(
     `Remove the site profile ${row.name}? The Novamira site CLI will forget the site entirely.`,
-    post(url(REMOVE_PATH, { name: row.name }), { include: [] }),
+    post(url(REMOVE_PATH, { name: row.name, ...routeContext }), {
+      include: [],
+    }),
   );
 
-  return html`<article><div><strong>${row.name}</strong><small>${row.siteUrl}${
+  return html`<article${
+    listContext === undefined ? false : classAttr("site-row", "cli-site-row")
+  }${listContext === undefined ? false : ds.novamiraState("installed")}><div><strong>${row.name}</strong><small>${row.siteUrl}${
     row.expiresAt === undefined
       ? false
       : html` · credential expires ${row.expiresAt}`
@@ -252,6 +162,48 @@ function renderRow(
     "title",
     `novamira sites remove ${row.name}`,
   )}${ds.on("click", remove)}>Remove</button></div></article>`;
+}
+
+/** Actions for a CLI profile already represented by a hosting environment row. */
+export function renderSiteProfileActions(
+  row: SiteProfileRowView,
+  listContext: { readonly profile: string; readonly includeEnvs: boolean },
+): Html {
+  const routeContext = {
+    profile: listContext.profile,
+    include_envs: listContext.includeEnvs,
+    unified: true,
+  };
+  const reconnect = post(
+    url(CONNECT_PATH, { url: row.siteUrl, ...routeContext }),
+    { include: [] },
+  );
+  const logout = confirmThen(
+    `Sign out of ${row.name}? The Novamira site CLI will delete its credential and revoke it with the site.`,
+    post(url(LOGOUT_PATH, { name: row.name, ...routeContext }), {
+      include: [],
+    }),
+  );
+  const remove = confirmThen(
+    `Remove the site profile ${row.name}? The Novamira site CLI will forget the site entirely.`,
+    post(url(REMOVE_PATH, { name: row.name, ...routeContext }), {
+      include: [],
+    }),
+  );
+  return html`<span class="cli-profile-actions"><strong>${row.name}</strong>${
+    row.state === "connected"
+      ? false
+      : html`<button class="button tiny" type="button"${ds.on(
+          "click",
+          reconnect,
+        )}>Reconnect</button>`
+  }<button class="button tiny" type="button"${ds.on(
+    "click",
+    logout,
+  )}>Sign out</button><button class="button tiny danger" type="button"${ds.on(
+    "click",
+    remove,
+  )}>Remove</button></span>`;
 }
 
 /**
@@ -300,12 +252,26 @@ function renderHostingLinks(links: readonly HostingEnvLink[]): Html | false {
  * The pair below is `renderProviderForm`'s structure, which is the shape this
  * stylesheet has for "a labelled field and the button that submits it".
  */
-function renderConnectForm(usable: boolean): Html {
-  const submit = post(url(CONNECT_PATH), { include: ["cliSites"] });
+export function renderConnectForm(
+  usable: boolean,
+  unified = false,
+  open = false,
+): Html {
+  const submit = post(url(CONNECT_PATH, unified ? { unified: true } : {}), {
+    include: unified ? ["cliSites", "sites"] : ["cliSites"],
+  });
   const disabled = usable ? false : flagAttr("disabled");
-  return html`<form${ds.onSubmit(
+  return html`<form${classAttr(
+    "panel",
+    "form-panel",
+    "ds-toggle",
+    unified && "cli-site-form",
+    open && "open",
+  )}${ds.classes({ open: signal("cliSites.open") })}${ds.onSubmit(
     submit,
-  )}><div class="form-grid"><label><span>Connect another site</span><input type="url"${ds.bind(
+  )}><div class="panel-head"><div><h2>Connect a CLI site</h2><p>The Novamira site CLI opens your browser to authorize; HQ stores no site credential.</p></div></div><div class="form-grid"><label><span>Site URL</span><input type="url"${ds.bind(
     "cliSites.url",
-  )} placeholder="https://example.com"${disabled}><small class="field-help">Runs <code>novamira auth login</code>, which opens your browser to authorize. Use it for a site no hosting provider lists.</small></label></div><div class="button-row"><button class="button primary" type="submit"${disabled}>Connect</button></div></form>`;
+  )} placeholder="https://example.com" required${disabled}></label><label><span>Custom name <small>(optional)</small></span><input type="text"${ds.bind(
+    "cliSites.name",
+  )} placeholder="Defaults to the domain" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" maxlength="64"${disabled}><small class="field-help">Letters, digits, dots, underscores, and hyphens.</small></label></div><div class="button-row"><button class="button primary" type="submit"${disabled}>Connect</button></div></form>`;
 }

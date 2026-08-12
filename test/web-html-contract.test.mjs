@@ -102,7 +102,6 @@ import {
   renderSetupWork,
   renderSetupWorkBody,
 } from "../dist/web/views/setup.js";
-import { renderSiteProfiles } from "../dist/web/views/site-profiles.js";
 import {
   renderSitesResult,
   renderSitesStatus,
@@ -212,7 +211,6 @@ const CORPUS_PATHS = [
   "/providers?new=host",
   "/sites",
   "/sites?new=site",
-  "/site-profiles",
   "/deploy-paths",
   "/deploy-paths/new",
   "/novamira-setup?profile=dev&env=env-1",
@@ -1018,9 +1016,6 @@ const FRAGMENT_RENDERERS = {
       connections: null,
       notice: { level: "neutral", message: "" },
     }),
-  // The panel before its first load: `listing: null` is the state whose root
-  // carries the `data-init`, which is why the fragment is catalogued outer.
-  "cli-sites/outer": () => renderSiteProfiles({ listing: null }),
   "setup-work/outer": () => renderSetupWork(SETUP_VIEW),
   "setup-work/inner": () => renderSetupWorkBody(SETUP_VIEW),
   "diagnostics-output/outer": () =>
@@ -1055,7 +1050,6 @@ test("27: the catalog is non-empty and every selector id is a legal target", () 
     "provider-flash/outer",
     "sites-status/inner",
     "sites-result/outer",
-    "cli-sites/outer",
     "setup-work/outer",
     "setup-work/inner",
     "diagnostics-output/outer",
@@ -1093,7 +1087,6 @@ test("29: every routed page carries main, nav and toast", async () => {
       path: "/sites",
       ids: ["main", "nav", "toast", "sites-status", "sites-result"],
     },
-    { path: "/site-profiles", ids: ["main", "nav", "toast", "cli-sites"] },
     { path: "/deploy-paths", ids: ["main", "nav", "toast"] },
     { path: "/deploy-paths/new", ids: ["main", "nav", "toast"] },
     {
@@ -1291,6 +1284,18 @@ test("35: ?new=host opens the provider form; ?new=site opens nothing", async () 
       .open,
     false,
   );
+});
+
+test("35b: ?new=cli opens the custom CLI-site form", async () => {
+  const server = await dashboard();
+  const markup = await page(server, "/sites?new=cli");
+  assert.ok(
+    markup.includes(
+      '<form class="panel form-panel ds-toggle cli-site-form open"',
+    ),
+  );
+  assert.ok(markup.includes("Custom name"));
+  assert.ok(markup.includes('data-bind="cliSites.name"'));
 });
 
 test("36: the site browser defaults to every provider, environments included", async () => {

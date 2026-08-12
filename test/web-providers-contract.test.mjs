@@ -280,7 +280,6 @@ test("1: with no profiles the page is the onboarding state, with one card", asyn
   // The deleted card, and everything it implied.
   for (const gone of [
     "Connect a single site",
-    "Connect a site",
     "Single site",
     "site-name",
     "siteForm",

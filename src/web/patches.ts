@@ -71,7 +71,6 @@ export type StaticPatchSelectorId =
   | "provider-flash"
   | "sites-status"
   | "sites-result"
-  | "cli-sites"
   | "setup-work"
   | "diagnostics-output"
   | "updates-card";
@@ -100,7 +99,6 @@ export const SSE_PATCH_FRAGMENTS: readonly PatchFragment[] = Object.freeze([
   // `updates-card` is outer. It is a sibling of `#sites-result`, never inside
   // it: `sites-filter.js` observes that element for mutations and buckets
   // `.site-row` children, and neither concerns this panel.
-  { selectorId: "cli-sites", mode: "outer" },
   // The one id that appears twice, because two handlers replace two different
   // things about the same element. `/_dashboard/setup/jobs/<id>` replaces the
   // element **outer**, wrapper included, because the wrapper carries the

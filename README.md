@@ -181,16 +181,14 @@ What it does:
   profile's API credential. The credential is posted once and handed to the
   credential store; the page only ever shows the reference (`env:NAME`,
   `stored:ID`), never a value.
-- **Hosting Sites** — browse every site and environment across your configured
-  hosts, filtered by whether Novamira is connected, cached for five minutes so
-  navigating does not cost provider rate limit. A connected environment names
-  the site-CLI profile behind it and links to the page that manages it.
-- **Novamira CLI sites** — what `novamira` itself is configured for, which is a
-  different list: one row per site profile with its credential state and expiry,
-  and Reconnect, Sign out and Remove, plus a box for connecting a site no
-  hosting API lists. Rows link back to the matching hosting environment once you
-  have opened Hosting Sites. Every control runs one `novamira` command — HQ
-  stores nothing and never talks to the site itself.
+- **Sites** — browse hosting sites and Novamira CLI profiles in one list. A CLI
+  profile matched to a hosting environment appears only on that environment;
+  unmatched profiles appear once under **CLI only**. The list exposes credential
+  state, expiry, Reconnect, Sign out and Remove, and the New menu can connect a
+  CLI site by URL with an optional custom profile name. Hosting inventory stays
+  cached for five minutes; CLI actions use that warm inventory and never call a
+  provider. Every CLI control runs one `novamira` command — HQ stores nothing
+  and never talks to the site itself.
 - **Deploy paths** — create and remove the environment-to-environment paths.
   Running one is not part of this release.
 - **Novamira Setup** — install and activate the plugin on an environment with

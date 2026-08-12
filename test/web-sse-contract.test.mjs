@@ -29,7 +29,6 @@ import {
   renderSetupWork,
   renderSetupWorkBody,
 } from "../dist/web/views/setup.js";
-import { renderSiteProfiles } from "../dist/web/views/site-profiles.js";
 import {
   renderSitesResult,
   renderSitesStatus,
@@ -209,7 +208,6 @@ test("every catalogued outer fragment has a root element carrying its id", () =>
         }),
       ),
     ],
-    ["cli-sites/outer", renderHtml(renderSiteProfiles({ listing: null }))],
     ["setup-work/outer", renderHtml(renderSetupWork(SETUP_VIEW))],
     ["setup-work/inner", renderHtml(renderSetupWorkBody(SETUP_VIEW))],
     [

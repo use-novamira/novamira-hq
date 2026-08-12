@@ -176,6 +176,8 @@ export function parseSiteBrowser(
 export interface CliSitesInput {
   /** A site URL typed into the panel's "connect another site" box; `""` for none. */
   readonly url: string;
+  /** Optional custom profile name; empty lets the site CLI derive one. */
+  readonly name: string;
 }
 
 /**
@@ -190,7 +192,11 @@ export interface CliSitesInput {
 export function parseCliSites(
   signals: Readonly<Record<string, unknown>>,
 ): CliSitesInput {
-  return { url: trimmedString(subtree(signals, "cliSites"), "url") };
+  const sites = subtree(signals, "cliSites");
+  return {
+    url: trimmedString(sites, "url"),
+    name: trimmedString(sites, "name"),
+  };
 }
 
 /* -------------------------------------------------------------------------- */

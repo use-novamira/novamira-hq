@@ -45,6 +45,8 @@
  */
 
 import type { ConnectOutcome, UnavailableReason } from "../connection-state.js";
+import { CliError } from "../errors.js";
+import { isSiteProfileName } from "../site-profiles.js";
 import { interpretChildOutcome } from "./classify.js";
 import { siteCliChildEnv } from "./site-cli.js";
 import {
@@ -71,8 +73,18 @@ export const AUTH_LOGIN_TIMEOUT_MS = 300_000;
  * bound is the child timeout plus the abort signal below. No `--name`, and no
  * second argument of any kind.
  */
-export function authLoginArgs(siteUrl: string): readonly string[] {
-  return ["--json", "--quiet", "auth", "login", siteUrl];
+export function authLoginArgs(
+  siteUrl: string,
+  name?: string,
+): readonly string[] {
+  return [
+    "--json",
+    "--quiet",
+    "auth",
+    "login",
+    siteUrl,
+    ...(name === undefined ? [] : ["--name", name]),
+  ];
 }
 
 export interface ConnectActionOptions {
@@ -98,12 +110,18 @@ function failed(reason: UnavailableReason): ConnectOutcome {
  */
 export function createConnectAction(
   options: ConnectActionOptions,
-): (siteUrl: string) => Promise<ConnectOutcome> {
+): (siteUrl: string, name?: string) => Promise<ConnectOutcome> {
   const timeoutMs = options.timeoutMs ?? AUTH_LOGIN_TIMEOUT_MS;
   const maxStdoutBytes = options.maxStdoutBytes ?? DEFAULT_MAX_STDOUT_BYTES;
   const maxStderrBytes = options.maxStderrBytes ?? DEFAULT_MAX_STDERR_BYTES;
 
-  return async (siteUrl: string): Promise<ConnectOutcome> => {
+  return async (siteUrl: string, name?: string): Promise<ConnectOutcome> => {
+    if (name !== undefined && !isSiteProfileName(name)) {
+      throw new CliError(
+        "usage_error",
+        "A Novamira site profile name must start with a letter or digit and may contain only letters, digits, '.', '_' and '-'.",
+      );
+    }
     let resolution: SiteCliResolution | undefined;
     try {
       resolution = await options.resolve();
@@ -118,7 +136,7 @@ export function createConnectAction(
     const signal = AbortSignal.timeout(timeoutMs + 1_000);
     const outcome = await options.spawn({
       command: resolution.command,
-      args: [...resolution.prefixArgs, ...authLoginArgs(siteUrl)],
+      args: [...resolution.prefixArgs, ...authLoginArgs(siteUrl, name)],
       env: siteCliChildEnv(options.environment),
       timeoutMs,
       maxStdoutBytes,

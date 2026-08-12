@@ -35,7 +35,10 @@
  * never parsed for meaning.
  */
 
-import type { UnavailableReason } from "./connection-state.js";
+import type {
+  ConnectionSnapshot,
+  UnavailableReason,
+} from "./connection-state.js";
 
 /* -------------------------------------------------------------------------- */
 /* The state union                                                            */
@@ -90,6 +93,12 @@ export interface SiteProfileListing {
   readonly cliAvailable: boolean;
   /** Why the *listing itself* failed. Absent when the list is trustworthy. */
   readonly reason?: UnavailableReason;
+}
+
+/** One coherent refresh for the dashboard's unified Sites list. */
+export interface SiteInventorySnapshot {
+  readonly profiles: SiteProfileListing;
+  readonly connections: ConnectionSnapshot;
 }
 
 /**

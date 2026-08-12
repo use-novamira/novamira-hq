@@ -94,6 +94,7 @@ export interface SiteBrowserSignals {
   readonly includeEnvs: boolean;
   readonly loading: boolean;
   readonly search: string;
+  readonly newMenuOpen: boolean;
 }
 
 /**
@@ -108,7 +109,9 @@ export interface SiteBrowserSignals {
  * CLI, and `auth login` is spawned with the URL as its only argument.
  */
 export interface CliSitesSignals {
+  readonly open: boolean;
   readonly url: string;
+  readonly name: string;
   readonly loading: boolean;
 }
 
@@ -273,6 +276,8 @@ export function defaultDeployFormSignals(): DeployFormSignals {
 export interface DefaultSignalOptions {
   /** `?new=host` opens the provider form on load. `?new=site` is ignored. */
   readonly openProviderForm?: boolean;
+  /** `?new=cli` opens the site-CLI connection form on the unified Sites page. */
+  readonly openCliSiteForm?: boolean;
   /** Preselects the provider `<select>`, as Go's `defaultProviderFormSignals` did. */
   readonly firstProviderKind?: string;
 }
@@ -294,8 +299,14 @@ export function defaultDashboardSignals(
       includeEnvs: true,
       loading: false,
       search: "",
+      newMenuOpen: false,
     },
-    cliSites: { url: "", loading: false },
+    cliSites: {
+      open: options?.openCliSiteForm ?? false,
+      url: "",
+      name: "",
+      loading: false,
+    },
     diagnostics: { profile: "" },
     updates: { loading: false, installing: false },
     setup: { enableAiAbilities: true },
