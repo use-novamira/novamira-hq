@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.0.0-rc1 - 2026-08-13
+
 ### Added
 
 - Initial `@novamira/hq` package: hosting provisioning CLI and local dashboard.

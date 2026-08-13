@@ -525,6 +525,11 @@ wording. The changelog contains only an `Unreleased` section.
 Impact: the npm package and source repository would immediately contain false
 release-state documentation.
 
+Resolution: fixed. The README identifies `1.0.0-rc1` as the current v1 release
+candidate and describes installation in the present tense. The changelog records
+the initial package under a dated `1.0.0-rc1` heading while retaining
+`Unreleased` for subsequent changes.
+
 ### DEF-032: README dashboard page count conflicts with the contract
 
 Severity: low

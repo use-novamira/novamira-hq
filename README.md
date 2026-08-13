@@ -17,8 +17,9 @@ site is provisioned, agents talk to it through the separate
 
 The port of the Go `novamira-hub` is complete. Every command, route and page
 described in [`docs/v1-contract.md`](docs/v1-contract.md) is implemented, and
-that document is normative throughout — nothing in it is marked as planned. No
-release has been published to npm yet.
+that document is normative throughout — nothing in it is marked as planned.
+The current release is `1.0.0-rc1`, a release candidate for the normative v1
+contract; the first stable public release will be `1.0.0`.
 
 What the repository contains: the error and exit-code taxonomy, the JSON output
 envelope, HQ's storage namespace with locking, atomic writes and owner-only file
@@ -45,10 +46,10 @@ Rocket.net, Hostinger, and Cloudways.
 
 ## Install
 
-Once published, the installers set up HQ, register its agent skill with the
-agent of your choice, smoke-test the result with `novamira-hq doctor --offline`,
-install the `@novamira/cli` site CLI alongside it, and add an operating-system
-application launcher. On macOS, **Novamira HQ** is installed in
+The installers set up HQ, register its agent skill with the agent of your choice,
+smoke-test the result with `novamira-hq doctor --offline`, install the
+`@novamira/cli` site CLI alongside it, and add an operating-system application
+launcher. On macOS, **Novamira HQ** is installed in
 `/Applications` when that folder is writable, otherwise in `~/Applications`;
 on Linux, its freedesktop entry is installed under
 `${XDG_DATA_HOME:-~/.local/share}/applications`; on Windows, **Novamira HQ** is
@@ -81,7 +82,7 @@ npm install -g @novamira/hq --ignore-scripts
 novamira-hq --version
 ```
 
-Until then, build it from a checkout:
+To build it from a checkout instead:
 
 ```sh
 bun install

@@ -71,13 +71,14 @@ GitHub release. A tested metadata gate, SHA-pinned actions, and a release runboo
 cover the one-time protected token bootstrap, trusted-publisher handoff,
 repository visibility, and explicitly accepted residual risks.
 
-## Session 4: Release-State Documentation
+## Session 4: Release-State Documentation (Done)
 
 Defects: **DEF-031**
 
-Update the README installation language and changelog for the selected first
-release identity. Keep this separate from Session 3 so workflow correctness is
-not obscured by release-copy changes, but complete it only after Session 2.
+Completed by identifying `1.0.0-rc1` as the current v1 release candidate in the
+README, changing installation language from future to present tense, and moving
+the initial package notes under a dated `1.0.0-rc1` changelog heading while
+retaining `Unreleased` for subsequent changes.
 
 ## Session 5: Provisioning Network Boundaries
 
