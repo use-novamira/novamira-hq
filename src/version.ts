@@ -15,4 +15,4 @@
  */
 
 /** Kept in step with `package.json`'s `version`; the release job matches them. */
-export const VERSION = "0.1.0";
+export const VERSION = "1.0.0-rc1";

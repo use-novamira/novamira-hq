@@ -438,12 +438,13 @@ Severity: high
 References: `package.json:2-3`, `src/version.ts:17-18`,
 `docs/v1-contract.md:1-13`
 
-The package and executable report `0.1.0`, while the normative document freezes
-behavior for major version 1 and says every section is implemented.
+Resolved: the package and executable report `1.0.0-rc1`, while the normative
+document explicitly defines `1.0.0-rcN` as release candidates for the v1
+contract and `1.0.0` as the first stable public release.
 
-Impact: the first public SemVer identity contradicts its compatibility promise.
-The release must either be `1.0.0` or explicitly redefine the contract as
-pre-1.0.
+The release identity therefore matches its compatibility promise without
+redefining the contract as pre-1.0. Release candidates must use a prerelease npm
+dist-tag; `latest` remains reserved for stable releases.
 
 ### DEF-028: Site-profile architecture has two conflicting definitions
 

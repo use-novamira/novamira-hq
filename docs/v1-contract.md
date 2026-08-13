@@ -31,12 +31,17 @@ remain backward compatible with and ships no legacy import.
 | bundled data | the published tarball contains `dist/` and `skills/` (`novamira-hq`, `core`, `hosting`) |
 | installers | `install.sh` and `install.ps1`, published as GitHub release assets and served from the repository's raw URL; **not** inside the npm tarball |
 | distribution | npm only: no Homebrew formula, no `.deb`, no DMG, no Windows installer, no release-archive download |
+| release line | release candidates use `1.0.0-rcN`; the first stable public release is `1.0.0` |
 | package acceptance | `bun run package:acceptance` packs the tarball, installs it into a throwaway prefix, and exercises the installed executable offline; it runs in CI on Linux, macOS and Windows, and again in the release job against the published version |
 
 The package has no lifecycle setup, downloaded runtime, required native
 executable or addon, and no native keychain module: OS credential storage uses
 inbox platform commands. `@novamira/cli` is an optional integration and is never
 a runtime, package, or peer dependency.
+
+The `1.0.0-rcN` packages are prereleases of this normative v1 contract, not a
+pre-1.0 compatibility line. Stable v1 begins at `1.0.0`; release-candidate tags
+must not become npm's `latest` dist-tag.
 
 The installers do install `@novamira/cli` by default, as a **separate global npm
 package** installed after HQ itself. That is an install-step convenience and

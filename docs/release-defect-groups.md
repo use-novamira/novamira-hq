@@ -35,16 +35,19 @@ the site CLI, not page routes or profiles stored by HQ.
 Completed by aligning the repository instructions and source comments and by
 removing dead separate-page fragment, back-link, and cache-inversion artifacts.
 
-## Session 2: Release Identity
+## Session 2: Release Identity (Done)
 
 Defects: **DEF-027**
 
-Decide whether the first public release is `1.0.0` or whether the normative v1
-contract must be redefined as pre-1.0. Apply that decision consistently to the
-package version, executable version, contract language, and version assertions.
+Decision: the first stable public release is `1.0.0`, and release candidates use
+the `1.0.0-rcN` line. The current package and executable version is
+`1.0.0-rc1`. These candidates implement the normative v1 contract; they do not
+redefine it as a pre-1.0 contract.
 
-This decision should precede publication workflow work because release tags,
-registry checks, and acceptance tests must agree on the package version.
+Completed by aligning the package version, executable version, contract
+language, and direct version assertion. Publication workflows must preserve
+this identity, publish release candidates under a prerelease dist-tag, and
+reserve `latest` for stable releases.
 
 ## Session 3: Publication Workflow Safety
 
