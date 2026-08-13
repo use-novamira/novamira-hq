@@ -47,6 +47,7 @@ import {
   type SpawnChild,
 } from "../integration/index.js";
 import { globalHttpFetch, type HttpFetch } from "../provisioning/http.js";
+import { CliError } from "../errors.js";
 import { installVersion, type InstallRunner } from "../update/index.js";
 import {
   createDashboardServer,
@@ -64,6 +65,9 @@ import type { GlobalOptions } from "./program.js";
 
 /** Go's default (`internal/cli/dashboard.go:44`), unchanged. */
 export const DEFAULT_DASHBOARD_LISTEN = "127.0.0.1:8787";
+const DASHBOARD_PORT_ATTEMPTS = 10;
+const DASHBOARD_IDENTITY_HEADER = "x-novamira-hq-dashboard";
+const DASHBOARD_PROBE_TIMEOUT_MS = 1_000;
 
 export interface DashboardCommandOptions {
   /** `--listen <address>`: a loopback `host:port`, `:port` or `port`. */
@@ -108,6 +112,8 @@ export interface DashboardCommandOverrides {
    */
   readonly installRunner?: InstallRunner;
   readonly openBrowser?: (target: string) => Promise<void>;
+  readonly probeDashboard?: (target: string) => Promise<boolean>;
+  readonly createServer?: typeof createDashboardServer;
 }
 
 /**
@@ -279,10 +285,40 @@ async function openInBrowser(target: string): Promise<void> {
   });
 }
 
+async function probeDashboard(target: string): Promise<boolean> {
+  try {
+    const response = await fetch(target, {
+      method: "GET",
+      signal: AbortSignal.timeout(DASHBOARD_PROBE_TIMEOUT_MS),
+    });
+    return response.headers.get(DASHBOARD_IDENTITY_HEADER) === "1";
+  } catch {
+    return false;
+  }
+}
+
 function humanSummary(bound: BoundAddress, configFile: string): string {
   return [`Novamira HQ dashboard: ${bound.url}`, `Config: ${configFile}`].join(
     "\n",
   );
+}
+
+function addressUrl(address: {
+  readonly hostname: string;
+  readonly port: number;
+}): string {
+  const host = address.hostname.includes(":")
+    ? `[${address.hostname}]`
+    : address.hostname;
+  return `http://${host}:${String(address.port)}`;
+}
+
+function implicitDashboardAddresses(): readonly BoundAddress[] {
+  const preferred = parseListenAddress(DEFAULT_DASHBOARD_LISTEN);
+  return Array.from({ length: DASHBOARD_PORT_ATTEMPTS }, (_, offset) => {
+    const address = { ...preferred, port: preferred.port + offset };
+    return { ...address, url: addressUrl(address) };
+  });
 }
 
 export function createDashboardHandlers(
@@ -291,54 +327,169 @@ export function createDashboardHandlers(
 ): DashboardHandlers {
   const http: HttpFetch = overrides.fetch ?? globalHttpFetch;
   const openBrowser = overrides.openBrowser ?? openInBrowser;
+  const isDashboardRunning = overrides.probeDashboard ?? probeDashboard;
+  const createServer = overrides.createServer ?? createDashboardServer;
 
   return {
     dashboard: async (options, globals) => {
       // Parsed and guarded before anything is constructed, so a bad `--listen`
       // fails with `usage_error` and never opens a socket.
-      const address = parseListenAddress(
-        options.listen ?? DEFAULT_DASHBOARD_LISTEN,
-      );
-      requireLoopbackHost(address.hostname);
+      const explicitAddress =
+        options.listen === undefined
+          ? undefined
+          : parseListenAddress(options.listen);
+      const candidates =
+        explicitAddress === undefined
+          ? implicitDashboardAddresses()
+          : [
+              {
+                ...explicitAddress,
+                url: addressUrl(explicitAddress),
+              },
+            ];
+      for (const candidate of candidates) {
+        requireLoopbackHost(candidate.hostname);
+      }
+
+      const runningDashboard =
+        options.open === true
+          ? candidates[
+              (
+                await Promise.all(
+                  candidates.map((candidate) =>
+                    isDashboardRunning(candidate.url),
+                  ),
+                )
+              ).findIndex(Boolean)
+            ]
+          : undefined;
+      if (runningDashboard !== undefined) {
+        const renderer = dependencies.rendererFor(globals);
+        renderer.success(
+          {
+            url: runningDashboard.url,
+            host: runningDashboard.hostname,
+            port: runningDashboard.port,
+            configFile: dependencies.store.configFile,
+          },
+          {
+            human: humanSummary(
+              runningDashboard,
+              dependencies.store.configFile,
+            ),
+          },
+        );
+        try {
+          await openBrowser(runningDashboard.url);
+        } catch {
+          renderer.warn(
+            "The dashboard could not be opened in a browser; open the printed URL manually.",
+          );
+        }
+        return;
+      }
 
       let server: DashboardServer | undefined;
       let bound: BoundAddress | undefined;
 
-      await runLocalCommand(dependencies, globals, async ({ renderer, io }) => {
-        const started = createDashboardServer({
-          version: dependencies.version,
-          paths: dependencies.paths,
-          store: dependencies.store,
-          hosting: dependencies.hosting,
-          credentials: dependencies.credentials,
-          environment: io.env,
-          fetch: http,
-          now: overrides.now ?? (() => Date.now()),
-          // Built here, where the injected environment record exists, so
-          // `NOVAMIRA_HQ_SITE_CLI` and `PATH` come from the same place every
-          // other command reads them from.
-          integration: createDashboardIntegration(io.env, overrides),
-          doctor: createDashboardDoctor(dependencies, io.env, overrides),
-          updates: createDashboardUpdates(dependencies, overrides),
-          ...(overrides.randomToken === undefined
-            ? {}
-            : { randomToken: overrides.randomToken }),
-          onDiagnostic: (label, payload) => {
-            renderer.diagnostic(label, payload);
+      try {
+        await runLocalCommand(
+          dependencies,
+          globals,
+          async ({ renderer, io }) => {
+            let lastConflict: CliError | undefined;
+            for (const candidate of candidates) {
+              const started = createServer({
+                version: dependencies.version,
+                paths: dependencies.paths,
+                store: dependencies.store,
+                hosting: dependencies.hosting,
+                credentials: dependencies.credentials,
+                environment: io.env,
+                fetch: http,
+                now: overrides.now ?? (() => Date.now()),
+                // Built here, where the injected environment record exists, so
+                // `NOVAMIRA_HQ_SITE_CLI` and `PATH` come from the same place every
+                // other command reads them from.
+                integration: createDashboardIntegration(io.env, overrides),
+                doctor: createDashboardDoctor(dependencies, io.env, overrides),
+                updates: createDashboardUpdates(dependencies, overrides),
+                ...(overrides.randomToken === undefined
+                  ? {}
+                  : { randomToken: overrides.randomToken }),
+                onDiagnostic: (label, payload) => {
+                  renderer.diagnostic(label, payload);
+                },
+              });
+              try {
+                bound = await started.listen(candidate);
+                server = started;
+                break;
+              } catch (error) {
+                if (
+                  explicitAddress !== undefined ||
+                  !(error instanceof CliError) ||
+                  error.code !== "conflict"
+                ) {
+                  throw error;
+                }
+                lastConflict = error;
+              }
+            }
+            if (bound === undefined) {
+              throw (
+                lastConflict ??
+                new CliError(
+                  "conflict",
+                  "No dashboard listen address is available.",
+                )
+              );
+            }
+            return {
+              data: {
+                url: bound.url,
+                host: bound.hostname,
+                port: bound.port,
+                configFile: dependencies.store.configFile,
+              },
+              human: humanSummary(bound, dependencies.store.configFile),
+            };
           },
-        });
-        server = started;
-        bound = await started.listen(address);
-        return {
-          data: {
-            url: bound.url,
-            host: bound.hostname,
-            port: bound.port,
+        );
+      } catch (error) {
+        // Close the race between the preflight probe and binding the listener.
+        const exactCandidate = candidates[0];
+        if (
+          options.open !== true ||
+          !(error instanceof CliError) ||
+          error.code !== "conflict" ||
+          explicitAddress === undefined ||
+          exactCandidate === undefined ||
+          !(await isDashboardRunning(exactCandidate.url))
+        ) {
+          throw error;
+        }
+        const renderer = dependencies.rendererFor(globals);
+        renderer.success(
+          {
+            url: exactCandidate.url,
+            host: exactCandidate.hostname,
+            port: exactCandidate.port,
             configFile: dependencies.store.configFile,
           },
-          human: humanSummary(bound, dependencies.store.configFile),
-        };
-      });
+          {
+            human: humanSummary(exactCandidate, dependencies.store.configFile),
+          },
+        );
+        try {
+          await openBrowser(exactCandidate.url);
+        } catch {
+          renderer.warn(
+            "The dashboard could not be opened in a browser; open the printed URL manually.",
+          );
+        }
+        return;
+      }
 
       if (server === undefined || bound === undefined) {
         return;
@@ -389,11 +540,7 @@ export function registerDashboardCommands(
   parent
     .command("dashboard")
     .description("serve the local web dashboard")
-    .option(
-      "--listen <address>",
-      "loopback listen address (host:port)",
-      DEFAULT_DASHBOARD_LISTEN,
-    )
+    .option("--listen <address>", "loopback listen address (host:port)")
     .option("--open", "open the dashboard in the default browser", false)
     .action(async (options: DashboardCommandOptions, command: Command) =>
       handlers.dashboard(options, optionsFor([command])),

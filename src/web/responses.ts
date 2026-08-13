@@ -59,6 +59,7 @@ import type { SseStream } from "./sse.js";
  */
 export const SECURITY_HEADERS: Readonly<Record<string, string>> = Object.freeze(
   {
+    "X-Novamira-HQ-Dashboard": "1",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
     "Content-Security-Policy":

@@ -168,7 +168,7 @@ required and never inferred, and every command accepts `--json`. Run
 ## Dashboard
 
 ```sh
-novamira-hq dashboard                          # http://127.0.0.1:8787
+novamira-hq dashboard                          # prefers http://127.0.0.1:8787
 novamira-hq dashboard --listen localhost:9000 --open
 ```
 

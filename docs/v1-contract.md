@@ -819,7 +819,7 @@ and what it may and may not do are frozen here.
 
 ### Binding
 
-`--listen <address>` (default `127.0.0.1:8787`) accepts `:PORT`, `PORT`,
+`--listen <address>` accepts `:PORT`, `PORT`,
 `HOST:PORT` and `[IPv6]:PORT`. The host must be loopback: an omitted host, the
 literal name `localhost` (never resolved), any IPv4 literal in `127.0.0.0/8`,
 the IPv6 literal `::1` with or without brackets, or an IPv4-mapped IPv6
@@ -1152,7 +1152,12 @@ Config: /home/…/.config/novamira-hq/config.json
 
 Nothing is written to stdout for the rest of the run. `--open` launches the
 platform URL opener with an argv array and no shell; a failure is a warning,
-never fatal. `SIGINT` and `SIGTERM` stop the listener and the command exits 0.
+never fatal. Without `--listen`, HQ prefers `127.0.0.1:8787` and tries the next
+nine ports when earlier ones are occupied. With `--open`, it first looks across
+that range for an HQ dashboard, verifies its identity from its HTTP response,
+opens it, and exits 0 instead of starting a second server. An explicit
+`--listen` is exact: an unrelated listener remains a `conflict`. `SIGINT` and
+`SIGTERM` stop the listener and the command exits 0.
 
 ## Doctor
 
