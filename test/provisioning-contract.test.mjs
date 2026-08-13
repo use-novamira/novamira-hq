@@ -27,10 +27,7 @@ import { CliError } from "../dist/errors.js";
 import { shellJoin } from "../dist/hosting/shell.js";
 import {
   COMPATIBILITY_CHECKS,
-  METADATA_ATTEMPTS,
   METADATA_MAX_BYTES,
-  METADATA_MAX_REDIRECTS,
-  METADATA_RETRY_DELAYS_MS,
   MINIMUM_NOVAMIRA_VERSION,
   MINIMUM_WORDPRESS_VERSION,
   PROTECTED_RESOURCE_PATH,
@@ -50,6 +47,12 @@ import {
   handoffData,
   handoffHuman,
 } from "../dist/provisioning/handoff.js";
+import {
+  NOVAMIRA_LATEST_SOURCE_ALIAS,
+  PLUGIN_RELEASE_MAX_BYTES,
+  resolvePluginSource,
+  validateRemotePluginSource,
+} from "../dist/provisioning/plugin.js";
 import {
   NOVAMIRA_SETUP_MINIMUM_PHP,
   PHP_VERSION_COMMAND,
@@ -117,16 +120,6 @@ function scriptedFetch(script) {
   return impl;
 }
 
-/** A `sleep` that records rather than waits, so retries cost nothing. */
-function recordingSleep() {
-  const delays = [];
-  const sleep = async (milliseconds) => {
-    delays.push(milliseconds);
-  };
-  sleep.delays = delays;
-  return sleep;
-}
-
 function siteOf(raw, environment = {}) {
   return normalizeSiteUrl(raw, environment, "--url");
 }
@@ -177,11 +170,10 @@ function serving(document) {
   );
 }
 
-/** Read the metadata once, with retries that cost no wall-clock time. */
+/** Read the metadata once. */
 function check(fetchImpl, site = SITE, options = {}) {
   return checkSiteCompatibility(site, {
     fetch: fetchImpl,
-    sleep: recordingSleep(),
     ...options,
   });
 }
@@ -671,18 +663,17 @@ test("a loopback site is read over plain HTTP", async () => {
   assert.equal(http.calls[0].url, expected);
 });
 
-test("one same-origin redirect is followed", async () => {
+test("a same-origin redirect is refused without a follow-up request", async () => {
   // 39.
   const target = `${SITE_URL}/wp-json/oauth-protected-resource`;
-  const http = scriptedFetch((url) =>
-    url === METADATA_URL
-      ? redirect(target)
-      : response({ body: protectedResourceDocument(SITE_URL) }),
-  );
-  assert.deepEqual(await check(http), compatibilityBlock());
+  const http = scriptedFetch(() => redirect(target));
+  const error = await checkFails(http, SITE, "same-origin redirect");
+  assert.equal(error.code, "server_unsupported");
+  assert.equal(error.details.reason, "redirect");
+  assert.match(error.message, /exactly one request/);
   assert.deepEqual(
     http.calls.map((call) => call.url),
-    [METADATA_URL, target],
+    [METADATA_URL],
   );
 });
 
@@ -690,27 +681,23 @@ test("one same-origin redirect is followed", async () => {
 /* Compatibility: reachability failures                                       */
 /* -------------------------------------------------------------------------- */
 
-test("a transport failure is retried, then reported as a retryable network_error", async () => {
+test("a transport failure is reported after exactly one request", async () => {
   // 40.
   const http = scriptedFetch(() => {
     throw new Error("ECONNREFUSED");
   });
-  const sleep = recordingSleep();
   const error = await raised(
-    () => checkSiteCompatibility(SITE, { fetch: http, sleep }),
+    () => checkSiteCompatibility(SITE, { fetch: http }),
     "transport failure",
   );
 
   assert.equal(error.code, "network_error");
   assert.equal(error.retryable, true);
   assert.equal(error.details.check, "metadata.reachable");
-  assert.equal(http.calls.length, METADATA_ATTEMPTS);
-  assert.deepEqual(sleep.delays, [...METADATA_RETRY_DELAYS_MS]);
+  assert.equal(http.calls.length, 1);
 });
 
-test("a persistent 404 is retried, then server_unsupported", async () => {
-  // 41: 404 is retried because an edge cache may still be serving a
-  // pre-activation response; it is still fatal when it persists.
+test("a 404 is server_unsupported after exactly one request", async () => {
   const http = scriptedFetch(() => response({ status: 404 }));
   const error = await checkFails(http, SITE, "404");
 
@@ -718,7 +705,7 @@ test("a persistent 404 is retried, then server_unsupported", async () => {
   assert.equal(error.retryable, false);
   assert.equal(error.details.check, "metadata.reachable");
   assert.equal(error.details.status, 404);
-  assert.equal(http.calls.length, METADATA_ATTEMPTS);
+  assert.equal(http.calls.length, 1);
   assert.match(error.message, /HTTP 404/);
   assert.match(error.message, /not active|cache or CDN/);
 });
@@ -738,7 +725,7 @@ test("a password-protected site is server_unsupported, never credential_invalid"
   }
 });
 
-test("a persistent 5xx is a retryable network_error", async () => {
+test("a 5xx is a retryable network_error after exactly one request", async () => {
   // 43.
   const http = scriptedFetch(() => response({ status: 500 }));
   const error = await checkFails(http, SITE, "HTTP 500");
@@ -746,18 +733,7 @@ test("a persistent 5xx is a retryable network_error", async () => {
   assert.equal(error.retryable, true);
   assert.equal(error.details.check, "metadata.reachable");
   assert.equal(error.details.status, 500);
-  assert.equal(http.calls.length, METADATA_ATTEMPTS);
-});
-
-test("a single 5xx flake does not fail the run", async () => {
-  // 44: the retry actually retries.
-  const http = scriptedFetch((_url, attempt) =>
-    attempt === 1
-      ? response({ status: 500 })
-      : response({ body: protectedResourceDocument(SITE_URL) }),
-  );
-  assert.deepEqual(await check(http), compatibilityBlock());
-  assert.equal(http.calls.length, 2);
+  assert.equal(http.calls.length, 1);
 });
 
 test("a themed page served with status 200 is metadata.document", async () => {
@@ -796,35 +772,14 @@ test("a cross-origin redirect is refused without being followed", async () => {
 
   assert.equal(error.code, "server_unsupported");
   assert.equal(error.details.check, "metadata.reachable");
-  assert.equal(error.details.reason, "cross_origin");
-  assert.match(error.message, /redirected to a different origin/);
+  assert.equal(error.details.reason, "redirect");
+  assert.match(error.message, /redirected instead of serving/);
   assert.equal(http.calls.length, 1);
   for (const call of http.calls)
     assert.match(call.url, /^https:\/\/example\.com\//);
 });
 
-test("a redirect chain past the hop limit is refused, and says so", async () => {
-  // 49: METADATA_MAX_REDIRECTS hops are followed; the next one is fatal. The
-  // chain here is entirely same-origin, so a "cross-origin redirect" diagnosis
-  // would be factually wrong and would send the operator to check DNS.
-  const http = scriptedFetch((_url, attempt) =>
-    redirect(`${SITE_URL}/hop-${attempt}`),
-  );
-  const error = await checkFails(http, SITE, "redirect loop");
-
-  assert.equal(error.code, "server_unsupported");
-  assert.equal(error.details.check, "metadata.reachable");
-  assert.equal(error.details.reason, "hop_limit");
-  assert.equal(error.details.redirects, METADATA_MAX_REDIRECTS);
-  assert.match(
-    error.message,
-    new RegExp(`redirected more than ${METADATA_MAX_REDIRECTS} times`),
-  );
-  assert.doesNotMatch(error.message, /different origin/);
-  assert.equal(http.calls.length, METADATA_MAX_REDIRECTS + 1);
-});
-
-test("a redirect with no usable Location is reported as itself", async () => {
+test("a redirect is refused whether or not Location is usable", async () => {
   for (const [label, headers] of [
     ["absent", {}],
     ["unparseable", { location: "http://[nonsense" }],
@@ -833,9 +788,8 @@ test("a redirect with no usable Location is reported as itself", async () => {
     const error = await checkFails(http, SITE, `Location ${label}`);
     assert.equal(error.code, "server_unsupported");
     assert.equal(error.details.check, "metadata.reachable");
-    assert.equal(error.details.reason, "unusable_location");
-    assert.match(error.message, /without a usable Location header/);
-    assert.doesNotMatch(error.message, /different origin/);
+    assert.equal(error.details.reason, "redirect");
+    assert.equal(http.calls.length, 1);
   }
 });
 
@@ -903,7 +857,7 @@ test("a declared content-length past the ceiling is refused unread", async () =>
   assert.equal(state.cancelled, true);
 });
 
-test("a body that fails mid-stream is retried as a network_error", async () => {
+test("a body that fails mid-stream is a network_error after one request", async () => {
   // `fetch` resolves at the headers, so a slow shared host that flushes 200 and
   // then stalls or resets fails during the BODY read, not at the call. Left
   // unguarded that rejection escapes as a raw TypeError/DOMException and lands
@@ -918,9 +872,8 @@ test("a body that fails mid-stream is retried as a network_error", async () => {
       },
     }),
   }));
-  const sleep = recordingSleep();
   const error = await raised(
-    () => checkSiteCompatibility(SITE, { fetch: http, sleep }),
+    () => checkSiteCompatibility(SITE, { fetch: http }),
     "body failure",
   );
 
@@ -928,8 +881,7 @@ test("a body that fails mid-stream is retried as a network_error", async () => {
   assert.equal(error.retryable, true);
   assert.equal(error.details.check, "metadata.reachable");
   assert.equal(error.details.metadataUrl, METADATA_URL);
-  assert.equal(http.calls.length, METADATA_ATTEMPTS);
-  assert.deepEqual(sleep.delays, [...METADATA_RETRY_DELAYS_MS]);
+  assert.equal(http.calls.length, 1);
 });
 
 test("an attempt deadline that expires mid-body is a retryable timeout", async () => {
@@ -965,16 +917,73 @@ test("an attempt deadline that expires mid-body is a retryable timeout", async (
       }),
     };
   };
-  const sleep = recordingSleep();
   const error = await raised(
-    () => checkSiteCompatibility(SITE, { fetch: http, sleep, timeoutMs: 5 }),
+    () => checkSiteCompatibility(SITE, { fetch: http, timeoutMs: 5 }),
     "mid-body abort",
   );
 
-  assert.equal(calls.length, METADATA_ATTEMPTS);
+  assert.equal(calls.length, 1);
   assert.equal(error.code, "timeout");
   assert.equal(error.retryable, true);
   assert.equal(error.details.check, "metadata.reachable");
+});
+
+/* -------------------------------------------------------------------------- */
+/* Plugin source network policy                                                */
+/* -------------------------------------------------------------------------- */
+
+test("plugin release lookup is bounded and refuses redirects", async () => {
+  const api = "https://api.example/releases/latest";
+  const http = scriptedFetch(() => redirect("https://cdn.example/latest"));
+  const error = await raised(
+    () => resolvePluginSource(NOVAMIRA_LATEST_SOURCE_ALIAS, http, api),
+    "release redirect",
+  );
+
+  assert.equal(error.code, "network_error");
+  assert.match(error.message, /redirects are not permitted/);
+  assert.equal(http.calls.length, 1);
+  assert.equal(http.calls[0].init.redirect, "manual");
+  assert.ok(http.calls[0].init.signal instanceof AbortSignal);
+});
+
+test("plugin release metadata is rejected past its body ceiling", async () => {
+  const api = "https://api.example/releases/latest";
+  let cancelled = false;
+  const body = new ReadableStream({
+    pull(controller) {
+      controller.enqueue(new Uint8Array(64 * 1024));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  const http = scriptedFetch(() => ({ ...response(), body }));
+  const error = await raised(
+    () => resolvePluginSource(NOVAMIRA_LATEST_SOURCE_ALIAS, http, api),
+    "oversized release",
+  );
+
+  assert.equal(error.code, "schema_validation_failed");
+  assert.match(error.message, new RegExp(String(PLUGIN_RELEASE_MAX_BYTES)));
+  assert.equal(cancelled, true);
+});
+
+test("remote plugin HEAD validation is bounded and refuses redirects", async () => {
+  const source = "https://downloads.example/novamira.zip";
+  const http = scriptedFetch(() =>
+    redirect("https://cdn.example/novamira.zip"),
+  );
+  const error = await raised(
+    () => validateRemotePluginSource(source, http),
+    "source redirect",
+  );
+
+  assert.equal(error.code, "network_error");
+  assert.equal(http.calls.length, 1);
+  assert.equal(http.calls[0].init.method, "HEAD");
+  assert.equal(http.calls[0].init.redirect, "manual");
+  assert.ok(http.calls[0].init.signal instanceof AbortSignal);
 });
 
 /* -------------------------------------------------------------------------- */

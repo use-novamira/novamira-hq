@@ -144,7 +144,6 @@ export interface NovamiraSetupDependencies {
   readonly fetch: HttpFetch;
   readonly latestReleaseApi?: string;
   readonly metadataTimeoutMs?: number;
-  readonly sleep?: (milliseconds: number) => Promise<void>;
   /** Optional progress channel: the CLI's `renderer.note`, Phase 6's job log. */
   readonly report?: ProgressReporter;
 }
@@ -491,9 +490,6 @@ export async function provisionNovamira(
       ...(dependencies.metadataTimeoutMs === undefined
         ? {}
         : { timeoutMs: dependencies.metadataTimeoutMs }),
-      ...(dependencies.sleep === undefined
-        ? {}
-        : { sleep: dependencies.sleep }),
     };
     let block: ServerCompatibility;
     try {

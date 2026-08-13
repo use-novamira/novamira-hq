@@ -80,7 +80,7 @@ README, changing installation language from future to present tense, and moving
 the initial package notes under a dated `1.0.0-rc1` changelog heading while
 retaining `Unreleased` for subsequent changes.
 
-## Session 5: Provisioning Network Boundaries
+## Session 5: Provisioning Network Boundaries (Done)
 
 Defects: **DEF-002, DEF-015**
 
@@ -96,6 +96,11 @@ and redirects:
 Replace tests that currently require compatibility retries and redirects with
 boundary-enforcing regression tests. Keep provider API behavior outside this
 session.
+
+Completed with a single-request compatibility probe that never retries or
+follows redirects, while retaining its total deadline and streamed body limit.
+Plugin release lookup and remote-source validation now use explicit deadlines
+and manual redirects; release metadata is streamed with a fixed size ceiling.
 
 ## Session 6: Secret-Safe Provider Output
 

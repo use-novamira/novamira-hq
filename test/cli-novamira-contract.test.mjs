@@ -1472,7 +1472,7 @@ test("a metadata transport failure is a retryable network_error", async () => {
   };
   const { run } = harness({
     client,
-    overrides: { fetch: http, sleep: async () => undefined },
+    overrides: { fetch: http },
   });
 
   const { envelope } = await run([
@@ -1486,7 +1486,7 @@ test("a metadata transport failure is a retryable network_error", async () => {
   assert.equal(envelope.error.code, "network_error");
   assert.equal(envelope.error.retryable, true);
   assert.equal(envelope.error.details.check, "metadata.reachable");
-  assert.equal(attempts.length, 3);
+  assert.equal(attempts.length, 1);
 });
 
 test("a themed page where the metadata should be is server_unsupported", async () => {

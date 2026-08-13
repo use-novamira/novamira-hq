@@ -32,11 +32,8 @@
  * ever. Nothing here is authenticated and nothing here may become so — that is
  * the boundary rule, and it is why reading this document is permitted at all.
  *
- * Redirects are manual, capped at three hops inside one attempt deadline, and
- * every hop must land on the original `URL.origin` (a scheme change counts as
- * cross-origin). That matches `src/hosting/http-client.ts` and the site CLI's
- * own `discovery` redirect policy: a redirect the CLI refuses must not be one
- * HQ silently follows, or HQ would report ready on a site the CLI rejects.
+ * Redirects are manual and never followed. Following one would issue a second
+ * site request, potentially outside the sole boundary exception.
  *
  * **Deliberate narrowing of `metadata.resource`.** HQ checks only that the
  * advertised `resource` is a same-origin URL. It does not compare it against
@@ -56,13 +53,16 @@
  * and a stale answer is exactly the wrong answer.
  */
 
-import { Buffer } from "node:buffer";
-
 import { CliError } from "../errors.js";
 import { asRecord } from "../json.js";
 import { compareSemver, parseSemver } from "../semver.js";
 import { VERSION } from "../version.js";
-import type { HttpFetch, HttpResponse } from "./http.js";
+import {
+  discardBody,
+  readBoundedText,
+  type HttpFetch,
+  type HttpResponse,
+} from "./http.js";
 import {
   normalizeSiteUrl,
   type InsecureHttpEnvironment,
@@ -86,9 +86,6 @@ export const REQUIRED_FEATURES = [
 export const PROTECTED_RESOURCE_PATH = "/.well-known/oauth-protected-resource";
 /** 256 KiB. The real document is under 1 KiB; a themed 404 page is not. */
 export const METADATA_MAX_BYTES = 262_144;
-export const METADATA_MAX_REDIRECTS = 3;
-export const METADATA_ATTEMPTS = 3;
-export const METADATA_RETRY_DELAYS_MS = [1_000, 3_000] as const;
 export const DEFAULT_METADATA_TIMEOUT_MS = 10_000;
 
 /** The stable machine handle for each check, reported in `details.check`. */
@@ -485,23 +482,6 @@ function assertScopes(value: unknown, context: CompatibilityContext): void {
 export interface CompatibilityOptions {
   readonly fetch: HttpFetch;
   readonly timeoutMs?: number;
-  /** Injectable for deterministic tests; defaults to a real timer. */
-  readonly sleep?: (milliseconds: number) => Promise<void>;
-}
-
-/**
- * One attempt's outcome. A `retry` failure carries the error the caller should
- * raise if every attempt fails, so the retry loop never has to re-derive it.
- */
-type MetadataAttempt =
-  | { readonly kind: "document"; readonly document: unknown }
-  | { readonly kind: "retry"; readonly error: CliError }
-  | { readonly kind: "fatal"; readonly error: CliError };
-
-const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
-
-function realSleep(milliseconds: number): Promise<void> {
-  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function reachability(
@@ -512,64 +492,7 @@ function reachability(
   return unsupported("metadata.reachable", message, context, observed);
 }
 
-/**
- * Abandon a response body nobody is going to read, so a real `fetch` does not
- * hold the connection open. A test double with no `body` is a no-op.
- */
-async function discardBody(response: HttpResponse): Promise<void> {
-  const stream = response.body;
-  if (stream === undefined || stream === null) return;
-  await stream.cancel().catch(() => undefined);
-}
-
-/**
- * Read at most `limit` bytes. `undefined` means the body exceeded the ceiling;
- * the stream is abandoned rather than buffered when the seam exposes one, which
- * a real `Response` always does.
- *
- * Every abandon path cancels the body. Leaving one undrained would keep an
- * undici keep-alive socket ref'd, and `src/index.ts` sets `process.exitCode`
- * rather than calling `process.exit`, so the CLI would print its envelope and
- * then idle until the keep-alive timeout.
- */
-async function readBoundedText(
-  response: HttpResponse,
-  limit: number,
-): Promise<string | undefined> {
-  const declared = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > limit) {
-    await discardBody(response);
-    return undefined;
-  }
-
-  const stream = response.body;
-  if (stream === undefined || stream === null) {
-    const text = await response.text();
-    return Buffer.byteLength(text, "utf8") > limit ? undefined : text;
-  }
-
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > limit) {
-        await reader.cancel().catch(() => undefined);
-        return undefined;
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  return Buffer.concat(chunks, total).toString("utf8");
-}
-
-/** The timeout error a spent attempt deadline produces. */
-function attemptTimeout(context: CompatibilityContext): CliError {
+function requestTimeout(context: CompatibilityContext): CliError {
   return new CliError(
     "timeout",
     `Timed out reading the compatibility metadata at ${context.metadataUrl}.`,
@@ -585,12 +508,12 @@ function attemptTimeout(context: CompatibilityContext): CliError {
 }
 
 /**
- * The retryable failure a transport fault produces, wherever in the read it
+ * The failure a transport fault produces, wherever in the read it
  * happened. `fetch` resolves as soon as the response headers arrive, so a
  * stalled body, a mid-stream reset, or the attempt deadline expiring while the
  * body is still streaming all fail during the *body read* rather than at the
- * call itself. Both sites classify through here so the retry band covers the
- * whole request rather than only its first half.
+ * call itself. Both sites classify through here so the whole request has one
+ * error taxonomy.
  */
 function transportFailure(
   error: unknown,
@@ -611,206 +534,111 @@ function transportFailure(
   );
 }
 
-async function attemptMetadata(
+async function fetchMetadata(
   url: string,
   options: CompatibilityOptions,
   context: CompatibilityContext,
-): Promise<MetadataAttempt> {
+): Promise<unknown> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_METADATA_TIMEOUT_MS;
-  const deadline = Date.now() + timeoutMs;
-  const origin = new URL(url).origin;
-  let current = url;
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  let response: HttpResponse;
+  try {
+    response = await options.fetch(url, {
+      method: "GET",
+      // No Authorization, no Cookie. Ever. See the module comment.
+      headers: {
+        Accept: "application/json",
+        "User-Agent": `novamira-hq/${VERSION}`,
+      },
+      redirect: "manual",
+      signal: timeoutSignal,
+    });
+  } catch (error) {
+    throw timeoutSignal.aborted
+      ? requestTimeout(context)
+      : transportFailure(error, context);
+  }
 
-  for (let hops = 0; ; hops += 1) {
-    const remaining = deadline - Date.now();
-    if (remaining <= 0)
-      return { kind: "retry", error: attemptTimeout(context) };
+  if (response.status >= 300 && response.status < 400) {
+    await discardBody(response);
+    throw reachability(
+      `Novamira is installed and activated, but ${context.metadataUrl} redirected instead of serving the compatibility metadata. HQ cannot follow site redirects because setup permits exactly one request to the well-known URL. Rerun with --url <the URL WordPress actually serves>.`,
+      context,
+      { status: response.status, reason: "redirect" },
+    );
+  }
 
-    // One deadline across every hop. A fresh timeout per hop would let a
-    // redirect chain run for four times the configured budget.
-    const timeoutSignal = AbortSignal.timeout(remaining);
-    let response: HttpResponse;
-    try {
-      response = await options.fetch(current, {
-        method: "GET",
-        // No Authorization, no Cookie. Ever. See the module comment.
-        headers: {
-          Accept: "application/json",
-          "User-Agent": `novamira-hq/${VERSION}`,
-        },
-        redirect: "manual",
-        signal: timeoutSignal,
-      });
-    } catch (error) {
-      // An abort is the deadline expiring, which the taxonomy calls `timeout`;
-      // anything else is a transport failure. Both are retried.
-      return {
-        kind: "retry",
-        error: timeoutSignal.aborted
-          ? attemptTimeout(context)
-          : transportFailure(error, context),
-      };
-    }
+  if (response.status < 200 || response.status >= 300) {
+    await discardBody(response);
+    throw statusFailure(response.status, context);
+  }
 
-    if (REDIRECT_STATUSES.has(response.status)) {
-      await discardBody(response);
-      const location = response.headers.get("location");
-      let target: URL | undefined;
-      if (location !== null) {
-        try {
-          target = new URL(location, current);
-        } catch {
-          target = undefined;
-        }
-      }
-      // Three distinct faults get three distinct diagnostics, discriminated in
-      // `details.reason`. Telling an operator whose site canonicalises
-      // `/.well-known/x` → `/index.php/.well-known/x` → … in four same-origin
-      // hops that they have a "cross-origin redirect" is factually wrong and
-      // points at a fix — rerun with --url — that cannot work.
-      const observed = {
-        status: response.status,
-        redirects: hops,
-        ...(location === null ? {} : { location }),
-      };
-      if (target === undefined) {
-        return {
-          kind: "fatal",
-          error: reachability(
-            `Novamira is installed and activated, but ${context.metadataUrl} answered HTTP ${String(response.status)} without a usable Location header, so the compatibility metadata was never served. novamira auth login will fail until that URL serves the document.`,
-            context,
-            { ...observed, reason: "unusable_location" },
-          ),
-        };
-      }
-      if (target.origin !== origin) {
-        return {
-          kind: "fatal",
-          error: reachability(
-            `Novamira is installed and activated, but ${context.metadataUrl} redirected to a different origin. novamira auth login refuses cross-origin discovery redirects. Rerun with --url <the site's canonical URL>.`,
-            context,
-            { ...observed, reason: "cross_origin" },
-          ),
-        };
-      }
-      if (hops >= METADATA_MAX_REDIRECTS) {
-        return {
-          kind: "fatal",
-          error: reachability(
-            `Novamira is installed and activated, but ${context.metadataUrl} redirected more than ${String(METADATA_MAX_REDIRECTS)} times without serving the compatibility metadata. Rerun with --url <the URL WordPress actually serves>.`,
-            context,
-            { ...observed, reason: "hop_limit" },
-          ),
-        };
-      }
-      current = target.toString();
-      continue;
-    }
+  let text: string | undefined;
+  try {
+    text = await readBoundedText(response, METADATA_MAX_BYTES);
+  } catch (error) {
+    throw timeoutSignal.aborted
+      ? requestTimeout(context)
+      : transportFailure(error, context);
+  }
+  if (text === undefined) {
+    throw reachability(
+      `The response from ${context.metadataUrl} exceeded ${String(METADATA_MAX_BYTES)} bytes, so it is not the compatibility metadata. Another plugin or an edge rule is intercepting /.well-known/ requests.`,
+      context,
+      { status: response.status },
+    );
+  }
 
-    if (response.status < 200 || response.status >= 300) {
-      await discardBody(response);
-      return statusFailure(response.status, context);
-    }
-
-    // The body read is inside the same classification as the fetch itself: on
-    // this Node, `fetch` resolves at the headers, so a body that stalls past the
-    // deadline or a connection reset mid-stream rejects HERE. Left unguarded it
-    // escapes `checkSiteCompatibility` as a raw `DOMException`/`TypeError`,
-    // which `asCliError` folds into `internal_error` (exit 1) with no
-    // `details.check` and no retry — for the single most likely transient
-    // failure of this request.
-    let text: string | undefined;
-    try {
-      text = await readBoundedText(response, METADATA_MAX_BYTES);
-    } catch (error) {
-      return {
-        kind: "retry",
-        error: timeoutSignal.aborted
-          ? attemptTimeout(context)
-          : transportFailure(error, context),
-      };
-    }
-    if (text === undefined) {
-      return {
-        kind: "fatal",
-        error: reachability(
-          `The response from ${context.metadataUrl} exceeded ${String(METADATA_MAX_BYTES)} bytes, so it is not the compatibility metadata. Another plugin or an edge rule is intercepting /.well-known/ requests.`,
-          context,
-          { status: response.status },
-        ),
-      };
-    }
-
-    let document: unknown;
-    try {
-      document = JSON.parse(text) as unknown;
-    } catch {
-      return {
-        kind: "fatal",
-        error: unsupported(
-          "metadata.document",
-          `${context.metadataUrl} returned a page instead of JSON. Another plugin, a security rule, or the host's edge is intercepting /.well-known/ requests before WordPress sees them.`,
-          context,
-          { status: response.status },
-        ),
-      };
-    }
-    return { kind: "document", document };
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw unsupported(
+      "metadata.document",
+      `${context.metadataUrl} returned a page instead of JSON. Another plugin, a security rule, or the host's edge is intercepting /.well-known/ requests before WordPress sees them.`,
+      context,
+      { status: response.status },
+    );
   }
 }
 
 function statusFailure(
   status: number,
   context: CompatibilityContext,
-): MetadataAttempt {
-  // 404 is retried because an edge cache may still be serving a pre-activation
-  // response for this path; it is still `server_unsupported` if it persists.
+): CliError {
   if (status === 404) {
-    return {
-      kind: "retry",
-      error: reachability(
-        `Novamira is installed and activated, but ${context.metadataUrl} returned HTTP 404. The plugin serves that URL from the "init" hook, so a 404 usually means the plugin is not active, a cache or CDN is still serving a pre-install response, or ${context.siteUrl} is not the URL WordPress serves. Rerun with --url <the site's real URL>, or check the plugin with hosting wp-cli run --env <env> --command "wp plugin status novamira".`,
-        context,
-        { status },
-      ),
-    };
-  }
-  if (status === 408 || status === 429 || status >= 500) {
-    return {
-      kind: "retry",
-      error: new CliError(
-        "network_error",
-        `${context.metadataUrl} returned HTTP ${String(status)}. novamira auth login will fail until that URL serves the compatibility metadata.`,
-        {
-          retryable: true,
-          details: {
-            check: "metadata.reachable",
-            siteUrl: context.siteUrl,
-            metadataUrl: context.metadataUrl,
-            status,
-          },
-        },
-      ),
-    };
-  }
-  if (status === 401 || status === 403) {
-    return {
-      kind: "fatal",
-      error: reachability(
-        `Novamira is installed and activated, but ${context.metadataUrl} returned HTTP ${String(status)}. This site appears to be password-protected. Novamira's discovery document must be publicly readable; novamira auth login cannot authorize this site until the protection is lifted or /.well-known/ is excepted.`,
-        context,
-        { status },
-      ),
-    };
-  }
-  return {
-    kind: "fatal",
-    error: reachability(
-      `Novamira is installed and activated, but ${context.metadataUrl} returned HTTP ${String(status)} instead of the compatibility metadata. novamira auth login will fail until that URL serves the document.`,
+    return reachability(
+      `Novamira is installed and activated, but ${context.metadataUrl} returned HTTP 404. The plugin serves that URL from the "init" hook, so a 404 usually means the plugin is not active, a cache or CDN is still serving a pre-install response, or ${context.siteUrl} is not the URL WordPress serves. Rerun with --url <the site's real URL>, or check the plugin with hosting wp-cli run --env <env> --command "wp plugin status novamira".`,
       context,
       { status },
-    ),
-  };
+    );
+  }
+  if (status === 408 || status === 429 || status >= 500) {
+    return new CliError(
+      "network_error",
+      `${context.metadataUrl} returned HTTP ${String(status)}. novamira auth login will fail until that URL serves the compatibility metadata.`,
+      {
+        retryable: true,
+        details: {
+          check: "metadata.reachable",
+          siteUrl: context.siteUrl,
+          metadataUrl: context.metadataUrl,
+          status,
+        },
+      },
+    );
+  }
+  if (status === 401 || status === 403) {
+    return reachability(
+      `Novamira is installed and activated, but ${context.metadataUrl} returned HTTP ${String(status)}. This site appears to be password-protected. Novamira's discovery document must be publicly readable; novamira auth login cannot authorize this site until the protection is lifted or /.well-known/ is excepted.`,
+      context,
+      { status },
+    );
+  }
+  return reachability(
+    `Novamira is installed and activated, but ${context.metadataUrl} returned HTTP ${String(status)} instead of the compatibility metadata. novamira auth login will fail until that URL serves the document.`,
+    context,
+    { status },
+  );
 }
 
 /**
@@ -826,29 +654,8 @@ export async function checkSiteCompatibility(
     siteUrl: site.siteUrl,
     metadataUrl: url,
   };
-  const sleep = options.sleep ?? realSleep;
-
-  let last: CliError | undefined;
-  for (let attempt = 0; attempt < METADATA_ATTEMPTS; attempt += 1) {
-    const outcome = await attemptMetadata(url, options, context);
-    if (outcome.kind === "document") {
-      const compatibility = validateProtectedResourceMetadata(
-        outcome.document,
-        site,
-      );
-      assertCompatible(compatibility, context);
-      return compatibility;
-    }
-    if (outcome.kind === "fatal") throw outcome.error;
-    last = outcome.error;
-    const delay = METADATA_RETRY_DELAYS_MS[attempt];
-    if (delay !== undefined) await sleep(delay);
-  }
-  throw (
-    last ??
-    reachability(
-      `Failed to read the compatibility metadata at ${url}.`,
-      context,
-    )
-  );
+  const document = await fetchMetadata(url, options, context);
+  const compatibility = validateProtectedResourceMetadata(document, site);
+  assertCompatible(compatibility, context);
+  return compatibility;
 }

@@ -11,7 +11,7 @@
  * injects it, so every provisioning contract test runs offline against a
  * literal double or a loopback server. The type started life private inside
  * `src/cli/hosting/wp.ts` as `{ ok, status, json() }`; Phase 5's compatibility
- * preflight also needs response headers, manual redirects, a per-attempt abort
+ * preflight also needs response headers, manual redirects, a request abort
  * signal and the raw body, so the seam widens here. Widening is safe: the only
  * production implementation is the real `fetch`, and the existing WP contract
  * test drives a loopback server through the real `fetch` rather than a literal.
@@ -23,12 +23,14 @@
  * diagnostic, and nothing here may ever carry a credential.
  */
 
+import { Buffer } from "node:buffer";
+
 /**
  * The part of a `fetch` response provisioning reads.
  *
  * `body` is optional so a test double can be a plain object literal with just
  * `text()`; when it is present — as it always is on a real `Response` — the
- * compatibility read streams it so an oversized body is abandoned rather than
+ * bounded reads stream it so an oversized body is abandoned rather than
  * buffered.
  */
 export interface HttpResponse {
@@ -55,3 +57,47 @@ export type HttpFetch = (
 
 /** The production seam: the global `fetch`, narrowed to {@link HttpFetch}. */
 export const globalHttpFetch: HttpFetch = (input, init) => fetch(input, init);
+
+/** Cancel a response body that will not be consumed. */
+export async function discardBody(response: HttpResponse): Promise<void> {
+  const stream = response.body;
+  if (stream === undefined || stream === null) return;
+  await stream.cancel().catch(() => undefined);
+}
+
+/** Read no more than `limit` bytes, cancelling a stream once it exceeds that. */
+export async function readBoundedText(
+  response: HttpResponse,
+  limit: number,
+): Promise<string | undefined> {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > limit) {
+    await discardBody(response);
+    return undefined;
+  }
+
+  const stream = response.body;
+  if (stream === undefined || stream === null) {
+    const text = await response.text();
+    return Buffer.byteLength(text, "utf8") > limit ? undefined : text;
+  }
+
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > limit) {
+        await reader.cancel().catch(() => undefined);
+        return undefined;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks, total).toString("utf8");
+}

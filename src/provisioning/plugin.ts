@@ -33,7 +33,12 @@ import type { ProviderClient } from "../hosting/client.js";
 import { shellJoin } from "../hosting/shell.js";
 import type { OperationStatus } from "../hosting/types.js";
 import { asRecord } from "../json.js";
-import type { HttpFetch } from "./http.js";
+import {
+  discardBody,
+  readBoundedText,
+  type HttpFetch,
+  type HttpResponse,
+} from "./http.js";
 import {
   contextualize,
   runWpCli,
@@ -61,6 +66,10 @@ export const NOVAMIRA_LATEST_RELEASE_API =
 
 /** Asset names that count as "the Novamira plugin zip". */
 export const NOVAMIRA_ZIP_ASSET = /^novamira(?:-[0-9][A-Za-z0-9._-]*)?\.zip$/;
+/** Outbound plugin-source checks have one bounded request/read budget. */
+export const PLUGIN_SOURCE_TIMEOUT_MS = 10_000;
+/** 1 MiB. GitHub's release document for one release should be far smaller. */
+export const PLUGIN_RELEASE_MAX_BYTES = 1_048_576;
 
 /** The WP-CLI command the preflight runs, and the one its hint runs. */
 export const PREFLIGHT_COMMAND = "wp option get siteurl";
@@ -138,24 +147,68 @@ function releaseTag(release: unknown): string {
   return typeof tag === "string" ? tag : "";
 }
 
+function pluginRequestTimeout(source: string): CliError {
+  return new CliError(
+    "timeout",
+    `Timed out reading the plugin source ${source}.`,
+    { retryable: true, details: { source } },
+  );
+}
+
+async function boundedPluginRequest(
+  http: HttpFetch,
+  source: string,
+  init: { readonly method?: string; readonly headers?: Record<string, string> },
+): Promise<{ readonly response: HttpResponse; readonly signal: AbortSignal }> {
+  const signal = AbortSignal.timeout(PLUGIN_SOURCE_TIMEOUT_MS);
+  try {
+    const response = await http(source, {
+      ...init,
+      redirect: "manual",
+      signal,
+    });
+    return { response, signal };
+  } catch (error) {
+    if (signal.aborted) throw pluginRequestTimeout(source);
+    throw error;
+  }
+}
+
+async function refusePluginRedirect(
+  response: HttpResponse,
+  source: string,
+): Promise<void> {
+  if (response.status < 300 || response.status >= 400) return;
+  await discardBody(response);
+  throw new CliError(
+    "network_error",
+    `The plugin source ${source} redirected; redirects are not permitted.`,
+    { retryable: false, details: { source, status: response.status } },
+  );
+}
+
 /** Go's `resolveNovamiraLatestZip`. */
 async function resolveNovamiraLatestZip(
   http: HttpFetch,
   apiUrl: string,
 ): Promise<string> {
   let response;
+  let signal: AbortSignal;
   try {
-    response = await http(apiUrl, {
+    ({ response, signal } = await boundedPluginRequest(http, apiUrl, {
       headers: { Accept: "application/vnd.github+json" },
-    });
+    }));
   } catch (error) {
+    if (error instanceof CliError) throw error;
     throw new CliError(
       "network_error",
       `Failed to resolve the ${NOVAMIRA_LATEST_SOURCE_ALIAS} plugin source.`,
       { retryable: true, cause: error, details: { source: apiUrl } },
     );
   }
+  await refusePluginRedirect(response, apiUrl);
   if (!response.ok) {
+    await discardBody(response);
     throw new CliError(
       "network_error",
       `Failed to resolve the ${NOVAMIRA_LATEST_SOURCE_ALIAS} plugin source: GitHub returned ${String(response.status)}.`,
@@ -164,8 +217,18 @@ async function resolveNovamiraLatestZip(
   }
   let release: unknown;
   try {
-    release = await response.json();
+    const text = await readBoundedText(response, PLUGIN_RELEASE_MAX_BYTES);
+    if (text === undefined) {
+      throw new CliError(
+        "schema_validation_failed",
+        `The ${NOVAMIRA_LATEST_SOURCE_ALIAS} release metadata exceeded ${String(PLUGIN_RELEASE_MAX_BYTES)} bytes.`,
+        { details: { source: apiUrl } },
+      );
+    }
+    release = JSON.parse(text) as unknown;
   } catch (error) {
+    if (error instanceof CliError) throw error;
+    if (signal.aborted) throw pluginRequestTimeout(apiUrl);
     throw new CliError(
       "schema_validation_failed",
       `Failed to parse the ${NOVAMIRA_LATEST_SOURCE_ALIAS} release metadata.`,
@@ -212,14 +275,19 @@ export async function validateRemotePluginSource(
   if (!source.startsWith("https://") && !source.startsWith("http://")) return;
   let response;
   try {
-    response = await http(source, { method: "HEAD" });
+    ({ response } = await boundedPluginRequest(http, source, {
+      method: "HEAD",
+    }));
   } catch (error) {
+    if (error instanceof CliError) throw error;
     throw new CliError(
       "network_error",
       `Failed to validate the plugin source ${source}.`,
       { retryable: true, cause: error, details: { source } },
     );
   }
+  await refusePluginRedirect(response, source);
+  await discardBody(response);
   // Some hosts refuse HEAD outright; Go treated that as "not a verdict".
   if (response.status === 405) return;
   if (response.status < 200 || response.status >= 400) {

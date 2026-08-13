@@ -114,10 +114,8 @@ export interface NovamiraCommandOverrides {
   readonly fetch?: HttpFetch;
   /** Defaults to the provisioning service's own release API constant. */
   readonly latestReleaseApi?: string;
-  /** Per-attempt deadline for the compatibility read. */
+  /** Total deadline for the compatibility read. */
   readonly metadataTimeoutMs?: number;
-  /** Injectable so a test does not wait out the retry backoff. */
-  readonly sleep?: (milliseconds: number) => Promise<void>;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -184,9 +182,6 @@ export function createNovamiraHandlers(
               ...(overrides.metadataTimeoutMs === undefined
                 ? {}
                 : { metadataTimeoutMs: overrides.metadataTimeoutMs }),
-              ...(overrides.sleep === undefined
-                ? {}
-                : { sleep: overrides.sleep }),
               report: (_level, message) => {
                 renderer.note(message);
               },
