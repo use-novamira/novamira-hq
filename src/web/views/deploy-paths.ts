@@ -152,9 +152,9 @@ export function renderDeployPathsPage(
       warm,
     )}</p><a class="button primary"${hrefAttr(
       url(hasHostingProvider ? "/sites" : "/providers"),
-    )}>Open the ${hasHostingProvider
-      ? "Hosting Sites"
-      : "Hosting Providers"} page</a></div></section>`;
+    )}>Open the ${
+      hasHostingProvider ? "Hosting Sites" : "Hosting Providers"
+    } page</a></div></section>`;
   }
   return html`<section class="page"><header class="page-head"><div><h1>Deploy paths</h1></div></header>${flash}<section class="panel"><div class="table-wrap"><table><thead><tr><th>Name</th><th>Site</th><th>Direction</th><th>Pushes</th><th></th></tr></thead><tbody>${view.deployPaths.map(
     (path) => renderDeployPathRow(path),
