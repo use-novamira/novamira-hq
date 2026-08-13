@@ -945,9 +945,16 @@ test("an attempt deadline that expires mid-body is a retryable timeout", async (
       body: new ReadableStream({
         pull(controller) {
           return new Promise((resolve) => {
+            // `AbortSignal.timeout`'s timer is unref'd, and a stalled body is
+            // not a handle: with nothing else pending the loop drains before
+            // the deadline fires and the runner reports the whole file as
+            // "resolution is still pending". One ref'd timer holds it open
+            // until the abort we are waiting for arrives.
+            const holdOpen = setTimeout(() => {}, 60_000);
             init.signal.addEventListener(
               "abort",
               () => {
+                clearTimeout(holdOpen);
                 controller.error(init.signal.reason);
                 resolve();
               },
