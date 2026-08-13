@@ -42,6 +42,11 @@ Required resolution: bootstrap the package manually or with a tightly scoped
 token, then configure the repository, workflow, and `npm-release` environment as
 the trusted publisher before using the OIDC-only workflow.
 
+Resolution: fixed. `docs/releasing.md` defines a one-time protected-environment
+bootstrap with a short-lived `NPM_BOOTSTRAP_TOKEN`, followed by trusted-publisher
+configuration and immediate token deletion and revocation. Normal publication
+remains OIDC-only.
+
 ### DEF-002: Compatibility probing violates the site-request boundary
 
 Severity: critical
@@ -172,6 +177,11 @@ installer assets, with no normal rerun path to complete the release.
 Required resolution: make publication idempotent by detecting and verifying an
 already-published exact version, or create a draft GitHub release before npm
 publication and finalize it after acceptance.
+
+Resolution: fixed. Reruns compare the registry tarball integrity with the exact
+tagged candidate, skip an identical immutable version, and continue public
+verification, installed-package acceptance, and idempotent GitHub release asset
+creation. A conflicting integrity fails closed.
 
 ### DEF-009: Stale-lock recovery can create multiple lock owners
 
@@ -481,6 +491,10 @@ Every `v*` tag is published with `--tag latest`, including versions such as
 Impact: stable users can be directed to a prerelease, and concurrent workflows
 can move `latest` backward.
 
+Resolution: fixed. Release metadata sends prereleases to `next` and stable
+versions to `latest`. The workflow serializes publication and rejects a new
+version unless it is newer than the version currently assigned to its dist-tag.
+
 ### DEF-030: Release publication is not gated by cross-platform acceptance
 
 Severity: medium
@@ -494,6 +508,10 @@ only on Ubuntu.
 
 Impact: npm can receive a tag that is not on protected `main` or has not passed
 the current Windows and macOS package matrix.
+
+Resolution: fixed. Publication requires the tagged commit to be contained in
+`main` and depends on Linux, macOS, and Windows package acceptance jobs, each
+checked out at that exact commit.
 
 ### DEF-031: Release documentation still describes an unreleased package
 

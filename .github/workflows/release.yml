@@ -3,96 +3,202 @@
 
 name: Publish public package
 
-# Publishing runs the same offline checks as CI. No step here may define
-# provider credentials or set the environment variables that gate live provider
-# calls.
-
+# The npm-release environment must require approval. The workflow carries no
+# provider credentials and never enables live provider calls.
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to publish
+        required: true
+        type: string
+      bootstrap:
+        description: Use the one-time NPM_BOOTSTRAP_TOKEN
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
+env:
+  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.release.outputs.commit }}
+      version: ${{ steps.metadata.outputs.version }}
+      dist_tag: ${{ steps.metadata.outputs.dist_tag }}
+      prerelease: ${{ steps.metadata.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+      - name: Require a protected-main release commit
+        id: release
+        run: |
+          git fetch --no-tags origin main
+          commit=$(git rev-parse HEAD)
+          git merge-base --is-ancestor "$commit" origin/main
+          test "$commit" = "$(git rev-list -n 1 "$RELEASE_TAG")"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+      - name: Verify release identity
+        id: metadata
+        run: node scripts/release-metadata.mjs "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+  acceptance:
+    needs: prepare
+    name: ${{ matrix.os }} / Node 24
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.2.19
+      - run: npm config set ignore-scripts true
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - if: runner.os != 'Windows'
+        run: bun run check
+      - if: runner.os == 'Windows'
+        run: bun run lint
+      - if: runner.os == 'Windows'
+        run: bun run format:check
+      - run: bun run pack:inspect
+      - run: bun run package:acceptance
+
   publish:
+    needs: [prepare, acceptance]
     runs-on: ubuntu-latest
     environment: npm-release
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.2.19
       - run: npm config set ignore-scripts true
       - run: bun install --frozen-lockfile --ignore-scripts
-      - run: bun run check
-      - name: Verify tag and package
-        run: |
-          node -e 'const p=require("./package.json"); if (`v${p.version}` !== process.env.GITHUB_REF_NAME) process.exit(1)'
-          bun run pack:inspect
-          bun run package:acceptance
+      - run: bun run build
       - name: Install trusted-publishing npm client
         run: npm install --global npm@12.0.1 --ignore-scripts
-      - name: Publish with trusted provenance
-        run: npm publish --access public --tag latest --provenance --loglevel verbose
-      - name: Verify exact public publication
-        # `npm view` reads the packument, but a consumer fetches the tarball,
-        # and the registry can serve the first before the second. Wait on the
-        # operation that is actually gated, and revalidate rather than
-        # answering any probe from a packument cached before publication.
+      - name: Pack the exact candidate
+        id: candidate
+        run: |
+          manifest=$(npm pack --json --ignore-scripts)
+          node -e 'const fs=require("node:fs"); const value=JSON.parse(process.argv[1]); const item=Array.isArray(value)?value[0]:Object.values(value)[0]; fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${item.filename}\nintegrity=${item.integrity}\n`)' "$manifest"
+      - name: Verify publication state and dist-tag order
+        id: registry
         env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          DIST_TAG: ${{ needs.prepare.outputs.dist_tag }}
+          CANDIDATE_INTEGRITY: ${{ steps.candidate.outputs.integrity }}
           NPM_CONFIG_PREFER_ONLINE: "true"
         run: |
-          version=${GITHUB_REF_NAME#v}
+          set +e
+          published=$(npm view "@novamira/hq@$VERSION" dist.integrity --json 2>npm-view-error.txt)
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            PUBLISHED=$published node -e 'const value=JSON.parse(process.env.PUBLISHED); if(value!==process.env.CANDIDATE_INTEGRITY){console.error("published tarball integrity does not match this release commit");process.exit(1)}'
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          elif node -e 'const fs=require("node:fs"); process.exit(fs.readFileSync("npm-view-error.txt","utf8").includes("E404")?0:1)'; then
+            current=$(npm view "@novamira/hq" "dist-tags.$DIST_TAG" --json 2>/dev/null |
+              node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{if(s.trim()&&JSON.parse(s)!==null)process.stdout.write(JSON.parse(s))})' || true)
+            if [ -n "$current" ] && [ "$current" != "null" ]; then
+              node scripts/release-metadata.mjs --assert-newer "$VERSION" "$current"
+            fi
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            node -e 'process.stderr.write(require("node:fs").readFileSync("npm-view-error.txt"))'
+            exit "$status"
+          fi
+      - name: Publish bootstrap with provenance
+        if: steps.registry.outputs.publish == 'true' && inputs.bootstrap == true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+          DIST_TAG: ${{ needs.prepare.outputs.dist_tag }}
+          TARBALL: ${{ steps.candidate.outputs.filename }}
+        run: |
+          test -n "$NODE_AUTH_TOKEN"
+          npm publish "$TARBALL" --access public --tag "$DIST_TAG" --provenance --loglevel verbose
+      - name: Publish with trusted provenance
+        if: steps.registry.outputs.publish == 'true' && inputs.bootstrap != true
+        env:
+          DIST_TAG: ${{ needs.prepare.outputs.dist_tag }}
+          TARBALL: ${{ steps.candidate.outputs.filename }}
+        run: npm publish "$TARBALL" --access public --tag "$DIST_TAG" --provenance --loglevel verbose
+      - name: Verify exact public publication
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          NPM_CONFIG_PREFER_ONLINE: "true"
+        run: |
           await() {
             description=$1
             shift
             for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
-              if "$@" >/dev/null 2>&1; then
-                return 0
-              fi
+              if "$@" >/dev/null 2>&1; then return 0; fi
               sleep 5
             done
-            echo "npm did not serve $description for @novamira/hq@$version within 60 seconds" >&2
+            echo "npm did not serve $description for @novamira/hq@$VERSION within 60 seconds" >&2
             return 1
           }
           attested() {
-            npm view @novamira/hq@$version dist.attestations --json |
-              node -e 'let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{if(!JSON.parse(s).provenance)process.exit(1)})'
+            npm view "@novamira/hq@$VERSION" dist.attestations --json |
+              node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{if(!JSON.parse(s).provenance)process.exit(1)})'
           }
-          await "the tarball" npm pack @novamira/hq@$version --dry-run --ignore-scripts --json
+          await "the tarball" npm pack "@novamira/hq@$VERSION" --dry-run --ignore-scripts --json
           await "the provenance attestation" attested
       - name: Accept the published package
-        # The same acceptance run, against what the registry actually serves
-        # rather than against the working tree: it installs the published
-        # tarball into a throwaway prefix and runs the installed executable.
-        run: bun run package:acceptance -- --package=@novamira/hq@${GITHUB_REF_NAME#v}
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: bun run package:acceptance -- --package=@novamira/hq@$VERSION
 
   github-release:
-    needs: publish
+    needs: [prepare, publish]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      # The installers are release assets, so this job needs the tree. Without
-      # the checkout `gh release create` has no files to attach and the
-      # documented `curl … | sh` URL has no stable target but a branch ref.
-      - uses: actions/checkout@v5
-      - name: Create GitHub release
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - name: Create or repair GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "$GITHUB_REF_NAME"
-          --verify-tag
-          --generate-notes
-          --title "$GITHUB_REF_NAME"
-          install.sh
-          install.ps1
+          RELEASE_TAG: ${{ env.RELEASE_TAG }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" install.sh install.ps1 --clobber
+          else
+            prerelease=
+            if [ "$PRERELEASE" = true ]; then prerelease=--prerelease; fi
+            gh release create "$RELEASE_TAG" --verify-tag --generate-notes --title "$RELEASE_TAG" $prerelease install.sh install.ps1
+          fi

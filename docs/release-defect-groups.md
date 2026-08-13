@@ -49,7 +49,7 @@ language, and direct version assertion. Publication workflows must preserve
 this identity, publish release candidates under a prerelease dist-tag, and
 reserve `latest` for stable releases.
 
-## Session 3: Publication Workflow Safety
+## Session 3: Publication Workflow Safety (Done)
 
 Defects: **DEF-001, DEF-008, DEF-029, DEF-030**
 
@@ -64,10 +64,12 @@ These defects describe one release transaction and should be designed together:
 - Gate publication on the exact release commit and the Linux, macOS, and Windows
   package acceptance matrix.
 
-The session should update the workflows and any release runbook or workflow
-tests together. It should explicitly account for the additional release risks
-listed in `docs/release-defects.md`, especially repository visibility and pinned
-publication actions, even where those risks are accepted rather than changed.
+Completed with a serialized, exact-commit release transaction that gates npm on
+Linux, macOS, and Windows acceptance, selects monotonic `next` or `latest`
+dist-tags, verifies an existing exact tarball on reruns, and repairs an existing
+GitHub release. A tested metadata gate, SHA-pinned actions, and a release runbook
+cover the one-time protected token bootstrap, trusted-publisher handoff,
+repository visibility, and explicitly accepted residual risks.
 
 ## Session 4: Release-State Documentation
 
