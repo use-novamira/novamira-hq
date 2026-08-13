@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * `/site-profiles` — the Novamira CLI sites page, and its one fragment.
+ * Site-CLI profile rows and controls for the unified `/sites` inventory.
  *
  * **What the Go did, and why this is not it.** Go's Sites page had an "Add a
  * site" button, `renderSiteForm`, a `connected-directly` group,
@@ -12,41 +12,23 @@
  * over the site's REST API and thereafter used on the operator's behalf. Every
  * one of those is deleted under the boundary rule and none of it is ported.
  *
- * This panel manages the **site CLI's** profiles. Nothing on it is HQ state:
+ * These controls manage the **site CLI's** profiles. Nothing here is HQ state:
  * the list is the stdout of `novamira sites list`, each row's pill is the stdout
  * of `novamira auth status --site <name>`, and each button spawns one more
  * `novamira` command. HQ holds no WordPress token, makes no request to a
  * configured site, and has no site profiles of its own — see
  * `src/integration/profiles.ts`, which is the only place these commands are
- * built. The page is therefore the one place in the dashboard whose whole
- * content belongs to another program.
+ * built. These controls therefore represent state owned by another program.
  *
- * **Why it is a page and not a panel on `/sites`.** It began as one, and the
- * two listings turned out to have nothing in common but the word "site".
- * `/sites` answers "which environments do my hosts run, and which of them can
- * Novamira talk to?" — one provider API round trip per hosting profile, cached
- * for five minutes, filtered and searched. This page answers "what is
- * `novamira` actually configured for?" — local, uncached, and true of the
- * machine rather than of any host. A site connected by URL, which no hosting API
- * lists, appears only here, which is why the page carries its own "connect
- * another site" box. Nesting the second listing inside the first put a panel
- * with its own head, its own stamp and its own refresh underneath a page that
- * already had all three, and read as a box dropped into a page.
- *
- * **The two listings never share a request**, and that was true when this was a
- * panel too: `#sites-result` is expensive and deliberately stale, `#cli-sites`
- * is cheap and always fresh, and loading them together would tie one to the
- * other. So it has its own route, and an action on it repaints **this element
- * and the toast, and nothing else** — in particular it never triggers a
- * provider call and never invalidates the sites cache.
- *
- * **The root carries the `data-init`, so the fragment is patched outer.** That
- * is the `updates-card` arrangement and the same reasoning: an inner patch would
- * leave the pre-load root — and its `data-init` — in place, re-firing the
- * listing on every repaint.
+ * `/sites` combines both sources without conflating them: provider inventory is
+ * cached for five minutes, while site-CLI state is refreshed independently
+ * against the warm provider groups. Matching profiles are rendered on their
+ * hosting environments and unmatched profiles in the CLI-only group. Profile
+ * actions repaint `#sites-result` from warm hosting data and never trigger a
+ * provider call.
  *
  * **Nothing here renders child output.** A row can show a
- * {@link SiteProfileRowView.hint} and the panel a {@link siteProfilesHint}, and
+ * {@link SiteProfileRowView.hint} and the inventory a {@link siteProfilesHint}, and
  * both are fixed sentences from the closed `UnavailableReason` set. The one
  * variable text on the panel is a profile name and a site URL, both of which
  * came back from `sites list` and both of which go through the `html` template.
@@ -54,16 +36,7 @@
 
 import * as ds from "../datastar.js";
 import { confirmThen, post, signal } from "../expr.js";
-import {
-  attr,
-  classAttr,
-  flagAttr,
-  hrefAttr,
-  html,
-  url,
-  type Html,
-} from "../html.js";
-import type { HostingEnvLink } from "../services/sites.js";
+import { attr, classAttr, flagAttr, html, url, type Html } from "../html.js";
 import { siteProfileRenameSignal } from "../signals.js";
 import { type SiteProfileRowView, type SiteProfileState } from "./types.js";
 
@@ -123,13 +96,10 @@ function titleAttr(text: string | undefined) {
  * state, including `unknown` — "I cannot reach this site any more, get it out of
  * my list" is the case that most needs them.
  *
- * `links` is the hosting environments this profile was matched to, and is empty
- * whenever nobody has listed hosting sites in this process yet. See
- * {@link renderHostingLinks} for why an absent link is left absent.
+ * `listContext` keeps every action on the hosting inventory currently rendered.
  */
 export function renderSiteProfileRow(
   row: SiteProfileRowView,
-  links: readonly HostingEnvLink[],
   listContext?: { readonly profile: string; readonly includeEnvs: boolean },
 ): Html {
   const pill = PILLS[row.state];
@@ -166,7 +136,7 @@ export function renderSiteProfileRow(
     row.expiresAt === undefined
       ? false
       : html` · credential expires ${row.expiresAt}`
-  }</small>${renderHostingLinks(links)}</div><div class="env-actions"><span${classAttr(
+  }</small></div><div class="env-actions"><span${classAttr(
     "pill",
     pill.modifier,
   )}${titleAttr(row.hint)}>${pill.text}</span>${renderRenameControl(
@@ -231,33 +201,6 @@ export function renderSiteProfileActions(
     "click",
     remove,
   )}>Remove</button></span>`;
-}
-
-/**
- * "This profile is the hosting environment `<site> / <env>` on `<profile>`."
- *
- * The other half of the relation the Hosting Sites page draws from
- * `ConnectionResult.profiles`, and the same match read backwards — see
- * `services/sites.ts`'s `siteProfileLinks`. Both directions come from one
- * origin comparison made by `src/integration/`; nothing here compares a domain.
- *
- * **An unknown link is left absent rather than guessed at.** The map is warm
- * only: before anyone has opened Hosting Sites in this process it is empty, and
- * these rows carry no link. That is not a missing feature — it is the page
- * refusing to open with a round trip to every hosting API in order to draw a
- * cross-reference. Opening Hosting Sites once fills it in.
- */
-function renderHostingLinks(links: readonly HostingEnvLink[]): Html | false {
-  if (links.length === 0) return false;
-  return html`<small>${links.map(
-    (link, index) =>
-      html`${index === 0 ? "" : ", "}<a${hrefAttr(
-        url("/sites", { profile: link.profile }),
-      )}${attr(
-        "title",
-        `Hosting environment ${link.envLabel} of ${link.siteLabel}, on the hosting profile ${link.profile}.`,
-      )}>${link.siteLabel} / ${link.envLabel}</a>`,
-  )}</small>`;
 }
 
 /**

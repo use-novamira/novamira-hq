@@ -134,11 +134,9 @@ const NO_DOMAIN_TITLE =
  * `SitesView` on `PageModel`, because a page-level model would have to be filled
  * with something, and the honest something is "nothing yet".
  *
- * **What the site CLI holds is a different page.** `/site-profiles` lists
- * `novamira sites list` and manages it; this page lists what the *hosting
- * providers* report. The two were briefly one page and should not be again —
- * see `views/site-profiles.ts` for the difference in subject, cost and refresh
- * lifetime that separates them.
+ * The result is one unified inventory. Hosting environments come from provider
+ * APIs; profiles from `novamira sites list` are attached to matching environment
+ * rows, while unmatched profiles appear once in the CLI-only group.
  *
  * The `@get`'s include scope is `sites` and nothing else. It may never carry
  * `token` or `providerForm`: a `@get`'s filtered signals are serialized into
@@ -262,7 +260,7 @@ function renderCliOnly(
   return html`<section class="provider-sites cli-only-sites"><div class="group-head"><div><h2>CLI only</h2><p>Sites not matched to a hosting environment.</p></div><span class="pill">${String(
     profiles.length,
   )} sites</span></div><div class="compact-list">${profiles.map((profile) =>
-    renderSiteProfileRow(siteProfileRowView(profile), [], {
+    renderSiteProfileRow(siteProfileRowView(profile), {
       profile: view.profile,
       includeEnvs: view.includeEnvs,
     }),

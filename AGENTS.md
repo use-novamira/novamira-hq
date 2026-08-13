@@ -166,23 +166,16 @@ calls just to test.
   `src/connection-state.ts` and `src/integration/`'s public surface, and may not
   import `src/web/views/` or `src/web/handlers/`. `services/sites.ts` owns the
   five-minute provider-listing cache and the single `connectionStates` round per
-  listing; it also keeps that round's `profiles` inverted as `siteProfileLinks`,
-  which is how `/site-profiles` draws its back-links to hosting environments
-  without comparing a domain itself — both directions of that cross-link are the
-  _one_ origin match `src/integration/` already made, and `src/web/` must never
-  grow a second. The deploy-path pages and `siteProfileLinks` read the cache
-  **warm only** and must never
+  listing. The deploy-path pages read the cache **warm only** and must never
   trigger a provider call, and `/_dashboard/connect` spawns
   `novamira auth login <url>` through `src/integration/` and renders no child
-  output, ever. `views/site-profiles.ts` and `handlers/site-profiles.ts` are the
-  `/site-profiles` page and its `#cli-sites` fragment: what the **site CLI**
-  holds, as opposed to what the hosting providers report. It is a page and not a
-  panel on `/sites` — it was one briefly, and the two listings share nothing but
-  the word "site": different subject, different cost, different refresh
-  lifetime. Its four routes are the only ones that manage a site profile, they
-  reach `src/integration/` and never a provider API, and each ends by re-listing
-  and patching `#cli-sites` (outer) and `#toast` (outer) — never `#main`, which
-  carries the page's own Refresh button. Do not confuse them with Go's deleted
+  output, ever. `/sites` is one unified inventory: hosting environments include
+  matched profiles held by the **site CLI**, and unmatched profiles appear in a
+  final CLI-only group. `views/site-profiles.ts` provides those rows and controls;
+  it does not define a separate page. `handlers/site-profiles.ts` owns the four
+  routes that manage a site-CLI profile. They reach `src/integration/`, never a
+  provider API, then re-list the site CLI and repaint the unified warm inventory
+  without triggering provider calls. Do not confuse them with Go's deleted
   `/_dashboard/sites/{save,remove}`, which wrote HQ's own site profiles; the
   route conventions test still asserts those two paths appear nowhere.
   `services/setup-jobs.ts` is the Novamira-setup job registry: it

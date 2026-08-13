@@ -459,8 +459,8 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
       auth: "token",
       handler: createConnectHandler(context),
     },
-    // The site-profile panel on the same page, and a different subject: these
-    // four operate on what `novamira sites list` holds, by spawning `novamira`,
+    // Site-profile actions on the unified inventory, and a different subject:
+    // these four operate on what `novamira sites list` holds, by spawning `novamira`,
     // where the row above lists what the hosting providers report. The GET is
     // guarded like every other row under the prefix even though it reaches no
     // provider API: it reports which sites this machine is authorized against,

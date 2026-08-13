@@ -15,19 +15,14 @@
  * site CLI's own credentials. HQ holds no WordPress token, issues no request to
  * a configured site, and stores nothing.
  *
- * **Every handler ends in the same two patches**, in this order: `#cli-sites`
- * outer, then `#toast` outer. Nothing here patches `#main`, `#sites-result` or
- * `#sites-status`:
+ * Each successful handler refreshes site-CLI state against the warm hosting
+ * groups, then patches `#sites-status`, `#sites-result`, and `#toast`. If no
+ * warm provider inventory exists, it patches only the toast:
  *
  * - repainting `#main` would discard whatever the operator had typed into the
  *   search box at the top of the Sites page;
- * - repainting `#sites-result` would mean *re-listing the hosting providers*, a
- *   round trip per configured profile, because a stale listing patched back
- *   would look like a refresh that lost data. Signing out of one site profile
- *   is not a reason to call eight hosting APIs. The provider listing's own
- *   Refresh button is what re-reads it, and the connection pills there go stale
- *   until it is pressed — which is the same five-minute staleness the cache
- *   already has.
+ * - repainting `#sites-result` does not re-list hosting providers: the handlers
+ *   use the warm five-minute listing and refresh only local site-CLI state;
  *
  * **Each mutating route re-lists before it patches.** The alternative — patch an
  * optimistic row and trust it — would show "Removed" for a profile the site CLI

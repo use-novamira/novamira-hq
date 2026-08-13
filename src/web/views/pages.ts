@@ -31,13 +31,12 @@
  * that owns it, rather than typed as `unknown` here: a field typed loosely
  * enough to be filled in later is a field a handler can fill in wrongly today.
  *
- * **Two pages have no model field, and that is deliberate.** Go's
+ * **The Sites page has no model field, and that is deliberate.** Go's
  * `renderSitesPage` rendered no site data either: the toolbar's `data-init`
- * fires a `@get` on mount and the inventory arrives as a patch into
- * `#sites-result`. `site-profiles` works the same way, into `#cli-sites`. A
- * `sites?: SitesView` here would have to be filled with something on every page
- * render, and the honest something is "nothing yet", which both pages already
- * say out loud.
+ * fires a `@get` on mount and the unified hosting and site-CLI inventory arrives
+ * as a patch into `#sites-result`. A `sites?: SitesView` here would have to be
+ * filled with something on every page render, and the honest something is
+ * "nothing yet", which the page already says out loud.
  */
 
 import { CliError } from "../../errors.js";

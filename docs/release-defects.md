@@ -461,6 +461,12 @@ Impact: the repository has incompatible authoritative descriptions of the
 shipped dashboard surface. One design must be selected and the code, tests,
 contract, and repository instructions aligned before release.
 
+Resolution: fixed. The implemented and contracted unified `/sites` inventory is
+the selected v1 architecture. Repository instructions, source comments, and dead
+separate-page support now agree that `/site-profiles` is not a page; the
+`/_dashboard/site-profiles/*` action routes continue to manage profiles owned by
+the site CLI.
+
 ### DEF-029: Prerelease tags are published as `latest`
 
 Severity: medium

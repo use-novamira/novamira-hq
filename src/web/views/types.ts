@@ -110,16 +110,10 @@ export type {
 /* -------------------------------------------------------------------------- */
 
 /**
- * The routed pages. Seven of them are Go's `currentDashboardPage` return values
- * (server.go:205-222) unchanged; `deploy-path-new` and `novamira-setup` are
- * pages in their own right but highlight another nav link, see `navLink`.
- *
- * `site-profiles` is the one addition, and it has no Go counterpart: Go managed
- * *its own* site profiles from a form on the Sites page, which is deleted under
- * the boundary rule. This page manages the **site CLI's** profiles by running
- * `novamira`, and it is a page rather than a panel on `/sites` because the two
- * listings have different subjects, different costs and different refresh
- * lifetimes — see `views/site-profiles.ts`.
+ * The routed pages. `deploy-path-new` and `novamira-setup` are pages in their
+ * own right but highlight another nav link, see `navLink`. `/sites` is the one
+ * unified inventory for hosting environments and profiles owned by the site
+ * CLI; there is no separate `site-profiles` page.
  */
 export type DashboardPage =
   | "providers"
