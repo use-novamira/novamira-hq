@@ -36,6 +36,10 @@ function Invoke-Checked([string] $Command, [string[]] $Arguments) {
   }
 }
 
+# Reserved for the Windows Start menu implementation.
+function Install-WindowsMenuEntry {
+}
+
 $node = Resolve-Application "node"
 $npm = Resolve-Application "npm"
 $npx = Resolve-Application "npx"
@@ -64,6 +68,7 @@ if (-not (Test-Path -LiteralPath $novamiraHqBin -PathType Leaf)) {
 
 Invoke-Checked $novamiraHqBin @("--version")
 Invoke-Checked $novamiraHqBin @("doctor", "--offline")
+Install-WindowsMenuEntry
 
 $npmRoot = & $npm root --global
 if ($LASTEXITCODE -ne 0) {

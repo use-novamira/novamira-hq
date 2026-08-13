@@ -8,7 +8,8 @@
  * scripts and `package.json` as text and asserts the properties that a reviewer
  * would otherwise have to remember — the exact `skills@` pin, the
  * `--ignore-scripts` on the global install, the `doctor --offline` smoke test,
- * and the absence of anything that would make `@novamira/cli` a dependency.
+ * the platform menu launchers, and the absence of anything that would make
+ * `@novamira/cli` a dependency.
  *
  * These are the highest-leverage lines in the repository and the least covered
  * by everything else: they run on a machine that has nothing installed, as
@@ -150,6 +151,12 @@ test("6: the agent skill is registered from the packaged directory, never writte
     assert.ok(source.includes("NOVAMIRA_HQ_AGENT"), name);
     assert.ok(source.includes("NOVAMIRA_AGENT"), name);
   }
+  // When `curl ... | sh` supplies the script, a non-interactive child must not
+  // consume the remaining installer from stdin.
+  assert.match(
+    shell,
+    /--skill novamira-hq --global --agent "\$agent" --yes <\/dev\/null/,
+  );
 });
 
 test("7: the site CLI is installed by default, as a separate global package", () => {
@@ -262,4 +269,24 @@ test("10: the installers are not shipped inside the package they install", () =>
   assert.ok(
     manifest.scripts["package:acceptance"].includes("package-acceptance"),
   );
+});
+
+test("11: the macOS menu entry launches the dashboard and other platforms are stubbed", () => {
+  assert.match(shell, /install_macos_menu_entry\(\)/);
+  assert.match(shell, /if \[ -w \/Applications \]; then/);
+  assert.match(shell, /application_dir=\/Applications/);
+  assert.match(shell, /application_dir=\$HOME\/Applications/);
+  assert.match(shell, /app_dir=\$application_dir\/Novamira\\ HQ\.app/);
+  assert.ok(shell.includes("<string>ai.novamira.hq.dashboard</string>"));
+  assert.ok(shell.includes("dashboard --open"));
+  assert.match(shell, /ln -sf "\$node_bin" "\$executable_dir\/node"/);
+  assert.match(
+    shell,
+    /ln -sf "\$novamira_hq_bin" "\$executable_dir\/novamira-hq"/,
+  );
+  assert.match(shell, /Darwin\) install_macos_menu_entry ;;/);
+
+  assert.match(shell, /install_linux_menu_entry\(\) \{\n  :\n\}/);
+  assert.match(powershell, /function Install-WindowsMenuEntry \{\n\}/);
+  assert.match(powershell, /^Install-WindowsMenuEntry$/m);
 });

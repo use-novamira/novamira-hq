@@ -47,7 +47,11 @@ Rocket.net, Hostinger, and Cloudways.
 
 Once published, the installers set up HQ, register its agent skill with the
 agent of your choice, smoke-test the result with `novamira-hq doctor --offline`,
-and install the `@novamira/cli` site CLI alongside it:
+install the `@novamira/cli` site CLI alongside it, and add an operating-system
+application launcher. On macOS, **Novamira HQ** is installed in
+`/Applications` when that folder is writable, otherwise in `~/Applications`;
+opening it starts the local dashboard and opens it in the default browser. Linux
+and Windows menu entries are not implemented yet.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/use-novamira/novamira-hq/main/install.sh | sh

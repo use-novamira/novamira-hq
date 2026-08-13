@@ -33,6 +33,71 @@ fail() {
   exit 1
 }
 
+install_macos_menu_entry() {
+  if [ -w /Applications ]; then
+    application_dir=/Applications
+  else
+    application_dir=$HOME/Applications
+  fi
+  app_dir=$application_dir/Novamira\ HQ.app
+  executable_dir=$app_dir/Contents/MacOS
+  launcher=$executable_dir/novamira-hq-dashboard
+
+  printf '\nInstalling the Novamira HQ application launcher...\n'
+  mkdir -p "$executable_dir" ||
+    fail "could not create the macOS application launcher at $app_dir"
+
+  printf '%s\n' \
+    '<?xml version="1.0" encoding="UTF-8"?>' \
+    '<plist version="1.0">' \
+    '<dict>' \
+    '  <key>CFBundleDisplayName</key>' \
+    '  <string>Novamira HQ</string>' \
+    '  <key>CFBundleExecutable</key>' \
+    '  <string>novamira-hq-dashboard</string>' \
+    '  <key>CFBundleIdentifier</key>' \
+    '  <string>ai.novamira.hq.dashboard</string>' \
+    '  <key>CFBundleName</key>' \
+    '  <string>Novamira HQ</string>' \
+    '  <key>CFBundlePackageType</key>' \
+    '  <string>APPL</string>' \
+    '</dict>' \
+    '</plist>' >"$app_dir/Contents/Info.plist" ||
+    fail "could not write the macOS application launcher metadata"
+
+  printf '%s\n' \
+    '#!/bin/sh' \
+    'launcher_dir=$(CDPATH= cd -P "$(dirname "$0")" && pwd)' \
+    'PATH=$launcher_dir:/usr/bin:/bin:/usr/sbin:/sbin' \
+    'export PATH' \
+    'exec "$launcher_dir/novamira-hq" dashboard --open' >"$launcher" ||
+    fail "could not write the macOS application launcher executable"
+  chmod 755 "$launcher" ||
+    fail "could not make the macOS application launcher executable"
+
+  node_bin=$(node -p 'process.execPath')
+  [ -x "$node_bin" ] || fail "could not resolve the Node.js executable"
+  ln -sf "$node_bin" "$executable_dir/node" ||
+    fail "could not link Node.js into the macOS application launcher"
+  ln -sf "$novamira_hq_bin" "$executable_dir/novamira-hq" ||
+    fail "could not link Novamira HQ into the macOS application launcher"
+
+  printf 'Application launcher installed at %s\n' "$app_dir"
+}
+
+# Reserved for the freedesktop menu implementation.
+install_linux_menu_entry() {
+  :
+}
+
+install_menu_entry() {
+  case $(uname -s) in
+    Darwin) install_macos_menu_entry ;;
+    Linux) install_linux_menu_entry ;;
+    *) : ;;
+  esac
+}
+
 for command_name in node npm npx; do
   command -v "$command_name" >/dev/null 2>&1 ||
     fail "$command_name is required but was not found in PATH"
@@ -51,6 +116,7 @@ novamira_hq_bin=$npm_prefix/bin/novamira-hq
 
 "$novamira_hq_bin" --version
 "$novamira_hq_bin" doctor --offline
+install_menu_entry
 
 skill_source=$(npm root --global)/@novamira/hq
 [ -f "$skill_source/skills/novamira-hq/SKILL.md" ] ||
@@ -63,7 +129,7 @@ agent=${NOVAMIRA_HQ_AGENT:-${NOVAMIRA_AGENT:-}}
 if [ -n "$agent" ]; then
   DISABLE_TELEMETRY=1 npm_config_ignore_scripts=true \
     npx --yes "$skills_package" add "$skill_source" \
-    --skill novamira-hq --global --agent "$agent" --yes
+    --skill novamira-hq --global --agent "$agent" --yes </dev/null
 elif [ -r /dev/tty ] && [ -w /dev/tty ]; then
   DISABLE_TELEMETRY=1 npm_config_ignore_scripts=true \
     npx --yes "$skills_package" add "$skill_source" \

@@ -47,6 +47,15 @@ specified to work with `novamira` absent still does. The step is skipped when
 HQ is installed and smoke-tested before it runs — and the installers never
 invoke the `novamira` executable.
 
+The shell installer also installs a macOS application bundle at
+`/Applications/Novamira HQ.app` when `/Applications` is writable, falling back
+to `~/Applications/Novamira HQ.app` without privilege escalation. Launching
+**Novamira HQ** runs the exact installed `novamira-hq` and Node.js executables
+with `dashboard --open`, so the loopback dashboard starts and its URL opens in
+the default browser even when a Finder or Launchpad process does not inherit the
+user's shell `PATH`. The Linux and Windows menu-entry functions are present as
+no-op stubs in v1.
+
 ## Boundary
 
 HQ never holds a WordPress site token, never calls a WordPress REST route on a
