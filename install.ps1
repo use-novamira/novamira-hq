@@ -36,8 +36,28 @@ function Invoke-Checked([string] $Command, [string[]] $Arguments) {
   }
 }
 
-# Reserved for the Windows Start menu implementation.
-function Install-WindowsMenuEntry {
+function Install-WindowsMenuEntry([string] $NodePath, [string] $HqEntryPoint) {
+  $programsDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
+  if ([string]::IsNullOrWhiteSpace($programsDirectory)) {
+    Fail "could not resolve the current user's Start Menu programs directory"
+  }
+  $shortcutPath = Join-Path $programsDirectory "Novamira HQ.lnk"
+
+  Write-Output "`nInstalling the Novamira HQ application launcher..."
+  try {
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = $NodePath
+    $shortcut.Arguments = "`"$HqEntryPoint`" dashboard --open"
+    $shortcut.WorkingDirectory = Split-Path -Parent $HqEntryPoint
+    $shortcut.Description = "Open the Novamira HQ dashboard"
+    $shortcut.WindowStyle = 7
+    $shortcut.Save()
+  } catch {
+    Fail "could not install the Windows application launcher at ${shortcutPath}: $($_.Exception.Message)"
+  }
+
+  Write-Output "Application launcher installed at $shortcutPath"
 }
 
 $node = Resolve-Application "node"
@@ -68,7 +88,6 @@ if (-not (Test-Path -LiteralPath $novamiraHqBin -PathType Leaf)) {
 
 Invoke-Checked $novamiraHqBin @("--version")
 Invoke-Checked $novamiraHqBin @("doctor", "--offline")
-Install-WindowsMenuEntry
 
 $npmRoot = & $npm root --global
 if ($LASTEXITCODE -ne 0) {
@@ -80,6 +99,11 @@ $skillFile = Join-Path $skillSource "skills/novamira-hq/SKILL.md"
 if (-not (Test-Path -LiteralPath $skillFile -PathType Leaf)) {
   Fail "the installed npm package does not contain the Novamira HQ agent skill"
 }
+$hqEntryPoint = Join-Path $skillSource "dist/index.js"
+if (-not (Test-Path -LiteralPath $hqEntryPoint -PathType Leaf)) {
+  Fail "the installed npm package does not contain the Novamira HQ entry point"
+}
+Install-WindowsMenuEntry $node $hqEntryPoint
 
 Write-Output "`nInstalling the Novamira HQ agent skill globally..."
 # NOVAMIRA_HQ_AGENT first, NOVAMIRA_AGENT as a fallback, so someone installing

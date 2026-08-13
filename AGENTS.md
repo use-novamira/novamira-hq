@@ -261,10 +261,10 @@ calls just to test.
   `novamira` executable. `install.sh` creates the macOS application
   `/Applications/Novamira HQ.app` when that directory is writable, otherwise
   falling back to `~/Applications`, and a Linux freedesktop entry below
-  `${XDG_DATA_HOME:-~/.local/share}/applications`; both launchers run
-  `novamira-hq dashboard --open` with symlinks to the exact HQ and Node
-  executables found at install time. The Windows PowerShell hook remains a no-op
-  stub until its platform menu format is implemented.
+  `${XDG_DATA_HOME:-~/.local/share}/applications`; `install.ps1` creates a
+  **Novamira HQ** shortcut in the current user's Start Menu. Every launcher runs
+  `novamira-hq dashboard --open` using the exact HQ entry point and Node
+  executable found at install time.
   `scripts/package-acceptance.mjs` packs the tarball, installs it into a
   throwaway prefix and drives the installed executable; `bun run
 package:acceptance` runs it, and all three packaging jobs plus the release job

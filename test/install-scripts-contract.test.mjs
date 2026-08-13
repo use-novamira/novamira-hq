@@ -271,7 +271,7 @@ test("10: the installers are not shipped inside the package they install", () =>
   );
 });
 
-test("11: the shell installer adds macOS and Linux dashboard launchers", () => {
+test("11: the installers add macOS, Linux, and Windows dashboard launchers", () => {
   assert.match(shell, /install_macos_menu_entry\(\)/);
   assert.match(shell, /if \[ -w \/Applications \]; then/);
   assert.match(shell, /application_dir=\/Applications/);
@@ -306,6 +306,29 @@ test("11: the shell installer adds macOS and Linux dashboard launchers", () => {
   );
   assert.match(shell, /Linux\) install_linux_menu_entry ;;/);
 
-  assert.match(powershell, /function Install-WindowsMenuEntry \{\n\}/);
-  assert.match(powershell, /^Install-WindowsMenuEntry$/m);
+  assert.match(
+    powershell,
+    /function Install-WindowsMenuEntry\(\[string\] \$NodePath, \[string\] \$HqEntryPoint\)/,
+  );
+  assert.ok(
+    powershell.includes(
+      "[Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)",
+    ),
+  );
+  assert.match(
+    powershell,
+    /\$shortcutPath = Join-Path \$programsDirectory "Novamira HQ\.lnk"/,
+  );
+  assert.ok(powershell.includes("New-Object -ComObject WScript.Shell"));
+  assert.match(powershell, /\$shortcut\.TargetPath = \$NodePath/);
+  assert.match(
+    powershell,
+    /\$shortcut\.Arguments = "`"\$HqEntryPoint`" dashboard --open"/,
+  );
+  assert.match(powershell, /\$shortcut\.Save\(\)/);
+  assert.match(
+    powershell,
+    /\$hqEntryPoint = Join-Path \$skillSource "dist\/index\.js"/,
+  );
+  assert.match(powershell, /^Install-WindowsMenuEntry \$node \$hqEntryPoint$/m);
 });
