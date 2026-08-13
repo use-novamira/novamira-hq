@@ -47,14 +47,16 @@ specified to work with `novamira` absent still does. The step is skipped when
 HQ is installed and smoke-tested before it runs — and the installers never
 invoke the `novamira` executable.
 
-The shell installer also installs a macOS application bundle at
-`/Applications/Novamira HQ.app` when `/Applications` is writable, falling back
-to `~/Applications/Novamira HQ.app` without privilege escalation. Launching
-**Novamira HQ** runs the exact installed `novamira-hq` and Node.js executables
-with `dashboard --open`, so the loopback dashboard starts and its URL opens in
-the default browser even when a Finder or Launchpad process does not inherit the
-user's shell `PATH`. The Linux and Windows menu-entry functions are present as
-no-op stubs in v1.
+The shell installer adds an operating-system application launcher without
+privilege escalation. On macOS it installs `/Applications/Novamira HQ.app` when
+`/Applications` is writable, falling back to `~/Applications/Novamira HQ.app`.
+On Linux it installs the freedesktop entry
+`ai.novamira.hq.dashboard.desktop` under
+`${XDG_DATA_HOME:-~/.local/share}/applications`. Both launchers run the exact
+installed `novamira-hq` and Node.js executables with `dashboard --open`, so the
+loopback dashboard starts and its URL opens in the default browser even when a
+desktop process does not inherit the user's shell `PATH`. The Windows
+menu-entry function remains a no-op stub in v1.
 
 ## Boundary
 

@@ -271,7 +271,7 @@ test("10: the installers are not shipped inside the package they install", () =>
   );
 });
 
-test("11: the macOS menu entry launches the dashboard and other platforms are stubbed", () => {
+test("11: the shell installer adds macOS and Linux dashboard launchers", () => {
   assert.match(shell, /install_macos_menu_entry\(\)/);
   assert.match(shell, /if \[ -w \/Applications \]; then/);
   assert.match(shell, /application_dir=\/Applications/);
@@ -286,7 +286,26 @@ test("11: the macOS menu entry launches the dashboard and other platforms are st
   );
   assert.match(shell, /Darwin\) install_macos_menu_entry ;;/);
 
-  assert.match(shell, /install_linux_menu_entry\(\) \{\n  :\n\}/);
+  assert.match(shell, /install_linux_menu_entry\(\)/);
+  assert.match(shell, /\*\) data_home=\$HOME\/\.local\/share ;;/);
+  assert.match(shell, /applications_dir=\$data_home\/applications/);
+  assert.match(shell, /launcher_dir=\$data_home\/novamira-hq/);
+  assert.match(
+    shell,
+    /desktop_entry=\$applications_dir\/ai\.novamira\.hq\.dashboard\.desktop/,
+  );
+  assert.ok(shell.includes("[Desktop Entry]"));
+  assert.ok(shell.includes("Name=Novamira HQ"));
+  assert.ok(shell.includes('"Exec=\\"$launcher\\""'));
+  assert.ok(shell.includes("Terminal=false"));
+  assert.ok(shell.includes("Categories=Development;WebDevelopment;"));
+  assert.match(shell, /ln -sf "\$node_bin" "\$launcher_dir\/node"/);
+  assert.match(
+    shell,
+    /ln -sf "\$novamira_hq_bin" "\$launcher_dir\/novamira-hq"/,
+  );
+  assert.match(shell, /Linux\) install_linux_menu_entry ;;/);
+
   assert.match(powershell, /function Install-WindowsMenuEntry \{\n\}/);
   assert.match(powershell, /^Install-WindowsMenuEntry$/m);
 });

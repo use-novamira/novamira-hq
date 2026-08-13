@@ -50,8 +50,10 @@ agent of your choice, smoke-test the result with `novamira-hq doctor --offline`,
 install the `@novamira/cli` site CLI alongside it, and add an operating-system
 application launcher. On macOS, **Novamira HQ** is installed in
 `/Applications` when that folder is writable, otherwise in `~/Applications`;
-opening it starts the local dashboard and opens it in the default browser. Linux
-and Windows menu entries are not implemented yet.
+on Linux, its freedesktop entry is installed under
+`${XDG_DATA_HOME:-~/.local/share}/applications`. Opening either launcher starts
+the local dashboard and opens it in the default browser. The Windows menu entry
+is not implemented yet.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/use-novamira/novamira-hq/main/install.sh | sh

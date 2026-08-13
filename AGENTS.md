@@ -258,12 +258,13 @@ calls just to test.
   trust domain — the exact pin is for the third-party `skills` CLI alone),
   skippable with `NOVAMIRA_HQ_SKIP_SITE_CLI`, and **non-fatal**, because HQ is
   already installed and smoke-tested by then. Neither installer ever runs the
-  `novamira` executable. `install.sh` also creates the macOS application
+  `novamira` executable. `install.sh` creates the macOS application
   `/Applications/Novamira HQ.app` when that directory is writable, otherwise
-  falling back to `~/Applications`; its launcher runs `novamira-hq dashboard
---open` with symlinks to the exact HQ and Node executables found at install
-  time. The Linux shell hook and Windows PowerShell hook are no-op stubs until
-  their platform menu formats are implemented.
+  falling back to `~/Applications`, and a Linux freedesktop entry below
+  `${XDG_DATA_HOME:-~/.local/share}/applications`; both launchers run
+  `novamira-hq dashboard --open` with symlinks to the exact HQ and Node
+  executables found at install time. The Windows PowerShell hook remains a no-op
+  stub until its platform menu format is implemented.
   `scripts/package-acceptance.mjs` packs the tarball, installs it into a
   throwaway prefix and drives the installed executable; `bun run
 package:acceptance` runs it, and all three packaging jobs plus the release job

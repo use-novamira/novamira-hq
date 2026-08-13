@@ -62,9 +62,11 @@
   failure is reported without failing the install, and neither script ever runs
   the `novamira` executable.
 - The shell installer adds `/Applications/Novamira HQ.app` on macOS when that
-  folder is writable, otherwise falling back to `~/Applications`. Opening it
-  runs `novamira-hq dashboard --open` using the exact HQ and Node.js executables
-  resolved at install time. Linux and Windows menu-entry hooks are no-op stubs.
+  folder is writable, otherwise falling back to `~/Applications`, and adds a
+  freedesktop menu entry under `${XDG_DATA_HOME:-~/.local/share}/applications`
+  on Linux. Opening either runs `novamira-hq dashboard --open` using the exact
+  HQ and Node.js executables resolved at install time. The Windows menu-entry
+  hook remains a no-op stub.
 - `bun run package:acceptance`: packs the tarball, installs it into a throwaway
   prefix and exercises the installed executable offline. It runs on Linux, macOS
   and Windows in CI, and again in the release job against the published version.

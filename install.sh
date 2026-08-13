@@ -85,9 +85,50 @@ install_macos_menu_entry() {
   printf 'Application launcher installed at %s\n' "$app_dir"
 }
 
-# Reserved for the freedesktop menu implementation.
 install_linux_menu_entry() {
-  :
+  case ${XDG_DATA_HOME:-} in
+    /*) data_home=$XDG_DATA_HOME ;;
+    *) data_home=$HOME/.local/share ;;
+  esac
+  applications_dir=$data_home/applications
+  launcher_dir=$data_home/novamira-hq
+  launcher=$launcher_dir/novamira-hq-dashboard
+  desktop_entry=$applications_dir/ai.novamira.hq.dashboard.desktop
+
+  printf '\nInstalling the Novamira HQ application launcher...\n'
+  mkdir -p "$applications_dir" "$launcher_dir" ||
+    fail "could not create the Linux application launcher under $data_home"
+
+  printf '%s\n' \
+    '#!/bin/sh' \
+    'launcher_dir=$(CDPATH= cd -P "$(dirname "$0")" && pwd)' \
+    'PATH=$launcher_dir:/usr/local/bin:/usr/bin:/bin' \
+    'export PATH' \
+    'exec "$launcher_dir/novamira-hq" dashboard --open' >"$launcher" ||
+    fail "could not write the Linux application launcher executable"
+  chmod 755 "$launcher" ||
+    fail "could not make the Linux application launcher executable"
+
+  node_bin=$(node -p 'process.execPath')
+  [ -x "$node_bin" ] || fail "could not resolve the Node.js executable"
+  ln -sf "$node_bin" "$launcher_dir/node" ||
+    fail "could not link Node.js into the Linux application launcher"
+  ln -sf "$novamira_hq_bin" "$launcher_dir/novamira-hq" ||
+    fail "could not link Novamira HQ into the Linux application launcher"
+
+  printf '%s\n' \
+    '[Desktop Entry]' \
+    'Type=Application' \
+    'Name=Novamira HQ' \
+    'Comment=Open the Novamira HQ dashboard' \
+    "Exec=\"$launcher\"" \
+    'Terminal=false' \
+    'Categories=Development;WebDevelopment;' >"$desktop_entry" ||
+    fail "could not write the Linux application launcher metadata"
+  chmod 644 "$desktop_entry" ||
+    fail "could not set the Linux application launcher permissions"
+
+  printf 'Application launcher installed at %s\n' "$desktop_entry"
 }
 
 install_menu_entry() {
