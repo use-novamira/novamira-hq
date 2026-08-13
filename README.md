@@ -190,7 +190,7 @@ What it does:
 - **Sites** — browse hosting sites and Novamira CLI profiles in one list. A CLI
   profile matched to a hosting environment appears only on that environment;
   unmatched profiles appear once under **CLI only**. The list exposes credential
-  state, expiry, Reconnect, Sign out and Remove, and the New menu can connect a
+  state, expiry, Reconnect, Rename, Sign out and Remove, and the New menu can connect a
   CLI site by URL with an optional custom profile name. Hosting inventory stays
   cached for five minutes; CLI actions use that warm inventory and never call a
   provider. Every CLI control runs one `novamira` command — HQ stores nothing

@@ -156,7 +156,7 @@ export interface SiteCliIntegrationOptions {
   /** The Connect action's own budget; see `connect.ts`'s five-minute default. */
   readonly connectTimeoutMs?: number;
   /**
-   * `auth logout` and `sites remove`'s own budget; see `profiles.ts`'s
+   * `auth logout`, `sites rename` and `sites remove`'s own budget; see `profiles.ts`'s
    * thirty-second default. Longer than a query because a logout may revoke a
    * refresh token upstream, far shorter than a login because no human is in it.
    */
@@ -168,9 +168,9 @@ export interface SiteCliIntegrationOptions {
 
 /**
  * The integration's whole public behaviour: the connected-state question, the
- * Connect action, and the three site-profile management operations.
+ * Connect action, and the four site-profile management operations.
  *
- * The last three are {@link SiteProfileService}, composed in rather than
+ * The last four are {@link SiteProfileService}, composed in rather than
  * reimplemented. They are on this one interface because a composition root
  * builds *one* integration — `src/cli/dashboard.ts` does — and splitting them
  * across two objects would only mean two constructions of the same spawn seam,
@@ -306,6 +306,8 @@ export function createSiteCliIntegration(
     // the implementation is a closure that never reads one.
     listProfiles: () => profileService.listProfiles(),
     logoutProfile: (name) => profileService.logoutProfile(name),
+    renameProfile: (name, newName) =>
+      profileService.renameProfile(name, newName),
     removeProfile: (name) => profileService.removeProfile(name),
     siteInventory: async (queries) => {
       const profiles = await profileService.listProfiles();

@@ -795,6 +795,19 @@ td.actions .button.link:hover {
   justify-content: flex-end;
 }
 
+.rename-profile {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.rename-profile input {
+  width: 132px;
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
 .env dl,
 .details-list {
   display: grid;
@@ -1027,6 +1040,15 @@ dd {
   .env summary {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .rename-profile {
+    width: 100%;
+  }
+
+  .rename-profile input {
+    flex: 1;
+    width: auto;
   }
 
   .events li,

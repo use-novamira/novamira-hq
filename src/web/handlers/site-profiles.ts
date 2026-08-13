@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * The four `/_dashboard/site-profiles*` routes: list the site CLI's profiles,
- * connect one, sign one out, forget one.
+ * The four `/_dashboard/site-profiles/*` routes: connect, rename, sign out and
+ * forget profiles held by the site CLI.
  *
  * **There is no Go original, and the absence is the point.** Go had
  * `/_dashboard/sites/save` and `/_dashboard/sites/remove`, which wrote and
@@ -36,13 +36,14 @@
  * can be a report of what `novamira` actually holds rather than of what HQ
  * hoped it would.
  *
- * **The two inputs are validated before they can reach an argv array.** A URL
+ * **Inputs are validated before they can reach an argv array.** A URL
  * goes through `normalizeSiteUrl` — the same normalizer `hosting novamira setup`
  * and `/_dashboard/connect` use, which refuses userinfo, a query string, a
  * fragment and a non-loopback `http://` origin, and never echoes the raw value
  * into an error. A profile name goes through {@link isSiteProfileName}, whose
  * leading-character rule is what stops a `--json` in that position from running
- * a different command than the one HQ meant. A rejected value is a `usage_error`
+ * a different command than the one HQ meant. Rename validates both names and
+ * requires them to differ. A rejected value is a `usage_error`
  * toast and **nothing is spawned**.
  *
  * **Child output never reaches the page.** `SiteProfileOutcome`'s failure arm
@@ -64,6 +65,7 @@ import type { DashboardResponse } from "../responses.js";
 import type { RouteContext, RouteHandler } from "../routes.js";
 import { parseCliSites } from "../signals-input.js";
 import { parseSiteBrowser } from "../signals-input.js";
+import { parseSiteProfileRename } from "../signals-input.js";
 import type { SseStream } from "../sse.js";
 import type { DashboardNotice } from "../views/types.js";
 import { patchSites } from "./sites.js";
@@ -159,6 +161,10 @@ function noticeFor(
       // Not a failure: the site CLI does not hold that profile, which is the
       // state the operator was asking for.
       return { level: "warn", message: missing };
+    case "rejected":
+      return danger(
+        "The Novamira site CLI rejected that rename. The new name may already be in use, or the installed CLI may need updating.",
+      );
     case "failed":
       // A fixed sentence from a closed set. No child output, ever.
       return danger(unavailableHint(outcome.reason));
@@ -259,6 +265,48 @@ export function createSiteProfileLogoutHandler(
         noticeFor(
           outcome,
           `Signed out of ${name}.`,
+          `The Novamira site CLI no longer holds ${name}.`,
+        ),
+      );
+    },
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* POST /_dashboard/site-profiles/rename                                      */
+/* -------------------------------------------------------------------------- */
+
+export function createSiteProfileRenameHandler(
+  context: RouteContext,
+): RouteHandler {
+  return siteProfileRoute(
+    context,
+    "/_dashboard/site-profiles/rename",
+    async (request, stream) => {
+      const signals = await readSignals(request);
+      const name = requireName(request);
+      const newName = parseSiteProfileRename(signals, name);
+      if (!isSiteProfileName(newName)) {
+        throw new CliError(
+          "usage_error",
+          "A Novamira site profile name must start with a letter or digit and may contain only letters, digits, '.', '_' and '-'.",
+        );
+      }
+      if (newName === name) {
+        throw new CliError(
+          "usage_error",
+          "The new Novamira site profile name must differ from the current name.",
+        );
+      }
+      const outcome = await context.integration.renameProfile(name, newName);
+      await patchDestination(
+        request,
+        signals,
+        stream,
+        context,
+        noticeFor(
+          outcome,
+          `Renamed ${name} to ${newName}.`,
           `The Novamira site CLI no longer holds ${name}.`,
         ),
       );

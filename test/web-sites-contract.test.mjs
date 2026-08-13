@@ -191,6 +191,7 @@ async function fixture(options = {}) {
   });
 
   const connectCalls = [];
+  const renameCalls = [];
   const listing = options.siteProfiles ?? {
     profiles: [],
     checkedAt: NOW,
@@ -233,6 +234,10 @@ async function fixture(options = {}) {
         return options.connect ?? { kind: "connected" };
       },
       logoutProfile: async () => ({ kind: "done" }),
+      renameProfile: async (name, newName) => {
+        renameCalls.push([name, newName]);
+        return options.rename ?? { kind: "done" };
+      },
       removeProfile: async () => ({ kind: "done" }),
     },
     doctor: async () => {
@@ -248,7 +253,7 @@ async function fixture(options = {}) {
     },
   });
   servers.push(server);
-  return { server, store, listCalls, connectCalls };
+  return { server, store, listCalls, connectCalls, renameCalls };
 }
 
 function request(path, options = {}) {
@@ -733,6 +738,8 @@ test("16: matched CLI profiles stay in the hosting row and CLI-only sites are se
   assert.ok(markup.includes("<strong>staging</strong>"));
   assert.ok(markup.includes("<strong>staging-2</strong>"));
   assert.ok(markup.includes(">Sign out</button>"));
+  assert.ok(markup.includes(">Rename</button>"));
+  assert.ok(markup.includes("novamira sites rename prod &lt;new-name&gt;"));
   assert.ok(markup.includes(">Remove</button>"));
 
   // A cell with no match renders no link — `not_configured` has no profile by
@@ -788,6 +795,67 @@ test("19: adding a CLI site sends the optional custom name", async () => {
     }),
   );
   assert.deepEqual(connectCalls, ["https://example.com my-site"]);
+});
+
+test("20: renaming a CLI site posts the new name and uses only warm hosting inventory", async () => {
+  const siteProfiles = {
+    profiles: [
+      {
+        name: "prod",
+        siteUrl: "https://env-a.example.com",
+        origin: "https://env-a.example.com",
+        state: "connected",
+      },
+    ],
+    checkedAt: NOW,
+    cliAvailable: true,
+  };
+  const { server, listCalls, renameCalls } = await fixture({
+    states: { "env-a": "connected" },
+    profiles: { "env-a": ["prod"] },
+    siteProfiles,
+  });
+  await sse(server, sitesRequest());
+  const before = listCalls.length;
+  const renameSignal = "rename_" + Buffer.from("prod").toString("hex");
+
+  const { recorder } = await sse(
+    server,
+    authorized(
+      "/_dashboard/site-profiles/rename?name=prod&profile=__all__&include_envs=true&unified=true",
+      {
+        method: "POST",
+        body: JSON.stringify({ [renameSignal]: " production " }),
+      },
+    ),
+  );
+  assert.deepEqual(renameCalls, [["prod", "production"]]);
+  assert.equal(listCalls.length, before, "rename uses the warm provider cache");
+  assert.deepEqual(recorder.order, [
+    "sites-status/inner",
+    "sites-result/outer",
+    "toast/outer",
+  ]);
+  assert.ok(
+    recorder.find("toast").markup.includes("Renamed prod to production."),
+  );
+});
+
+test("21: invalid rename values spawn nothing", async () => {
+  for (const newName of ["", "--json", "prod", "a b"]) {
+    const { server, renameCalls } = await fixture();
+    const renameSignal = "rename_" + Buffer.from("prod").toString("hex");
+    const { recorder } = await sse(
+      server,
+      authorized("/_dashboard/site-profiles/rename?name=prod", {
+        method: "POST",
+        body: JSON.stringify({ [renameSignal]: newName }),
+      }),
+    );
+    assert.deepEqual(renameCalls, [], newName);
+    assert.deepEqual(recorder.order, ["toast/outer"], newName);
+    assert.ok(recorder.find("toast").markup.includes("danger"), newName);
+  }
 });
 
 test("17: the service inverts the match into profile → hosting environments", async () => {

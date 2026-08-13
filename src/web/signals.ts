@@ -227,6 +227,11 @@ export function providerDetailsSignal(profile: string): SignalPath {
   return dynamicSignalPath("details", profile);
 }
 
+/** `rename_<hex>` — the inline rename field for one site-CLI profile. */
+export function siteProfileRenameSignal(profile: string): SignalPath {
+  return dynamicSignalPath("rename", profile);
+}
+
 /* -------------------------------------------------------------------------- */
 /* Defaults                                                                   */
 /* -------------------------------------------------------------------------- */

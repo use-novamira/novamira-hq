@@ -127,7 +127,7 @@ calls just to test.
   `SiteProfileState` / `SiteProfileSummary` / `SiteProfileListing` /
   `SiteProfileOutcome` and the site CLI's own profile-name grammar, and imports
   exactly one thing, `UnavailableReason`. The grammar is not politeness: a
-  profile name becomes an argv element of `sites remove <name>` and of
+  profile name becomes an argv element of `sites rename/remove` and of
   `--site <name>`, so an unchecked leading `-` would run a different command
   than the one HQ meant. Nothing on these types can hold a credential;
   `expiresAt` is a time, carried because it is what an operator needs in order
@@ -216,7 +216,8 @@ calls just to test.
   as its only argument) and `classify.ts`, the child-outcome classification both
   share. `profiles.ts` is the site-profile management service the dashboard's
   panel calls — `sites list`, `auth status --site`, `auth logout --site` and
-  `sites remove` — and it is composed into `SiteCliIntegration` rather than
+  `sites rename`, and `sites remove` — and it is composed into
+  `SiteCliIntegration` rather than
   constructed separately, so there is one spawn seam and one resolver.
   `verdict.ts` and `pool.ts` are the two leaves `connection.ts` and
   `profiles.ts` share: the reading of a single `auth status` answer, and bounded
@@ -228,7 +229,7 @@ calls just to test.
   an unreachable CLI. `@novamira/cli` is never
   imported and never a dependency of any kind; the site CLI's config,
   credential storage and `NOVAMIRA_HOME` are never read; child output is never
-  persisted or logged. Adding a fifth command means adding an argv builder to
+  persisted or logged. Adding another command means adding an argv builder to
   `site-cli.ts` and a method to `profiles.ts` — never a spawn anywhere else. It
   is a peer of `src/web/` and `src/cli/` and imports neither.
 - `src/index.ts`, `src/main.ts`, and `src/cli/` are the entry point, the

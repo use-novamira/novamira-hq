@@ -109,10 +109,13 @@ export interface SiteInventorySnapshot {
  * `unavailableHint(reason)` to render and cannot put a subprocess's stderr on
  * the page. `missing` is separate because "that profile is already gone" is a
  * success from the operator's point of view and a fixed sentence of its own.
+ * `rejected` is the site CLI refusing a validly formed rename, such as a target
+ * name already in use; it likewise carries no child text.
  */
 export type SiteProfileOutcome =
   | { readonly kind: "done" }
   | { readonly kind: "missing" }
+  | { readonly kind: "rejected" }
   | { readonly kind: "failed"; readonly reason: UnavailableReason };
 
 /* -------------------------------------------------------------------------- */

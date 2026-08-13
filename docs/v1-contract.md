@@ -893,6 +893,7 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 | `/_dashboard/connect` | POST | yes |
 | `/_dashboard/site-profiles/connect` | POST | yes |
 | `/_dashboard/site-profiles/logout` | POST | yes |
+| `/_dashboard/site-profiles/rename` | POST | yes |
 | `/_dashboard/site-profiles/remove` | POST | yes |
 | `/_dashboard/deploy-paths/save` | POST | yes |
 | `/_dashboard/deploy-paths/remove` | POST | yes |
@@ -936,7 +937,7 @@ failure is reported as one fixed sentence chosen by a reason enum, never as
 subprocess text. HQ holds no site token, makes no request to the site, and reads
 none of the site CLI's storage.
 
-The three `/_dashboard/site-profiles/*` routes manage the **site CLI's** site
+The four `/_dashboard/site-profiles/*` routes manage the **site CLI's** site
 profiles, and are not a reintroduction of the two deleted routes named below.
 Each one spawns a `novamira` command through the site-CLI integration and reads
 the v1 envelope's `ok`; HQ stores nothing, holds no site token, and makes no
@@ -955,8 +956,14 @@ request to a configured site.
   (`[A-Za-z0-9][A-Za-z0-9._-]{0,63}`) before it may become an argv element;
   anything else is a `usage_error` with nothing spawned. `site_not_found` is
   reported as "already gone", which is a warning and not a failure.
+- `POST /_dashboard/site-profiles/rename` takes the current name in `?name=` and
+  the new name in that row's posted signal, then spawns
+  `novamira sites rename <name> <new-name>`. Both names must match the same
+  grammar and must differ before anything is spawned. The typed new name never
+  enters a URL. A name conflict or an installed CLI without rename support is a
+  fixed failure notice; child output never reaches the page.
 
-All three re-run the site-CLI listing and connected-state match against the warm
+All four re-run the site-CLI listing and connected-state match against the warm
 hosting inventory, then patch `#sites-status` (inner), `#sites-result` (outer)
 and `#toast` (outer). They trigger no provider call and do not invalidate the
 sites cache: signing out of one site profile is not a reason to call eight
@@ -1057,7 +1064,7 @@ form to itself and no page reloads.
 - **Sites** (`/sites`) — one unified inventory. Hosting environments remain
   grouped by hosting profile. A site-CLI profile whose origin matches an
   environment is represented only on that environment row, with its credential
-  state and Reconnect, Sign out and Remove controls. Profiles that match no
+  state and Reconnect, Rename, Sign out and Remove controls. Profiles that match no
   hosting environment appear once in a final **CLI only** group. The integration
   performs the one origin comparison and returns both the profile listing and
   the connection snapshot from the same `sites list` round, so the web layer

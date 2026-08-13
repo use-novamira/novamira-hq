@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Managing the site CLI's own site profiles: list them, sign one out, forget
- * one.
+ * Managing the site CLI's own site profiles: list them, rename one, sign one
+ * out, forget one.
  *
  * **What the Go did.** It managed *its own* site profiles. `site_profiles` was
  * a section of Go's `config.json`, the dashboard had an "Add a site" form that
@@ -22,6 +22,8 @@
  *   the site, per profile;
  * - `auth logout --site <name>` — the child removes its credential and, when it
  *   can, revokes the refresh token upstream;
+ * - `sites rename <name> <new-name>` — the child renames the profile and moves
+ *   its credential;
  * - `sites remove <name>` — the child deletes the profile.
  *
  * HQ never holds a token, never issues a request to a configured site, never
@@ -29,8 +31,9 @@
  * keychain records, and never reads or interprets `NOVAMIRA_HOME`. The one
  * argument any of these commands takes is a profile name or a non-secret URL.
  *
- * **The two commands that mutate are still just children.** `logout` and
- * `remove` inherit the same discipline as every other call in this package —
+ * **The three commands that mutate are still just children.** `rename`,
+ * `logout` and `remove` inherit the same discipline as every other call in this
+ * package —
  * `shell: false`, an argv array, a per-child timeout, bounded output, output
  * parsed for `ok` and then discarded. Neither is retried: an operator who
  * pressed a button that timed out should press it again themselves, because a
@@ -39,7 +42,7 @@
  *
  * **Every failure is a state, with one exception that is not a failure.**
  * {@link SiteProfileService.listProfiles} resolves for every input and never
- * throws; the two actions resolve to a {@link SiteProfileOutcome} and never
+ * throws; the three actions resolve to a {@link SiteProfileOutcome} and never
  * throw *for an integration failure*. A profile **name** that does not match
  * the site CLI's grammar throws `usage_error` instead, before anything is
  * spawned: that is a caller passing a value the CLI's argv cannot represent, not
@@ -70,6 +73,7 @@ import {
   parseSitesList,
   siteCliChildEnv,
   sitesListArgs,
+  sitesRenameArgs,
   sitesRemoveArgs,
 } from "./site-cli.js";
 import {
@@ -102,7 +106,7 @@ export interface SiteProfileServiceOptions {
   readonly now: () => number;
   readonly perChildTimeoutMs?: number;
   readonly overallDeadlineMs?: number;
-  /** `logout` and `remove`'s own budget; see {@link PROFILE_ACTION_TIMEOUT_MS}. */
+  /** The mutating actions' own budget; see {@link PROFILE_ACTION_TIMEOUT_MS}. */
   readonly actionTimeoutMs?: number;
   readonly concurrency?: number;
   readonly maxStdoutBytes?: number;
@@ -114,12 +118,17 @@ export interface SiteProfileService {
   listProfiles(): Promise<SiteProfileListing>;
   /** `novamira auth logout --site <name>`. */
   logoutProfile(name: string): Promise<SiteProfileOutcome>;
+  /** `novamira sites rename <name> <new-name>`. */
+  renameProfile(name: string, newName: string): Promise<SiteProfileOutcome>;
   /** `novamira sites remove <name>`. */
   removeProfile(name: string): Promise<SiteProfileOutcome>;
 }
 
 const DONE: SiteProfileOutcome = Object.freeze({ kind: "done" as const });
 const MISSING: SiteProfileOutcome = Object.freeze({ kind: "missing" as const });
+const REJECTED: SiteProfileOutcome = Object.freeze({
+  kind: "rejected" as const,
+});
 
 function failed(reason: UnavailableReason): SiteProfileOutcome {
   return { kind: "failed", reason };
@@ -210,9 +219,10 @@ export function createSiteProfileService(
     );
   };
 
-  /** One `logout`/`remove`: resolve, spawn once, read `ok`, discard the rest. */
+  /** One mutating action: resolve, spawn once, read `ok`, discard the rest. */
   const runAction = async (
     args: (timeoutMs: number) => readonly string[],
+    recognizeRejection = false,
   ): Promise<SiteProfileOutcome> => {
     const cli = await resolveCli();
     if (typeof cli === "string") return failed(cli);
@@ -234,6 +244,9 @@ export function createSiteProfileService(
       case "site_missing":
         return MISSING;
       case "failure":
+        if (recognizeRejection && result.code === "usage_error") {
+          return REJECTED;
+        }
         return failed(result.reason);
     }
   };
@@ -321,6 +334,21 @@ export function createSiteProfileService(
     logoutProfile: async (name) => {
       const site = requireProfileName(name);
       return runAction((timeoutMs) => authLogoutArgs(timeoutMs, site));
+    },
+
+    renameProfile: async (name, newName) => {
+      const source = requireProfileName(name);
+      const target = requireProfileName(newName);
+      if (source === target) {
+        throw new CliError(
+          "usage_error",
+          "The new Novamira site profile name must differ from the current name.",
+        );
+      }
+      return runAction(
+        (timeoutMs) => sitesRenameArgs(timeoutMs, source, target),
+        true,
+      );
     },
 
     removeProfile: async (name) => {

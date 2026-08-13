@@ -26,6 +26,7 @@ import {
   parseSitesList,
   siteCliChildEnv,
   sitesListArgs,
+  sitesRenameArgs,
   SITE_CLI_INSTALL_HINT,
 } from "../dist/integration/index.js";
 
@@ -1248,11 +1249,35 @@ test("expiresAt rides along as a time, and nothing else does", async () => {
   assert.ok(!JSON.stringify(profile).includes("must-never-appear"));
 });
 
-test("logout and remove build the documented argv and read only ok", async () => {
+test("rename, logout and remove build the documented argv and read only ok", async () => {
   const { integration, calls } = harness(() => exited(success({})));
 
-  assert.deepEqual(await integration.logoutProfile("prod"), { kind: "done" });
+  assert.deepEqual(await integration.renameProfile("prod", "production"), {
+    kind: "done",
+  });
   assert.deepEqual(calls[0].args, [
+    "--json",
+    "--quiet",
+    "--timeout",
+    "30000",
+    "sites",
+    "rename",
+    "prod",
+    "production",
+  ]);
+  assert.deepEqual(sitesRenameArgs(500, "old", "new"), [
+    "--json",
+    "--quiet",
+    "--timeout",
+    "500",
+    "sites",
+    "rename",
+    "old",
+    "new",
+  ]);
+
+  assert.deepEqual(await integration.logoutProfile("prod"), { kind: "done" });
+  assert.deepEqual(calls[1].args, [
     "--json",
     "--quiet",
     "--timeout",
@@ -1267,7 +1292,7 @@ test("logout and remove build the documented argv and read only ok", async () =>
   // No `--site` on remove: the name is the positional argument, and passing it
   // twice would let the two disagree. No `--yes`: the command is not
   // interactive, so there is no prompt for HQ to answer on the operator's behalf.
-  assert.deepEqual(calls[1].args, [
+  assert.deepEqual(calls[2].args, [
     "--json",
     "--quiet",
     "--timeout",
@@ -1276,10 +1301,10 @@ test("logout and remove build the documented argv and read only ok", async () =>
     "remove",
     "prod",
   ]);
-  assert.ok(!calls[1].args.includes("--yes"));
+  assert.ok(!calls[2].args.includes("--yes"));
   // One child per action, and never a retry: a silent second attempt at "revoke
   // this credential" is a remote effect nobody asked for.
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
 });
 
 test("connect accepts an optional custom profile name", async () => {
@@ -1379,6 +1404,12 @@ test("site_not_found is `missing`, and every other failure is a reason", async (
     reason: "cli_absent",
   });
   assert.equal(absent.calls.length, 0);
+
+  const conflict = harness(() => exited(failure("usage_error"), 2));
+  assert.deepEqual(
+    await conflict.integration.renameProfile("prod", "existing"),
+    { kind: "rejected" },
+  );
 });
 
 test("a name the CLI's grammar refuses never reaches an argv array", async () => {
@@ -1400,7 +1431,13 @@ test("a name the CLI's grammar refuses never reaches an argv array", async () =>
     await assert.rejects(() => integration.logoutProfile(name), {
       code: "usage_error",
     });
+    await assert.rejects(() => integration.renameProfile("prod", name), {
+      code: "usage_error",
+    });
   }
+  await assert.rejects(() => integration.renameProfile("prod", "prod"), {
+    code: "usage_error",
+  });
   assert.equal(calls.length, 0);
 
   // The names the CLI does allow are passed straight through.

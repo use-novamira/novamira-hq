@@ -102,6 +102,7 @@ export {
   parseSitesList,
   siteCliChildEnv,
   sitesListArgs,
+  sitesRenameArgs,
   sitesRemoveArgs,
   CREDENTIAL_STATES,
   type CredentialState,

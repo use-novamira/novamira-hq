@@ -71,7 +71,12 @@ export function envelopeReason(code: string): UnavailableReason {
  */
 export type ChildResult =
   | { readonly kind: "data"; readonly data: unknown }
-  | { readonly kind: "failure"; readonly reason: UnavailableReason }
+  | {
+      readonly kind: "failure";
+      readonly reason: UnavailableReason;
+      /** Fixed envelope code only; child messages and output never cross here. */
+      readonly code?: string;
+    }
   | { readonly kind: "site_missing" };
 
 export function childFailure(reason: UnavailableReason): ChildResult {
@@ -87,5 +92,9 @@ export function interpretChildOutcome(outcome: ChildOutcome): ChildResult {
   if (envelope.ok === "malformed") return childFailure("malformed_output");
   if (envelope.ok) return { kind: "data", data: envelope.data };
   if (envelope.code === PROFILE_GONE_CODE) return { kind: "site_missing" };
-  return childFailure(envelopeReason(envelope.code));
+  return {
+    kind: "failure",
+    reason: envelopeReason(envelope.code),
+    code: envelope.code,
+  };
 }

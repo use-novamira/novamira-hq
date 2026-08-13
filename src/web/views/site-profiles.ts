@@ -64,12 +64,33 @@ import {
   type Html,
 } from "../html.js";
 import type { HostingEnvLink } from "../services/sites.js";
+import { siteProfileRenameSignal } from "../signals.js";
 import { type SiteProfileRowView, type SiteProfileState } from "./types.js";
 
 /** The panel's own routes. Spelled once; the handlers pin the same strings. */
 const CONNECT_PATH = "/_dashboard/site-profiles/connect";
 const LOGOUT_PATH = "/_dashboard/site-profiles/logout";
+const RENAME_PATH = "/_dashboard/site-profiles/rename";
 const REMOVE_PATH = "/_dashboard/site-profiles/remove";
+
+function renderRenameControl(
+  name: string,
+  routeContext: Readonly<Record<string, string | boolean>>,
+): Html {
+  const renameSignal = siteProfileRenameSignal(name);
+  const rename = post(url(RENAME_PATH, { name, ...routeContext }), {
+    include: [renameSignal],
+  });
+  return html`<form class="rename-profile"${ds.signals({
+    [renameSignal]: name,
+  })}${ds.onSubmit(rename)}><input type="text"${attr(
+    "aria-label",
+    `New name for ${name}`,
+  )}${ds.bind(renameSignal)} pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" maxlength="64" required><button class="button tiny" type="submit"${attr(
+    "title",
+    `novamira sites rename ${name} <new-name>`,
+  )}>Rename</button></form>`;
+}
 
 /**
  * The pill's text and `pill` modifier, exhaustive over the four states, so a
@@ -148,7 +169,10 @@ export function renderSiteProfileRow(
   }</small>${renderHostingLinks(links)}</div><div class="env-actions"><span${classAttr(
     "pill",
     pill.modifier,
-  )}${titleAttr(row.hint)}>${pill.text}</span>${
+  )}${titleAttr(row.hint)}>${pill.text}</span>${renderRenameControl(
+    row.name,
+    routeContext,
+  )}${
     row.state === "connected"
       ? false
       : html`<button class="button tiny" type="button"${attr(
@@ -190,7 +214,10 @@ export function renderSiteProfileActions(
       include: [],
     }),
   );
-  return html`<span class="cli-profile-actions"><strong>${row.name}</strong>${
+  return html`<span class="cli-profile-actions"><strong>${row.name}</strong>${renderRenameControl(
+    row.name,
+    routeContext,
+  )}${
     row.state === "connected"
       ? false
       : html`<button class="button tiny" type="button"${ds.on(

@@ -411,7 +411,10 @@ test("the dashboard uses flat gold accents without yellow glows", async () => {
   assert.ok(!css.includes("gold-glow"));
   assert.ok(!css.includes("gold-focus"));
   assert.ok(!css.includes("rgba(248, 202, 80"));
-  assert.match(css, /\.onboard-card\.feat \{[^}]*border-color:\s*var\(--border-strong\)/s);
+  assert.match(
+    css,
+    /\.onboard-card\.feat \{[^}]*border-color:\s*var\(--border-strong\)/s,
+  );
   assert.match(css, /input:focus,[^}]*outline:\s*2px solid var\(--gold\)/s);
 });
 
@@ -864,6 +867,7 @@ const SHIPPED_ROUTES = [
   // asserted absent by the test below.
   "GET /_dashboard/site-profiles/connect",
   "GET /_dashboard/site-profiles/logout",
+  "GET /_dashboard/site-profiles/rename",
   "GET /_dashboard/site-profiles/remove",
   "GET /_dashboard/sites",
   "GET /_dashboard/updates/check",

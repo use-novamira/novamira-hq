@@ -157,7 +157,7 @@ export interface DashboardIntegration {
    */
   listProfiles(): Promise<SiteProfileListing>;
   /**
-   * `novamira auth logout --site <name>` and `novamira sites remove <name>`.
+   * `novamira auth logout --site <name>` and `novamira sites rename/remove`.
    *
    * Both are performed by the site CLI in its own process under its own
    * credentials; HQ passes a profile name and reads the envelope's `ok`. Both
@@ -165,6 +165,7 @@ export interface DashboardIntegration {
    * the site CLI's grammar cannot represent, before anything is spawned.
    */
   logoutProfile(name: string): Promise<SiteProfileOutcome>;
+  renameProfile(name: string, newName: string): Promise<SiteProfileOutcome>;
   removeProfile(name: string): Promise<SiteProfileOutcome>;
 }
 

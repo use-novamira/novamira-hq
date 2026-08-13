@@ -36,6 +36,7 @@
 import { CliError } from "../errors.js";
 import { asRecord } from "../json.js";
 import type { DashboardRequest } from "./request.js";
+import { siteProfileRenameSignal } from "./signals.js";
 
 /* -------------------------------------------------------------------------- */
 /* Primitives                                                                 */
@@ -197,6 +198,16 @@ export function parseCliSites(
     url: trimmedString(sites, "url"),
     name: trimmedString(sites, "name"),
   };
+}
+
+/** The trimmed new name from one profile row's dynamic rename signal. */
+export function parseSiteProfileRename(
+  signals: Readonly<Record<string, unknown>>,
+  name: string,
+): string {
+  const path = siteProfileRenameSignal(name);
+  const value: unknown = signals[path];
+  return typeof value === "string" ? value.trim() : "";
 }
 
 /* -------------------------------------------------------------------------- */

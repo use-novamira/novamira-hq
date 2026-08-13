@@ -138,6 +138,29 @@ export function sitesRemoveArgs(
 }
 
 /**
+ * `novamira --json --quiet --timeout <ms> sites rename <name> <new-name>`.
+ *
+ * Both names are positional arguments. The caller validates both against the
+ * site CLI's profile-name grammar before either can reach this array.
+ */
+export function sitesRenameArgs(
+  timeoutMs: number,
+  name: string,
+  newName: string,
+): readonly string[] {
+  return [
+    "--json",
+    "--quiet",
+    "--timeout",
+    String(timeoutMs),
+    "sites",
+    "rename",
+    name,
+    newName,
+  ];
+}
+
+/**
  * The environment every site-CLI child runs with.
  *
  * `NOVAMIRA_UPDATE_CHECK=0` is required, not cosmetic: after a successful

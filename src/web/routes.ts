@@ -81,6 +81,7 @@ import {
 import {
   createSiteProfileConnectHandler,
   createSiteProfileLogoutHandler,
+  createSiteProfileRenameHandler,
   createSiteProfileRemoveHandler,
 } from "./handlers/site-profiles.js";
 import { createSitesHandler } from "./handlers/sites.js";
@@ -475,6 +476,12 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
       path: "/_dashboard/site-profiles/logout",
       auth: "token",
       handler: createSiteProfileLogoutHandler(context),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/site-profiles/rename",
+      auth: "token",
+      handler: createSiteProfileRenameHandler(context),
     },
     {
       method: "POST",
