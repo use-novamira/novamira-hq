@@ -192,6 +192,14 @@ carrying the exact dotted path. A deploy path's `sourceEnvId` must differ from
 its `targetEnvId`; its `hostingProfile` need not already exist. A missing
 configuration file loads as an empty version-1 document.
 
+Before every read or replacement, HQ verifies that an existing configuration
+file is a regular owner-only file and that its immediate parent is a regular
+owner-only directory. Symlinks, unexpected file types, ownership mismatches,
+unsafe POSIX modes, unsafe Windows ACLs, and verification failures are
+`config_error`; no credential reference is resolved from such a file. A missing
+file or parent still represents the empty document, and the first write creates
+both with owner-only security.
+
 `provider` is one of the fixed kinds below. `apiBaseUrl` defaults to the
 provider's base URL; a credential omitted at profile creation defaults to an
 `env` reference naming the provider's credential variable. The identity variable

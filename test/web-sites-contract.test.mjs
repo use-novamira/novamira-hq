@@ -20,12 +20,13 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { defaultFileSecurity } from "../dist/config/file-security.js";
+import { atomicWriteFile } from "../dist/config/atomic-write.js";
 import { ProfileLockManager } from "../dist/config/lock.js";
 import { platformPaths } from "../dist/config/paths.js";
 import { ConfigStore } from "../dist/config/profiles.js";
@@ -149,9 +150,12 @@ async function fixture(options = {}) {
   roots.push(home);
   const environment = { NOVAMIRA_HQ_HOME: home, ...ENVIRONMENT };
   const paths = platformPaths(environment, process.platform, home);
-  await mkdir(paths.configDir, { recursive: true });
-  await writeFile(paths.configFile, JSON.stringify(options.config ?? CONFIG));
   const security = defaultFileSecurity();
+  await atomicWriteFile(
+    paths.configFile,
+    JSON.stringify(options.config ?? CONFIG),
+    security,
+  );
   const store = new ConfigStore(
     paths.configFile,
     new ProfileLockManager(paths.stateDir, security),

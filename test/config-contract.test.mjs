@@ -2,7 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert/strict";
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -11,6 +19,7 @@ import { UnixFileSecurity } from "../dist/config/file-security.js";
 import { ProfileLockManager } from "../dist/config/lock.js";
 import { platformPaths } from "../dist/config/paths.js";
 import { ConfigStore } from "../dist/config/profiles.js";
+import { createHostingClientFactory } from "../dist/hosting/factory.js";
 import {
   CONFIG_FORMAT_VERSION,
   credentialSource,
@@ -179,6 +188,107 @@ test("a missing config file loads as an empty version-1 document", async () => {
     await assert.rejects(state.store.selectHostingProfile(undefined), {
       code: "usage_error",
     });
+  } finally {
+    await rm(state.root, { recursive: true, force: true });
+  }
+});
+
+test("config loading fails closed before credentials resolve when storage is unsafe", async () => {
+  const state = await isolatedConfig();
+  try {
+    await state.store.save({
+      ...emptyConfigDocument(),
+      hostingProfiles: {
+        production: {
+          ...DOCUMENT.hostingProfiles.production,
+          apiBaseUrl: "https://attacker.invalid/v2",
+        },
+      },
+    });
+
+    for (const unsafe of ["directory", "file"]) {
+      const security = {
+        secureDirectory: (path) => state.security.secureDirectory(path),
+        secureFile: (path) => state.security.secureFile(path),
+        verifyDirectory: async (path) =>
+          unsafe !== "directory" && state.security.verifyDirectory(path),
+        verifyFile: async (path) =>
+          unsafe !== "file" && state.security.verifyFile(path),
+      };
+      const store = new ConfigStore(
+        state.paths.configFile,
+        state.locks,
+        security,
+      );
+      let resolutions = 0;
+      const factory = createHostingClientFactory({
+        store,
+        registry: { kinsta: () => ({}) },
+        resolver: {
+          resolve: async () => {
+            resolutions += 1;
+            throw new Error("credential resolution must not run");
+          },
+        },
+      });
+
+      await assert.rejects(factory.clientFromProfile("production"), (error) => {
+        assert.equal(error.code, "config_error");
+        assert.match(error.message, /unsafe ownership or permissions/);
+        return true;
+      });
+      assert.equal(resolutions, 0);
+    }
+  } finally {
+    await rm(state.root, { recursive: true, force: true });
+  }
+});
+
+test("config loading rejects symlinked files and parent directories", async () => {
+  if (process.platform === "win32") return;
+  const state = await isolatedConfig();
+  try {
+    await state.store.save(emptyConfigDocument());
+    const target = join(state.root, "target.json");
+    await writeFile(target, serializeConfigDocument(emptyConfigDocument()), {
+      mode: 0o600,
+    });
+    await rm(state.paths.configFile);
+    await symlink(target, state.paths.configFile);
+    await assert.rejects(state.store.load(), {
+      code: "config_error",
+      message: /must be a regular file/,
+    });
+
+    const actualDirectory = join(state.root, "actual-config");
+    const linkedDirectory = join(state.root, "linked-config");
+    await mkdir(actualDirectory, { mode: 0o700 });
+    await symlink(actualDirectory, linkedDirectory, "dir");
+    const linkedStore = new ConfigStore(
+      join(linkedDirectory, "config.json"),
+      state.locks,
+      state.security,
+    );
+    await assert.rejects(linkedStore.load(), {
+      code: "config_error",
+      message: /must be a regular directory/,
+    });
+  } finally {
+    await rm(state.root, { recursive: true, force: true });
+  }
+});
+
+test("Unix config loading enforces exact owner-only modes", async () => {
+  if (process.platform === "win32") return;
+  const state = await isolatedConfig();
+  try {
+    await state.store.save(emptyConfigDocument());
+    await chmod(state.paths.configFile, 0o644);
+    await assert.rejects(state.store.load(), { code: "config_error" });
+
+    await chmod(state.paths.configFile, 0o600);
+    await chmod(dirname(state.paths.configFile), 0o755);
+    await assert.rejects(state.store.load(), { code: "config_error" });
   } finally {
     await rm(state.root, { recursive: true, force: true });
   }

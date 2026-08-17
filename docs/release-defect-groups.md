@@ -150,7 +150,7 @@ reject symlinks, and atomic private output whose temporary file is secured
 before content is written. Regression tests cover argv isolation, size and file
 safety boundaries, symlink replacement, and pre-write permissions.
 
-## Session 8: Config Trust Boundary
+## Session 8: Config Trust Boundary (Done)
 
 Defects: **DEF-007**
 
@@ -163,6 +163,15 @@ tests.
 Keep this high-impact change isolated: an overly broad check could make all
 commands unusable, while an incomplete check leaves credential redirection
 possible.
+
+Completed with fail-closed checks on the config file and its immediate parent
+before reads and replacements. Existing storage must be owner-only, owned by the
+current user, and have the expected regular file or directory type; symlinks and
+verification failures are refused on Unix and Windows. Missing storage remains
+an empty configuration and is created securely on first write. Regression tests
+prove an unsafe attacker-controlled API origin is rejected before credential
+resolution, doctor reports and repairs unsafe storage, and dashboard fixtures
+exercise the production private-write path.
 
 ## Session 9: Lock Recovery Correctness
 

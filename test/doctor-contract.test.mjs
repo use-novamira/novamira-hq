@@ -350,6 +350,13 @@ test("5: storage.permissions fails on a group-readable config file and --fix rep
   const before = await runDoctor(dependencies, { offline: true, fix: false });
   const failing = checkOf(before, "storage.permissions");
   assert.equal(failing.status, "fail");
+  assert.equal(checkOf(before, "config.schema").status, "fail");
+  assert.deepEqual(checkOf(before, "profile.credentials"), {
+    id: "profile.credentials",
+    status: "pass",
+    summary: "No hosting profiles are configured.",
+    evidence: { profiles: [] },
+  });
   assert.equal(failing.fixed, undefined);
   const configTarget = failing.evidence.targets.find(
     (target) => target.label === "config.file",
@@ -372,6 +379,7 @@ test("5: storage.permissions fails on a group-readable config file and --fix rep
   const after = await runDoctor(dependencies, { offline: true, fix: true });
   const repaired = checkOf(after, "storage.permissions");
   assert.equal(repaired.status, "pass");
+  assert.equal(checkOf(after, "config.schema").status, "pass");
   assert.equal(repaired.fixed, true);
   assert.equal((await stat(paths.configFile)).mode & 0o777, 0o600);
 });

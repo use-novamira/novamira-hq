@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { readFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
+import { dirname } from "node:path";
 
 import { CliError } from "../errors.js";
 import { atomicWriteFile } from "./atomic-write.js";
-import type { FileSecurity } from "./file-security.js";
+import type { VerifiedFileSecurity } from "./file-security.js";
 import { CONFIG_LOCK_KEY, type ProfileLockManager } from "./lock.js";
 import {
   emptyConfigDocument,
@@ -127,11 +128,14 @@ export class ConfigStore {
   constructor(
     public readonly configFile: string,
     private readonly locks: ProfileLockManager,
-    private readonly security: FileSecurity,
+    private readonly security: VerifiedFileSecurity,
   ) {}
 
   /** Load the document, or an empty version-1 document when no file exists. */
   async load(): Promise<ConfigDocument> {
+    const exists = await this.assertTrustedStorage();
+    if (!exists) return emptyConfigDocument();
+
     let raw: string;
     try {
       raw = await readFile(this.configFile, "utf8");
@@ -177,6 +181,7 @@ export class ConfigStore {
    * {@link ConfigStore.updateDocument} unless a lock is already held.
    */
   async save(document: ConfigDocument): Promise<void> {
+    await this.assertTrustedStorage();
     await atomicWriteFile(
       this.configFile,
       serializeConfigDocument(parseConfigDocument(document)),
@@ -446,10 +451,72 @@ export class ConfigStore {
   }
 
   private async writeDocument(document: ConfigDocument): Promise<void> {
+    await this.assertTrustedStorage();
     await atomicWriteFile(
       this.configFile,
       serializeConfigDocument(document),
       this.security,
     );
+  }
+
+  /**
+   * Refuse configuration that another local principal could replace or edit.
+   * Missing storage is safe because the atomic writer creates it owner-only.
+   */
+  private async assertTrustedStorage(): Promise<boolean> {
+    const directory = dirname(this.configFile);
+    const directoryExists = await this.verifyStoragePath(
+      directory,
+      "directory",
+    );
+    if (!directoryExists) return false;
+    return this.verifyStoragePath(this.configFile, "file");
+  }
+
+  private async verifyStoragePath(
+    path: string,
+    kind: "directory" | "file",
+  ): Promise<boolean> {
+    let info;
+    try {
+      info = await lstat(path);
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw new CliError(
+        "config_error",
+        `Failed to inspect configuration storage at ${path}.`,
+        { cause },
+      );
+    }
+
+    const typeMatches =
+      kind === "directory" ? info.isDirectory() : info.isFile();
+    if (!typeMatches) {
+      throw new CliError(
+        "config_error",
+        `Configuration storage at ${path} must be a regular ${kind}.`,
+      );
+    }
+
+    let safe: boolean;
+    try {
+      safe =
+        kind === "directory"
+          ? await this.security.verifyDirectory(path)
+          : await this.security.verifyFile(path);
+    } catch (cause) {
+      throw new CliError(
+        "config_error",
+        `Failed to verify configuration storage at ${path}.`,
+        { cause },
+      );
+    }
+    if (!safe) {
+      throw new CliError(
+        "config_error",
+        `Configuration storage at ${path} has unsafe ownership or permissions.`,
+      );
+    }
+    return true;
   }
 }
