@@ -374,7 +374,7 @@ class ProviderHttpClient implements HttpClient {
       request.totalTimeoutMs ?? this.totalTimeoutMs,
       "Total request timeout",
     );
-    const deadline = Date.now() + Math.max(timeoutMs, totalTimeoutMs);
+    const deadline = Date.now() + totalTimeoutMs;
     const retryable = request.idempotent ?? SAFE_METHODS.has(method);
     const maxAttempts = retryable ? Math.max(1, retry.maxAttempts) : 1;
 

@@ -422,7 +422,10 @@ function fakeClient(overrides = {}) {
 }
 
 /** Run the real composition root against captured streams and a fake registry. */
-async function run(argv, { root, client = fakeClient(), env = {} } = {}) {
+async function run(
+  argv,
+  { root, client = fakeClient(), env = {}, registry } = {},
+) {
   const out = [];
   const err = [];
   const code = await main(
@@ -438,7 +441,7 @@ async function run(argv, { root, client = fakeClient(), env = {} } = {}) {
     },
     // The only provider constructor this process can reach. No test can make a
     // network request even if a handler tried.
-    { registry: { kinsta: () => client } },
+    { registry: registry ?? { kinsta: () => client } },
   );
   return { code, stdout: out.join(""), stderr: err.join(""), client };
 }
@@ -468,6 +471,52 @@ async function isolated(body) {
     await rm(root, { force: true, recursive: true });
   }
 }
+
+test("an explicit global timeout bounds provider HTTP end to end", async () => {
+  await isolated(async (root) => {
+    let requests = 0;
+    const registry = {
+      kinsta: (context) => {
+        const http = context.createHttpClient({
+          retry: { maxAttempts: 1 },
+          fetch: async (_input, init) => {
+            requests += 1;
+            return new Promise((_resolve, reject) => {
+              const signal = init.signal;
+              signal.addEventListener("abort", () => reject(signal.reason), {
+                once: true,
+              });
+            });
+          },
+        });
+        return {
+          ...fakeClient(),
+          async listSites() {
+            await http.json({ path: "/sites" });
+            return [];
+          },
+        };
+      },
+    };
+
+    const result = await run(
+      [
+        "hosting",
+        "sites",
+        "list",
+        "--profile",
+        PROFILE,
+        "--timeout",
+        "20",
+        "--json",
+      ],
+      { root, registry },
+    );
+    assert.equal(result.code, 4);
+    assert.equal(JSON.parse(result.stdout).error.code, "timeout");
+    assert.equal(requests, 1);
+  });
+});
 
 /* -------------------------------------------------------------------------- */
 /* The assembled command surface                                              */

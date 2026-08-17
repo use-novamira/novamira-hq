@@ -380,6 +380,11 @@ deadline is `timeout`. `retryable` is true for 408, 425, 429, 500, 502, 503, and
 | buffered HTTP response ceiling | 25 MiB |
 | maximum credential file size | 64 KiB |
 
+The global `--timeout` sets the provider HTTP per-attempt timeout. When the
+operator supplies it explicitly, the same value is also the total budget for
+each provider request, including retries and backoff; omitting it retains the
+120-second default total budget.
+
 An `Authorization` header is never sent cross-origin: an absolute request URL on
 another origin is a `usage_error`, and redirects are followed manually at most
 three times and only to the same origin. A redirect chain shares one attempt
@@ -436,8 +441,10 @@ true-defaulting boolean also registers its `--no-` form.
 
 A command that polls a provider operation takes `--interval-seconds` (default 5,
 must be greater than zero) and `--timeout-seconds` (default 300). An exhausted
-budget is a retryable `timeout`; an operation the provider reports as failed is
-a `provider_error`.
+budget is a retryable `timeout`; no status request starts at or after its
+deadline, sleeps are clamped to the remaining budget, and a terminal answer
+received at or after the deadline is not accepted. An operation the provider
+reports as failed within the budget is a `provider_error`.
 
 An invalid enumeration value, a non-numeric numeric option, a missing positional
 argument, an unknown option, and an unknown subcommand are all `usage_error` at

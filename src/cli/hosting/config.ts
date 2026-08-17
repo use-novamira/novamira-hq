@@ -56,7 +56,11 @@ import { CliError } from "../../errors.js";
 import type { InvocationWarning } from "../../output/render.js";
 import type { CommandDependencies } from "../commands.js";
 import { addSecretSourceOptions, requireEnum } from "../flags.js";
-import { runLocalCommand, type HostingOptions } from "../hosting-command.js";
+import {
+  hostingHttpLimits,
+  runLocalCommand,
+  type HostingOptions,
+} from "../hosting-command.js";
 import { readSecret, type CommandIo, type SecretSpec } from "../inputs.js";
 import type { RenderedResult } from "../print.js";
 import type { GlobalOptions } from "../program.js";
@@ -234,6 +238,7 @@ export function createHostingConfigHandlers(
     credential: CredentialRef,
     apiBaseUrl: string | undefined,
     selection: string,
+    options: HostingOptions,
   ): Promise<string | undefined> => {
     const requested = selection.trim();
     if (requested === COMPANY_NONE || requested === "") return undefined;
@@ -243,10 +248,13 @@ export function createHostingConfigHandlers(
       credential,
       ...(apiBaseUrl === undefined ? {} : { apiBaseUrl }),
     };
-    const client = await hosting.clientFromEntry({
-      name: profileName,
-      profile: candidate,
-    });
+    const client = await hosting.clientFromEntry(
+      {
+        name: profileName,
+        profile: candidate,
+      },
+      hostingHttpLimits(options),
+    );
     const validation = await client.validate();
     if (provider === "instawp" || provider === "pressable") return undefined;
     return validation.companyId ?? undefined;
@@ -310,6 +318,7 @@ export function createHostingConfigHandlers(
           plan.credential,
           apiBaseUrl,
           options.company ?? COMPANY_AUTO,
+          options,
         );
         const profile: HostingProfile = {
           provider,

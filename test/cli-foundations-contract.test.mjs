@@ -1487,6 +1487,87 @@ test("waitForOperationStatus times out and refuses a zero interval", async () =>
   assert.equal(usage.message, "--interval-seconds must be greater than zero.");
 });
 
+test("waitForOperationStatus clamps sleeps and never polls at the deadline", async () => {
+  let clock = 0;
+  let requests = 0;
+  const slept = [];
+  const pending = {
+    provider: "kinsta",
+    async operationStatus() {
+      requests += 1;
+      return {
+        provider: "kinsta",
+        operationId: "op-clamped",
+        status: 200,
+        done: false,
+        failed: false,
+        raw: null,
+      };
+    },
+  };
+
+  await rejectsWithCode("timeout", () =>
+    waitForOperationStatus(pending, "op-clamped", {
+      intervalSeconds: 5,
+      timeoutSeconds: 3,
+      sleep: async (milliseconds) => {
+        slept.push(milliseconds);
+        clock += milliseconds;
+      },
+      now: () => clock,
+    }),
+  );
+  assert.deepEqual(slept, [3000]);
+  assert.equal(requests, 1);
+
+  requests = 0;
+  await rejectsWithCode("timeout", () =>
+    waitForOperationStatus(pending, "op-zero", {
+      intervalSeconds: 5,
+      timeoutSeconds: 0,
+      now: () => clock,
+    }),
+  );
+  assert.equal(requests, 0);
+});
+
+test("waitForOperationStatus rejects terminal answers at or after the deadline", async () => {
+  for (const elapsed of [1000, 1001]) {
+    for (const terminal of [
+      { done: true, failed: false },
+      { done: false, failed: true },
+    ]) {
+      let clock = 0;
+      let requests = 0;
+      await rejectsWithCode("timeout", () =>
+        waitForOperationStatus(
+          {
+            provider: "kinsta",
+            async operationStatus() {
+              requests += 1;
+              clock = elapsed;
+              return {
+                provider: "kinsta",
+                operationId: "op-late",
+                status: 200,
+                raw: null,
+                ...terminal,
+              };
+            },
+          },
+          "op-late",
+          {
+            intervalSeconds: 1,
+            timeoutSeconds: 1,
+            now: () => clock,
+          },
+        ),
+      );
+      assert.equal(requests, 1);
+    }
+  }
+});
+
 test("waitForOperationStatus aborts an injected polling sleep", async () => {
   const controller = new AbortController();
   const waiting = waitForOperationStatus(

@@ -24,7 +24,10 @@
 
 import type { ConfigStore, HostingProfileEntry } from "../config/profiles.js";
 import type { ProviderClient } from "../hosting/client.js";
-import type { HostingClientFactory } from "../hosting/factory.js";
+import type {
+  HostingClientFactory,
+  HostingHttpLimits,
+} from "../hosting/factory.js";
 import type { Renderer } from "../output/render.js";
 import { createCommandIo, type CommandIo } from "./inputs.js";
 import type { RenderedResult } from "./print.js";
@@ -79,6 +82,14 @@ function ioFor(dependencies: HostingCommandDependencies): CommandIo {
   return dependencies.io ?? createCommandIo();
 }
 
+/** Apply the global timeout without shortening the default total budget. */
+export function hostingHttpLimits(options: HostingOptions): HostingHttpLimits {
+  return {
+    timeoutMs: options.timeout,
+    ...(options.timeoutExplicit ? { totalTimeoutMs: options.timeout } : {}),
+  };
+}
+
 /** Resolve the selected profile and build its provider client. */
 export async function resolveHostingClient(
   dependencies: HostingCommandDependencies,
@@ -88,7 +99,13 @@ export async function resolveHostingClient(
   readonly entry: HostingProfileEntry;
 }> {
   const entry = await dependencies.store.selectHostingProfile(options.profile);
-  return { client: await dependencies.hosting.clientFromEntry(entry), entry };
+  return {
+    client: await dependencies.hosting.clientFromEntry(
+      entry,
+      hostingHttpLimits(options),
+    ),
+    entry,
+  };
 }
 
 /**

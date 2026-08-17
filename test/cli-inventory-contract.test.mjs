@@ -544,7 +544,7 @@ test("ops wait times out with a retryable timeout error", async () => {
     operationStatuses: [{ done: false, failed: false }],
   });
   const run = harness({ client: fake.client });
-  // A zero budget expires on the first poll, so the loop never sleeps.
+  // A zero budget expires before any provider request begins.
   const error = await run.failure([
     "hosting",
     "ops",
@@ -556,7 +556,7 @@ test("ops wait times out with a retryable timeout error", async () => {
   assert.equal(error.code, "timeout");
   assert.equal(error.retryable, true);
   assert.equal(error.details.operationId, "op-4");
-  assert.deepEqual(fake.calls.operationStatus, ["op-4"]);
+  assert.deepEqual(fake.calls.operationStatus, []);
 });
 
 test("ops wait refuses a zero polling interval at parse time", async () => {

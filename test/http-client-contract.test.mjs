@@ -170,6 +170,36 @@ test("a redirect chain cannot outlive the request's own timeout", async () => {
   }
 });
 
+test("a total timeout shorter than one attempt remains the upper bound", async () => {
+  let requests = 0;
+  const http = createHttpClient({
+    baseUrl: "https://api.example.invalid/v1",
+    providerLabel: "Kinsta",
+    retry: { maxAttempts: 1 },
+    fetch: async (_input, init) => {
+      requests += 1;
+      return new Promise((_resolve, reject) => {
+        const signal = init.signal;
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      });
+    },
+  });
+
+  const startedAt = Date.now();
+  await assert.rejects(
+    http.request({
+      path: "/sites",
+      timeoutMs: 1000,
+      totalTimeoutMs: 20,
+    }),
+    { code: "timeout" },
+  );
+  assert.equal(requests, 1);
+  assert.ok(Date.now() - startedAt < 500);
+});
+
 test("a redirect chain that fits the budget still succeeds", async () => {
   const server = await startServer((request, response) => {
     const hop = Number(/hop(\d+)/.exec(request.url)[1]);

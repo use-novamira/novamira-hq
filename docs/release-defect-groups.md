@@ -246,7 +246,7 @@ or repainting stale profile links, while post-invalidation requests start a new
 provider round instead of joining obsolete work. Regression tests cover
 duplicate IDs across profiles and sites plus delayed provider and CLI refreshes.
 
-## Session 12: Hosting Timeout Semantics
+## Session 12: Hosting Timeout Semantics (Done)
 
 Defects: **DEF-014, DEF-016, DEF-017**
 
@@ -261,6 +261,16 @@ Define and enforce one end-to-end timeout budget for hosting commands:
 Use fake clocks and injected HTTP behavior to test exact deadline edges without
 live provider calls. The tests should demonstrate that no request starts after
 the deadline and no completion after the deadline is reported as in-budget.
+
+Completed with invocation-level HTTP limits that carry the global `--timeout`
+through every CLI-created provider client, including profile validation. An
+explicit value is both the per-attempt and total request budget, while omitted
+values retain the documented defaults. HTTP total budgets are no longer raised
+to the per-attempt timeout, and operation polling checks both sides of each
+request, clamps sleeps, and starts no request at or after its deadline. Focused
+tests cover the composition-root path, shorter total budgets, zero and exact
+polling deadlines, late terminal answers, and clamped sleeps without live
+provider calls.
 
 ## Session 13: Site CLI Process-Tree Timeouts
 

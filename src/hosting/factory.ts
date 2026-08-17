@@ -56,6 +56,12 @@ import { providerLabel } from "./types.js";
  */
 export type ProviderHttpOptions = Partial<HttpClientOptions>;
 
+/** Invocation-level limits that provider constructors cannot override. */
+export interface HostingHttpLimits {
+  readonly timeoutMs: number;
+  readonly totalTimeoutMs?: number;
+}
+
 /**
  * Everything a provider module needs to construct itself. No field is a raw
  * secret: `secret` is a `SecretValue` whose `reveal()` must only be called while
@@ -122,10 +128,19 @@ export interface HostingClientFactoryOptions {
 export interface HostingClientFactory {
   readonly registry: ProviderRegistry;
   /** Load the named hosting profile and construct its provider client. */
-  clientFromProfile(profileName: string): Promise<ProviderClient>;
-  clientFromEntry(entry: HostingProfileEntry): Promise<ProviderClient>;
+  clientFromProfile(
+    profileName: string,
+    limits?: HostingHttpLimits,
+  ): Promise<ProviderClient>;
+  clientFromEntry(
+    entry: HostingProfileEntry,
+    limits?: HostingHttpLimits,
+  ): Promise<ProviderClient>;
   /** The provider-neutral construction context, without the client itself. */
-  contextFromEntry(entry: HostingProfileEntry): Promise<ProviderClientContext>;
+  contextFromEntry(
+    entry: HostingProfileEntry,
+    limits?: HostingHttpLimits,
+  ): Promise<ProviderClientContext>;
 }
 
 export function createHostingClientFactory(
@@ -137,6 +152,7 @@ export function createHostingClientFactory(
 
   async function contextFromEntry(
     entry: HostingProfileEntry,
+    limits?: HostingHttpLimits,
   ): Promise<ProviderClientContext> {
     const { profile } = entry;
     const provider = profile.provider;
@@ -166,6 +182,7 @@ export function createHostingClientFactory(
           baseUrl,
           providerLabel: label,
           ...overrides,
+          ...limits,
         });
       },
     };
@@ -173,13 +190,14 @@ export function createHostingClientFactory(
 
   async function clientFromEntry(
     entry: HostingProfileEntry,
+    limits?: HostingHttpLimits,
   ): Promise<ProviderClient> {
     const factory = requireProviderFactory(
       options.registry,
       entry.profile.provider,
     );
     return secretSafeProviderClient(
-      await factory(await contextFromEntry(entry)),
+      await factory(await contextFromEntry(entry, limits)),
     );
   }
 
@@ -187,9 +205,13 @@ export function createHostingClientFactory(
     registry: options.registry,
     contextFromEntry,
     clientFromEntry,
-    async clientFromProfile(profileName: string): Promise<ProviderClient> {
+    async clientFromProfile(
+      profileName: string,
+      limits?: HostingHttpLimits,
+    ): Promise<ProviderClient> {
       return clientFromEntry(
         await options.store.requireHostingProfile(profileName),
+        limits,
       );
     },
   };

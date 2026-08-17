@@ -99,34 +99,38 @@ export async function waitForOperationStatus(
   }
   const sleep = options.sleep ?? realSleep;
   const now = options.now ?? Date.now;
-  const started = now();
+  const deadline = now() + options.timeoutSeconds * 1000;
+  const timedOut = (): CliError => {
+    const safeOperationId = redactOperationText(
+      client,
+      operationId,
+      operationId,
+    );
+    releaseOperationSecrets(client, operationId);
+    return new CliError(
+      "timeout",
+      `Timed out waiting for operation ${safeOperationId}.`,
+      {
+        retryable: true,
+        details: {
+          operationId: safeOperationId,
+          timeoutSeconds: options.timeoutSeconds,
+        },
+      },
+    );
+  };
   for (;;) {
     options.signal?.throwIfAborted();
+    if (now() >= deadline) throw timedOut();
     const status = await client.operationStatus(operationId);
     options.signal?.throwIfAborted();
+    const remaining = deadline - now();
+    if (remaining <= 0) throw timedOut();
     if (status.done || status.failed) return status;
-    if (now() - started >= options.timeoutSeconds * 1000) {
-      const safeOperationId = redactOperationText(
-        client,
-        operationId,
-        operationId,
-      );
-      releaseOperationSecrets(client, operationId);
-      throw new CliError(
-        "timeout",
-        `Timed out waiting for operation ${safeOperationId}.`,
-        {
-          retryable: true,
-          details: {
-            operationId: safeOperationId,
-            timeoutSeconds: options.timeoutSeconds,
-          },
-        },
-      );
-    }
+    const sleepMs = Math.min(options.intervalSeconds * 1000, remaining);
     await (options.sleep === undefined
-      ? realSleep(options.intervalSeconds * 1000, options.signal)
-      : sleepWithSignal(sleep(options.intervalSeconds * 1000), options.signal));
+      ? realSleep(sleepMs, options.signal)
+      : sleepWithSignal(sleep(sleepMs), options.signal));
   }
 }
 
