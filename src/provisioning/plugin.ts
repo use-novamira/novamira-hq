@@ -160,8 +160,14 @@ async function boundedPluginRequest(
   http: HttpFetch,
   source: string,
   init: { readonly method?: string; readonly headers?: Record<string, string> },
+  parentSignal?: AbortSignal,
 ): Promise<{ readonly response: HttpResponse; readonly signal: AbortSignal }> {
-  const signal = AbortSignal.timeout(PLUGIN_SOURCE_TIMEOUT_MS);
+  parentSignal?.throwIfAborted();
+  const timeoutSignal = AbortSignal.timeout(PLUGIN_SOURCE_TIMEOUT_MS);
+  const signal =
+    parentSignal === undefined
+      ? timeoutSignal
+      : AbortSignal.any([parentSignal, timeoutSignal]);
   try {
     const response = await http(source, {
       ...init,
@@ -170,7 +176,8 @@ async function boundedPluginRequest(
     });
     return { response, signal };
   } catch (error) {
-    if (signal.aborted) throw pluginRequestTimeout(source);
+    if (parentSignal?.aborted === true) throw parentSignal.reason;
+    if (timeoutSignal.aborted) throw pluginRequestTimeout(source);
     throw error;
   }
 }
@@ -192,13 +199,17 @@ async function refusePluginRedirect(
 async function resolveNovamiraLatestZip(
   http: HttpFetch,
   apiUrl: string,
+  signal?: AbortSignal,
 ): Promise<string> {
   let response;
-  let signal: AbortSignal;
+  let requestSignal: AbortSignal;
   try {
-    ({ response, signal } = await boundedPluginRequest(http, apiUrl, {
-      headers: { Accept: "application/vnd.github+json" },
-    }));
+    ({ response, signal: requestSignal } = await boundedPluginRequest(
+      http,
+      apiUrl,
+      { headers: { Accept: "application/vnd.github+json" } },
+      signal,
+    ));
   } catch (error) {
     if (error instanceof CliError) throw error;
     throw new CliError(
@@ -229,7 +240,8 @@ async function resolveNovamiraLatestZip(
     release = JSON.parse(text) as unknown;
   } catch (error) {
     if (error instanceof CliError) throw error;
-    if (signal.aborted) throw pluginRequestTimeout(apiUrl);
+    if (signal?.aborted === true) throw signal.reason;
+    if (requestSignal.aborted) throw pluginRequestTimeout(apiUrl);
     throw new CliError(
       "schema_validation_failed",
       `Failed to parse the ${NOVAMIRA_LATEST_SOURCE_ALIAS} release metadata.`,
@@ -259,12 +271,13 @@ export async function resolvePluginSource(
   source: string,
   http: HttpFetch,
   latestReleaseApi: string,
+  signal?: AbortSignal,
 ): Promise<string> {
   if (
     source === NOVAMIRA_LATEST_SOURCE_ALIAS ||
     source === NOVAMIRA_LEGACY_ZIP_URL
   )
-    return resolveNovamiraLatestZip(http, latestReleaseApi);
+    return resolveNovamiraLatestZip(http, latestReleaseApi, signal);
   return source;
 }
 
@@ -272,13 +285,17 @@ export async function resolvePluginSource(
 export async function validateRemotePluginSource(
   source: string,
   http: HttpFetch,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (!source.startsWith("https://") && !source.startsWith("http://")) return;
   let response;
   try {
-    ({ response } = await boundedPluginRequest(http, source, {
-      method: "HEAD",
-    }));
+    ({ response } = await boundedPluginRequest(
+      http,
+      source,
+      { method: "HEAD" },
+      signal,
+    ));
   } catch (error) {
     if (error instanceof CliError) throw error;
     throw new CliError(

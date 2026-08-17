@@ -147,6 +147,8 @@ export interface NovamiraSetupDependencies {
   readonly metadataTimeoutMs?: number;
   /** Optional progress channel: the CLI's `renderer.note`, Phase 6's job log. */
   readonly report?: ProgressReporter;
+  /** Dashboard lifecycle cancellation; CLI callers leave it absent. */
+  readonly signal?: AbortSignal;
 }
 
 export type CompatibilityStatus = "supported" | "skipped";
@@ -249,8 +251,12 @@ export async function provisionNovamira(
   const budget: PollBudget = {
     intervalSeconds: request.intervalSeconds ?? DEFAULT_INTERVAL_SECONDS,
     timeoutSeconds: request.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS,
+    ...(dependencies.signal === undefined
+      ? {}
+      : { signal: dependencies.signal }),
   };
   const warnings: InvocationWarning[] = [];
+  dependencies.signal?.throwIfAborted();
 
   /* -- Phase A: local and non-provider validation --------------------------- */
   // Nothing below may issue a provider request until A4 has passed.
@@ -286,9 +292,10 @@ export async function provisionNovamira(
     source,
     http,
     latestReleaseApi,
+    dependencies.signal,
   );
   if (request.validateSource ?? true)
-    await validateRemotePluginSource(resolvedSource, http);
+    await validateRemotePluginSource(resolvedSource, http, dependencies.signal);
   report("ok", "Plugin source resolved.");
 
   const slug = inferPluginSlug(resolvedSource);
@@ -370,6 +377,7 @@ export async function provisionNovamira(
     envId,
     body: installBody,
   });
+  dependencies.signal?.throwIfAborted();
   if (installResult.operationId !== undefined) {
     if (!(request.wait ?? true)) {
       throw new CliError(
@@ -495,6 +503,9 @@ export async function provisionNovamira(
     report("info", "Checking site compatibility.");
     const compatibilityOptions: CompatibilityOptions = {
       fetch: http,
+      ...(dependencies.signal === undefined
+        ? {}
+        : { signal: dependencies.signal }),
       ...(dependencies.metadataTimeoutMs === undefined
         ? {}
         : { timeoutMs: dependencies.metadataTimeoutMs }),

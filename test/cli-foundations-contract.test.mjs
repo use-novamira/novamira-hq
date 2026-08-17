@@ -1486,3 +1486,32 @@ test("waitForOperationStatus times out and refuses a zero interval", async () =>
   );
   assert.equal(usage.message, "--interval-seconds must be greater than zero.");
 });
+
+test("waitForOperationStatus aborts an injected polling sleep", async () => {
+  const controller = new AbortController();
+  const waiting = waitForOperationStatus(
+    {
+      provider: "kinsta",
+      async operationStatus() {
+        return {
+          provider: "kinsta",
+          operationId: "op-abort",
+          status: 200,
+          done: false,
+          failed: false,
+          raw: null,
+        };
+      },
+    },
+    "op-abort",
+    {
+      intervalSeconds: 5,
+      timeoutSeconds: 300,
+      sleep: () => new Promise(() => undefined),
+      signal: controller.signal,
+    },
+  );
+  await Promise.resolve();
+  controller.abort(new Error("dashboard stopped"));
+  await assert.rejects(waiting, /dashboard stopped/);
+});

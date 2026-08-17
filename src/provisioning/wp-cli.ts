@@ -39,6 +39,8 @@ import { asRecord, jsonPointerLookupString } from "../json.js";
 export interface PollBudget {
   readonly intervalSeconds: number;
   readonly timeoutSeconds: number;
+  /** Cancels dashboard-owned provisioning during shutdown. */
+  readonly signal?: AbortSignal;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -211,11 +213,13 @@ export async function runWpCli(
   command: string,
   budget: PollBudget,
 ): Promise<OperationStatus | undefined> {
+  budget.signal?.throwIfAborted();
   const result = await client.action({
     kind: "run-wp-cli",
     envId,
     body: wpCliCommandPayload(command),
   });
+  budget.signal?.throwIfAborted();
   if (result.operationId === undefined) {
     if (result.status >= 400) throw syncFailure(result);
     return undefined;
@@ -237,11 +241,13 @@ export async function runWpCliForOutput(
   command: string,
   budget: PollBudget,
 ): Promise<string> {
+  budget.signal?.throwIfAborted();
   const result = await client.action({
     kind: "run-wp-cli",
     envId,
     body: wpCliCommandPayload(command),
   });
+  budget.signal?.throwIfAborted();
   if (result.operationId !== undefined) {
     const status = await waitForOperationStatus(
       client,

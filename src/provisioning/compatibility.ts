@@ -484,6 +484,7 @@ function assertScopes(value: unknown, context: CompatibilityContext): void {
 export interface CompatibilityOptions {
   readonly fetch: HttpFetch;
   readonly timeoutMs?: number;
+  readonly signal?: AbortSignal;
 }
 
 function reachability(
@@ -543,6 +544,11 @@ async function fetchMetadata(
 ): Promise<unknown> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_METADATA_TIMEOUT_MS;
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  options.signal?.throwIfAborted();
+  const signal =
+    options.signal === undefined
+      ? timeoutSignal
+      : AbortSignal.any([options.signal, timeoutSignal]);
   let response: HttpResponse;
   try {
     response = await options.fetch(url, {
@@ -553,9 +559,10 @@ async function fetchMetadata(
         "User-Agent": `novamira-hq/${VERSION}`,
       },
       redirect: "manual",
-      signal: timeoutSignal,
+      signal,
     });
   } catch (error) {
+    if (options.signal?.aborted === true) throw options.signal.reason;
     throw timeoutSignal.aborted
       ? requestTimeout(context)
       : transportFailure(error, context);
@@ -579,6 +586,7 @@ async function fetchMetadata(
   try {
     text = await readBoundedText(response, METADATA_MAX_BYTES);
   } catch (error) {
+    if (options.signal?.aborted === true) throw options.signal.reason;
     throw timeoutSignal.aborted
       ? requestTimeout(context)
       : transportFailure(error, context);

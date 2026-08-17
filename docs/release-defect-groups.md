@@ -196,7 +196,7 @@ claims are recoverable while fresh or live claims remain protected. Controlled
 independent-manager tests cover concurrent stale recovery, malformed lock age,
 replacement races, and obsolete releases.
 
-## Session 10: Setup-Job Concurrency and Lifecycle
+## Session 10: Setup-Job Concurrency and Lifecycle (Done)
 
 Defects: **DEF-006, DEF-019, DEF-020**
 
@@ -213,6 +213,15 @@ capacity enforcement, and shutdown ownership:
 Tests should cover concurrent starts before client resolution, all-running
 capacity, cancellation, and server shutdown. Preserve the rule that the service
 calls `provisionNovamira` whole rather than copying its sequence.
+
+Completed with synchronous target and capacity reservations, bounded running
+work, and an idempotent registry shutdown that cancels and awaits both pending
+client resolution and active provisioning. Cancellation now reaches plugin and
+compatibility HTTP, provider-operation polling, and every boundary between
+WP-CLI actions. Dashboard shutdown owns that lifecycle even without a listener,
+and regression tests cover pre-resolution duplicate starts, saturated capacity,
+late client resolution, history retention, polling cancellation, and server
+shutdown.
 
 ## Session 11: Dashboard Cache Identity and Generations
 

@@ -114,6 +114,8 @@ export interface SetupJobService {
   snapshot(id: string): SetupJobSnapshot | undefined;
   /** The most recently started job for a target, whatever its status. */
   latestForTarget(profile: string, envId: string): SetupJobSnapshot | undefined;
+  /** Cancel and await every accepted run. Idempotent. */
+  shutdown(): Promise<void>;
 }
 
 export interface SetupJobServiceOptions {
@@ -127,6 +129,8 @@ export interface SetupJobServiceOptions {
   readonly randomId?: () => string;
   readonly maxJobs?: number;
   readonly maxEvents?: number;
+  /** Runner seam for lifecycle tests; production uses the shared service. */
+  readonly provision?: typeof provisionNovamira;
 }
 
 /**
@@ -183,6 +187,12 @@ export function createSetupJobService(
   const maxJobs = options.maxJobs ?? MAX_JOBS;
   const maxEvents = options.maxEvents ?? MAX_EVENTS;
   const jobs = new Map<string, SetupJob>();
+  const reservations = new Map<string, Promise<string>>();
+  const tasks = new Set<Promise<void>>();
+  const controller = new AbortController();
+  const provision = options.provision ?? provisionNovamira;
+  let shuttingDown = false;
+  let shutdownPromise: Promise<void> | undefined;
 
   const append = (id: string, level: SetupJobEventLevel, message: string) => {
     const job = jobs.get(id);
@@ -215,6 +225,14 @@ export function createSetupJobService(
     }
   };
 
+  const hasCapacity = (): boolean => {
+    let running = 0;
+    for (const job of jobs.values()) {
+      if (job.status === "running") running += 1;
+    }
+    return running + reservations.size < maxJobs;
+  };
+
   const runningForTarget = (
     profile: string,
     envId: string,
@@ -241,8 +259,36 @@ export function createSetupJobService(
     append(id, "error", cliError.message);
   };
 
+  const targetKey = (profile: string, envId: string): string =>
+    JSON.stringify([profile, envId]);
+
+  const unavailable = (): CliError =>
+    new CliError(
+      "conflict",
+      shuttingDown
+        ? "The dashboard is shutting down and cannot start setup."
+        : "All setup job capacity is occupied; wait for a running setup to finish.",
+    );
+
+  const shutdown = (): Promise<void> => {
+    if (shutdownPromise !== undefined) return shutdownPromise;
+    shuttingDown = true;
+    controller.abort(
+      new CliError(
+        "conflict",
+        "Setup was cancelled because the dashboard stopped.",
+      ),
+    );
+    shutdownPromise = (async () => {
+      while (reservations.size > 0 || tasks.size > 0) {
+        await Promise.allSettled([...reservations.values(), ...tasks]);
+      }
+    })();
+    return shutdownPromise;
+  };
+
   return {
-    start: async (input) => {
+    start: (input) => {
       const profile = input.profile.trim();
       const envId = input.envId.trim();
       if (profile === "" || envId === "") {
@@ -251,58 +297,72 @@ export function createSetupJobService(
           "Setup needs a hosting profile and an environment; open it from the Sites page.",
         );
       }
+      if (shuttingDown) return Promise.reject(unavailable());
       // The double-click guard, and Go's (`server.go:1023-1025`): two installs
       // racing on one environment is the one outcome an impatient operator can
       // produce with a mouse.
       const running = runningForTarget(profile, envId);
-      if (running !== undefined) return running.id;
+      if (running !== undefined) return Promise.resolve(running.id);
 
-      // Before the record exists, so an unknown profile or an unreadable
-      // credential is a start failure rather than a job that fails instantly.
-      const client = await options.hosting.clientFromProfile(profile);
+      const key = targetKey(profile, envId);
+      const reserved = reservations.get(key);
+      if (reserved !== undefined) return reserved;
+      if (!hasCapacity()) return Promise.reject(unavailable());
 
-      evict();
-      const id = options.randomId?.() ?? randomBytes(16).toString("hex");
-      const startedAt = options.now();
-      jobs.set(id, {
-        id,
-        status: "running",
-        profile,
-        envId,
-        startedAt,
-        finishedAt: null,
-        events: [{ at: startedAt, level: "info", message: STARTED_MESSAGE }],
-        result: null,
-        error: null,
-      });
-
-      // Detached from the request on purpose: the POST answers immediately with
-      // the running job's page, and progress arrives over
-      // `/_dashboard/setup/jobs/<id>/stream`. `provisionNovamira` resolves for
-      // every failure it knows about and rejects for the rest, so the only thing
-      // this catch must guarantee is that no rejection escapes into an unhandled
-      // promise.
-      void (async () => {
+      const reservation = (async (): Promise<string> => {
         try {
-          const result = await provisionNovamira(
-            {
-              client,
-              hostingProfile: profile,
-              environment: options.environment,
-              fetch: options.fetch,
-              report: (level, message) => {
-                append(id, level, message);
-              },
-            },
-            { envId, aiAbilities: input.aiAbilities },
-          );
-          finishOk(id, result);
-        } catch (error) {
-          finishError(id, error);
+          // Before the record exists, so an unknown profile or an unreadable
+          // credential is a start failure rather than an instant failed job.
+          const client = await options.hosting.clientFromProfile(profile);
+          controller.signal.throwIfAborted();
+
+          reservations.delete(key);
+          evict();
+          const id = options.randomId?.() ?? randomBytes(16).toString("hex");
+          const startedAt = options.now();
+          jobs.set(id, {
+            id,
+            status: "running",
+            profile,
+            envId,
+            startedAt,
+            finishedAt: null,
+            events: [
+              { at: startedAt, level: "info", message: STARTED_MESSAGE },
+            ],
+            result: null,
+            error: null,
+          });
+
+          const task = (async () => {
+            try {
+              const result = await provision(
+                {
+                  client,
+                  hostingProfile: profile,
+                  environment: options.environment,
+                  fetch: options.fetch,
+                  signal: controller.signal,
+                  report: (level, message) => {
+                    append(id, level, message);
+                  },
+                },
+                { envId, aiAbilities: input.aiAbilities },
+              );
+              finishOk(id, result);
+            } catch (error) {
+              finishError(id, error);
+            }
+          })();
+          tasks.add(task);
+          void task.finally(() => tasks.delete(task));
+          return id;
+        } finally {
+          reservations.delete(key);
         }
       })();
-
-      return id;
+      reservations.set(key, reservation);
+      return reservation;
     },
 
     snapshot: (id) => {
@@ -314,6 +374,7 @@ export function createSetupJobService(
       const job = latestMatch(jobs, profile.trim(), envId.trim(), false);
       return job === undefined ? undefined : snapshotOf(job);
     },
+    shutdown,
   };
 }
 

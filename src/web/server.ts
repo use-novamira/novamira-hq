@@ -880,6 +880,9 @@ export function createDashboardServer(
   /* ---------------------------------------------------------------------- */
 
   const listen = async (address: ListenAddress): Promise<BoundAddress> => {
+    if (shutdown !== undefined) {
+      throw new CliError("conflict", "The dashboard server has been closed.");
+    }
     // Before any socket exists: a non-loopback bind never opens a listener.
     requireLoopbackHost(address.hostname);
     const server = createServer(handler);
@@ -927,18 +930,24 @@ export function createDashboardServer(
     };
   };
 
-  const close = async (): Promise<void> => {
-    const server = httpServer;
-    if (server === undefined) {
-      return;
-    }
-    // Keep-alive sockets would otherwise hold `close` open until they time out.
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => {
-      server.close(() => {
-        resolve();
-      });
-    });
+  let shutdown: Promise<void> | undefined;
+  const close = (): Promise<void> => {
+    if (shutdown !== undefined) return shutdown;
+    shutdown = (async () => {
+      const jobsStopped = setupJobs.shutdown();
+      const server = httpServer;
+      if (server !== undefined) {
+        // Keep-alive sockets would otherwise hold `close` open until timeout.
+        await new Promise<void>((resolve) => {
+          server.close(() => {
+            resolve();
+          });
+          server.closeAllConnections();
+        });
+      }
+      await jobsStopped;
+    })();
+    return shutdown;
   };
 
   return {
@@ -947,7 +956,7 @@ export function createDashboardServer(
     dispatch,
     listen,
     close,
-    closed: () => stopped ?? Promise.resolve(),
+    closed: () => shutdown ?? stopped ?? Promise.resolve(),
   };
 }
 

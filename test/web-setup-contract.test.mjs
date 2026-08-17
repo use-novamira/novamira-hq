@@ -37,7 +37,10 @@ import { createHostingClientFactory } from "../dist/hosting/factory.js";
 import { PROTECTED_RESOURCE_PATH } from "../dist/provisioning/compatibility.js";
 import { PHP_VERSION_COMMAND } from "../dist/provisioning/phpcompat.js";
 import { NOVAMIRA_LATEST_RELEASE_API } from "../dist/provisioning/plugin.js";
-import { createDashboardServer } from "../dist/web/index.js";
+import {
+  createDashboardServer,
+  createSetupJobService,
+} from "../dist/web/index.js";
 
 const TOKEN = "d".repeat(64);
 const TOKEN_HEADER = "x-novamira-dashboard-token";
@@ -116,6 +119,15 @@ function deferred() {
     release = resolve;
   });
   return { promise, release: () => release() };
+}
+
+function untilAborted(signal) {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    signal.addEventListener("abort", () => reject(signal.reason), {
+      once: true,
+    });
+  });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -480,6 +492,173 @@ test("3b: a second start for a running target reuses the job and runs nothing", 
     client.commands.filter((command) => command === PHP_VERSION_COMMAND).length,
     1,
   );
+});
+
+test("3c: target reservation is atomic before hosting client resolution", async () => {
+  const clientGate = deferred();
+  const client = fakeClient();
+  let resolutions = 0;
+  let provisions = 0;
+  const service = createSetupJobService({
+    hosting: {
+      clientFromProfile: async () => {
+        resolutions += 1;
+        await clientGate.promise;
+        return client;
+      },
+    },
+    environment: {},
+    fetch: fakeFetch(),
+    now: () => START,
+    randomId: () => "a".repeat(32),
+    provision: async ({ signal }) => {
+      provisions += 1;
+      return untilAborted(signal);
+    },
+  });
+
+  const first = service.start({
+    profile: "dev",
+    envId: "env-1",
+    aiAbilities: true,
+  });
+  const second = service.start({
+    profile: "dev",
+    envId: "env-1",
+    aiAbilities: false,
+  });
+  assert.strictEqual(second, first);
+  assert.equal(resolutions, 1);
+
+  clientGate.release();
+  assert.equal(await first, "a".repeat(32));
+  assert.equal(await second, "a".repeat(32));
+  assert.equal(provisions, 1);
+  await service.shutdown();
+});
+
+test("3d: all-running setup capacity rejects new targets", async () => {
+  let sequence = 0;
+  const service = createSetupJobService({
+    hosting: { clientFromProfile: async () => fakeClient() },
+    environment: {},
+    fetch: fakeFetch(),
+    now: () => START + sequence,
+    randomId: () => `${++sequence}`.padStart(32, "0"),
+    maxJobs: 2,
+    provision: ({ signal }) => untilAborted(signal),
+  });
+
+  await service.start({ profile: "dev", envId: "env-1", aiAbilities: true });
+  await service.start({ profile: "dev", envId: "env-2", aiAbilities: true });
+  await assert.rejects(
+    service.start({ profile: "dev", envId: "env-3", aiAbilities: true }),
+    (error) => error?.code === "conflict" && /capacity/.test(error.message),
+  );
+  await service.shutdown();
+});
+
+test("3e: shutdown owns a reservation still resolving its client", async () => {
+  const clientGate = deferred();
+  let provisions = 0;
+  const service = createSetupJobService({
+    hosting: {
+      clientFromProfile: async () => {
+        await clientGate.promise;
+        return fakeClient();
+      },
+    },
+    environment: {},
+    fetch: fakeFetch(),
+    now: () => START,
+    provision: async () => {
+      provisions += 1;
+    },
+  });
+
+  const start = service
+    .start({ profile: "dev", envId: "env-1", aiAbilities: true })
+    .then(
+      () => undefined,
+      (error) => error,
+    );
+  let stopped = false;
+  const shutdown = service.shutdown();
+  void shutdown.then(() => {
+    stopped = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(stopped, false, "shutdown awaits the client reservation");
+
+  clientGate.release();
+  await shutdown;
+  const error = await start;
+  assert.equal(error?.code, "conflict");
+  assert.equal(provisions, 0, "shutdown prevents a late launch");
+  assert.equal(service.latestForTarget("dev", "env-1"), undefined);
+});
+
+test("3f: a failed reservation preserves completed job history", async () => {
+  let sequence = 0;
+  const service = createSetupJobService({
+    hosting: {
+      clientFromProfile: async (profile) => {
+        if (profile === "bad") throw new Error("unreadable profile");
+        return fakeClient();
+      },
+    },
+    environment: {},
+    fetch: fakeFetch(),
+    now: () => START + sequence,
+    randomId: () => `${++sequence}`.padStart(32, "0"),
+    maxJobs: 1,
+    provision: async () => ({}),
+  });
+
+  const id = await service.start({
+    profile: "dev",
+    envId: "env-1",
+    aiAbilities: true,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(service.snapshot(id)?.status, "done");
+
+  await assert.rejects(
+    service.start({ profile: "bad", envId: "env-2", aiAbilities: true }),
+    /unreadable profile/,
+  );
+  assert.equal(service.snapshot(id)?.status, "done");
+  await service.shutdown();
+});
+
+test("3g: dashboard close cancels and awaits setup jobs", async () => {
+  const { server, client, gate } = await fixture({
+    gated: true,
+    setupPollMs: 1,
+  });
+  await sse(server, startRequest());
+
+  let closed = false;
+  const firstClose = server.close();
+  const secondClose = server.close();
+  assert.strictEqual(secondClose, firstClose, "close is idempotent");
+  void firstClose.then(() => {
+    closed = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(closed, false, "close awaits the in-flight provider call");
+
+  gate.release();
+  await firstClose;
+  assert.deepEqual(client.commands, [PHP_VERSION_COMMAND]);
+  await assert.rejects(
+    server.listen({ hostname: "127.0.0.1", port: 0 }),
+    (error) => error?.code === "conflict",
+  );
+
+  const refused = await sse(server, startRequest("profile=dev&env=env-2"));
+  assert.ok(refused.recorder.find("toast").markup.includes("danger"));
+  assert.deepEqual(client.commands, [PHP_VERSION_COMMAND]);
 });
 
 test("4: enableAiAbilities false disables it; an absent subtree keeps it on", async () => {

@@ -27,10 +27,52 @@ export interface WaitForOperationOptions {
   readonly sleep?: (milliseconds: number) => Promise<void>;
   /** Injectable clock; defaults to `Date.now`. */
   readonly now?: () => number;
+  readonly signal?: AbortSignal;
 }
 
-function realSleep(milliseconds: number): Promise<void> {
-  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+function realSleep(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    signal?.throwIfAborted();
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(abortReason(signal));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function abortReason(signal: AbortSignal | undefined): Error {
+  return signal?.reason instanceof Error
+    ? signal.reason
+    : new Error("The operation was cancelled.");
+}
+
+async function sleepWithSignal(
+  sleep: Promise<void>,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  if (signal === undefined) return sleep;
+  signal.throwIfAborted();
+  await new Promise<void>((resolve, reject) => {
+    const onAbort = (): void => {
+      reject(abortReason(signal));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    void sleep.then(
+      () => {
+        signal.removeEventListener("abort", onAbort);
+        resolve();
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      },
+    );
+  });
 }
 
 /**
@@ -59,7 +101,9 @@ export async function waitForOperationStatus(
   const now = options.now ?? Date.now;
   const started = now();
   for (;;) {
+    options.signal?.throwIfAborted();
     const status = await client.operationStatus(operationId);
+    options.signal?.throwIfAborted();
     if (status.done || status.failed) return status;
     if (now() - started >= options.timeoutSeconds * 1000) {
       const safeOperationId = redactOperationText(
@@ -80,7 +124,9 @@ export async function waitForOperationStatus(
         },
       );
     }
-    await sleep(options.intervalSeconds * 1000);
+    await (options.sleep === undefined
+      ? realSleep(options.intervalSeconds * 1000, options.signal)
+      : sleepWithSignal(sleep(options.intervalSeconds * 1000), options.signal));
   }
 }
 
