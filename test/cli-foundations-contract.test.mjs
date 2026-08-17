@@ -2,7 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert/strict";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -91,6 +100,7 @@ import {
   truncate,
 } from "../dist/cli/print.js";
 import { createRenderer } from "../dist/output/render.js";
+import { MAX_SECRET_BYTES } from "../dist/credentials/resolve.js";
 
 /* -------------------------------------------------------------------------- */
 /* Harness                                                                    */
@@ -444,6 +454,94 @@ test("the default CommandIo reads stdin once and writes owner-only files", async
       const info = await stat(path);
       assert.equal(info.mode & 0o777, 0o600);
     }
+  });
+});
+
+test("secret stdin and named files enforce the credential size and safety boundary", async (t) => {
+  const spec = ADMIN_PASSWORD_SECRET;
+  const oversized = "x".repeat(MAX_SECRET_BYTES + 1);
+  const stdinIo = createCommandIo({
+    env: {},
+    readStdin: async () => oversized,
+  });
+  await assert.rejects(readSecret({ stdin: true }, spec, stdinIo), {
+    code: "usage_error",
+  });
+
+  if (process.platform === "win32") {
+    t.skip("POSIX ownership and symlink behavior is asserted on Unix only");
+    return;
+  }
+  await isolated(async (root) => {
+    const io = createCommandIo({ env: {} });
+    const path = join(root, "password.txt");
+    await writeFile(path, "safe-password\n", { mode: 0o600 });
+    assert.equal(await readSecret({ file: path }, spec, io), "safe-password");
+
+    await chmod(path, 0o644);
+    await assert.rejects(readSecret({ file: path }, spec, io), {
+      code: "credential_invalid",
+    });
+
+    await chmod(path, 0o600);
+    await writeFile(path, oversized);
+    await assert.rejects(readSecret({ file: path }, spec, io), {
+      code: "credential_invalid",
+    });
+
+    const target = join(root, "target.txt");
+    const link = join(root, "password-link.txt");
+    await writeFile(target, "linked-password", { mode: 0o600 });
+    await symlink(target, link);
+    await assert.rejects(readSecret({ file: link }, spec, io), {
+      code: "credential_invalid",
+    });
+  });
+});
+
+test("private output atomically replaces a symlink without touching its target", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("POSIX symlink and mode behavior is asserted on Unix only");
+    return;
+  }
+  await isolated(async (root) => {
+    const io = createCommandIo({ env: {} });
+    const target = join(root, "target.txt");
+    const destination = join(root, "password.txt");
+    await writeFile(target, "keep-me", { mode: 0o600 });
+    await symlink(target, destination);
+
+    await io.writePrivateFile(destination, "new-secret");
+
+    assert.equal(await readFile(target, "utf8"), "keep-me");
+    assert.equal(await readFile(destination, "utf8"), "new-secret");
+    assert.equal((await lstat(destination)).isSymbolicLink(), false);
+    assert.equal((await stat(destination)).mode & 0o777, 0o600);
+  });
+});
+
+test("private output is secured before content reaches its temporary file", async () => {
+  await isolated(async (root) => {
+    const observations = [];
+    const security = {
+      async secureDirectory() {
+        throw new Error("a user-selected parent must not be changed");
+      },
+      async secureFile(path) {
+        observations.push(await readFile(path, "utf8"));
+      },
+      async verifyDirectory() {
+        return true;
+      },
+      async verifyFile() {
+        return true;
+      },
+    };
+    const io = createCommandIo({ env: {}, security });
+
+    await io.writePrivateFile(join(root, "password.txt"), "new-secret");
+
+    assert.deepEqual(observations, ["", "new-secret"]);
   });
 });
 

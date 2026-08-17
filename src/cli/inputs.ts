@@ -20,13 +20,15 @@
  * contract defines as "an absent secret" and which exits 3 rather than 2.
  */
 
-import { mkdir, open, readFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { constants } from "node:fs";
+import { lstat, open, readFile } from "node:fs/promises";
 
+import { atomicWritePrivateFile } from "../config/atomic-write.js";
 import {
   defaultFileSecurity,
-  type FileSecurity,
+  type VerifiedFileSecurity,
 } from "../config/file-security.js";
+import { MAX_SECRET_BYTES } from "../credentials/resolve.js";
 import { CliError } from "../errors.js";
 
 /* -------------------------------------------------------------------------- */
@@ -69,9 +71,11 @@ export interface CommandIo {
   /** The environment secret references are resolved from. */
   readonly env: NodeJS.ProcessEnv;
   /** All of stdin, decoded as UTF-8. Memoized: repeated calls agree. */
-  readStdin(): Promise<string>;
+  readStdin(maxBytes?: number): Promise<string>;
   /** Read a user-named text file. Rejects with the raw filesystem error. */
   readFile(path: string): Promise<string>;
+  /** Read an owner-only regular file without following a final symlink. */
+  readPrivateFile?(path: string, maxBytes: number): Promise<string>;
   /** Create or truncate `path` with owner-only permissions and write `content`. */
   writePrivateFile(path: string, content: string): Promise<void>;
 }
@@ -80,19 +84,36 @@ export interface CommandIoOptions {
   /** Defaults to `process.env`. */
   readonly env?: NodeJS.ProcessEnv;
   /** Defaults to draining file descriptor 0. */
-  readonly readStdin?: () => Promise<string>;
+  readonly readStdin?: (maxBytes?: number) => Promise<string>;
   /** Defaults to the platform file security used by the config store. */
-  readonly security?: FileSecurity;
+  readonly security?: VerifiedFileSecurity;
+  /** Defaults to `process.platform`; injectable for file-security tests. */
+  readonly platform?: NodeJS.Platform;
 }
 
-async function drainStdin(): Promise<string> {
+async function drainStdin(maxBytes?: number): Promise<string> {
   // `process.stdin`'s async iterator is typed as yielding `any`; narrowing the
   // stream to a typed AsyncIterable keeps the loop body checked.
   const stream: AsyncIterable<Buffer | string> = process.stdin;
   const chunks: Buffer[] = [];
-  for await (const chunk of stream)
-    chunks.push(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk);
+  let size = 0;
+  for await (const chunk of stream) {
+    const buffer =
+      typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk;
+    size += buffer.byteLength;
+    if (maxBytes !== undefined && size > maxBytes) throw secretTooLarge();
+    chunks.push(buffer);
+  }
   return Buffer.concat(chunks).toString("utf8");
+}
+
+function secretTooLarge(path?: string): CliError {
+  const description = path ?? "standard input";
+  return new CliError(
+    path === undefined ? "usage_error" : "credential_invalid",
+    `The secret read from ${description} is larger than ${String(MAX_SECRET_BYTES)} bytes.`,
+    { details: { source: path === undefined ? "stdin" : `file:${path}` } },
+  );
 }
 
 /**
@@ -104,30 +125,123 @@ async function drainStdin(): Promise<string> {
 export function createCommandIo(options: CommandIoOptions = {}): CommandIo {
   const env = options.env ?? process.env;
   const read = options.readStdin ?? drainStdin;
-  const security = options.security ?? defaultFileSecurity();
+  const platform = options.platform ?? process.platform;
+  const security = options.security ?? defaultFileSecurity(platform);
   let pending: Promise<string> | undefined;
 
   return {
     env,
-    readStdin(): Promise<string> {
-      pending ??= read();
-      return pending;
+    async readStdin(maxBytes?: number): Promise<string> {
+      pending ??= read(maxBytes);
+      const value = await pending;
+      if (maxBytes !== undefined && Buffer.byteLength(value, "utf8") > maxBytes)
+        throw secretTooLarge();
+      return value;
     },
     async readFile(path: string): Promise<string> {
       return readFile(path, "utf8");
     },
-    async writePrivateFile(path: string, content: string): Promise<void> {
-      const parent = dirname(path);
-      if (parent !== "") await mkdir(parent, { recursive: true });
-      // `mode` only applies when the file is created, so tighten afterwards to
-      // cover the overwrite case as well. This mirrors Go's OpenFile + Chmod.
-      const handle = await open(path, "w", 0o600);
+    async readPrivateFile(path: string, maxBytes: number): Promise<string> {
+      const flags =
+        platform === "win32"
+          ? constants.O_RDONLY
+          : constants.O_RDONLY | constants.O_NOFOLLOW;
+      let handle;
       try {
-        await handle.writeFile(content, { encoding: "utf8" });
+        const before = await lstat(path);
+        if (before.isSymbolicLink())
+          throw new CliError(
+            "credential_invalid",
+            `The secret file ${path} must not be a symbolic link.`,
+            { details: { source: `file:${path}` } },
+          );
+        if (!before.isFile())
+          throw new CliError(
+            "credential_invalid",
+            `The secret file ${path} is not a regular file.`,
+          );
+        if (before.size > maxBytes) throw secretTooLarge(path);
+
+        if (platform === "win32") {
+          if (!(await security.verifyFile(path)))
+            throw new CliError(
+              "credential_invalid",
+              `The secret file ${path} is not owner-only.`,
+              { details: { source: `file:${path}` } },
+            );
+          const verified = await lstat(path);
+          if (
+            verified.isSymbolicLink() ||
+            verified.dev !== before.dev ||
+            verified.ino !== before.ino
+          )
+            throw new CliError(
+              "credential_invalid",
+              `The secret file ${path} changed while it was being verified.`,
+            );
+        }
+
+        handle = await open(path, flags);
+        const info = await handle.stat();
+        if (
+          !info.isFile() ||
+          info.dev !== before.dev ||
+          info.ino !== before.ino
+        )
+          throw new CliError(
+            "credential_invalid",
+            `The secret file ${path} changed while it was being opened.`,
+          );
+        if (info.size > maxBytes) throw secretTooLarge(path);
+
+        const ownerMatches =
+          process.getuid === undefined || info.uid === process.getuid();
+        const ownerOnly =
+          platform === "win32" || (ownerMatches && (info.mode & 0o077) === 0);
+        if (!ownerOnly)
+          throw new CliError(
+            "credential_invalid",
+            `The secret file ${path} is not owner-only.`,
+            { details: { source: `file:${path}` } },
+          );
+
+        const chunks: Buffer[] = [];
+        let size = 0;
+        for (;;) {
+          const chunk = Buffer.alloc(Math.min(16 * 1024, maxBytes + 1 - size));
+          const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
+          if (bytesRead === 0) break;
+          size += bytesRead;
+          if (size > maxBytes) throw secretTooLarge(path);
+          chunks.push(chunk.subarray(0, bytesRead));
+        }
+        return Buffer.concat(chunks).toString("utf8");
+      } catch (error) {
+        if (
+          (error as NodeJS.ErrnoException).code === "ELOOP" ||
+          (error as NodeJS.ErrnoException).code === "EMLINK"
+        )
+          throw new CliError(
+            "credential_invalid",
+            `The secret file ${path} must not be a symbolic link.`,
+            { cause: error, details: { source: `file:${path}` } },
+          );
+        if (
+          error instanceof CliError ||
+          (error as NodeJS.ErrnoException).code === "ENOENT"
+        )
+          throw error;
+        throw new CliError(
+          "credential_invalid",
+          `The secret file ${path} could not be safely read.`,
+          { cause: error, details: { source: `file:${path}` } },
+        );
       } finally {
-        await handle.close();
+        await handle?.close();
       }
-      await security.secureFile(path);
+    },
+    async writePrivateFile(path: string, content: string): Promise<void> {
+      await atomicWritePrivateFile(path, content, security);
     },
   };
 }
@@ -317,7 +431,7 @@ export async function readSecret(
   }
 
   if (source.stdin === true) {
-    const value = trimTrailingNewlines(await io.readStdin());
+    const value = trimTrailingNewlines(await io.readStdin(MAX_SECRET_BYTES));
     if (value === "") {
       throw new CliError(
         "credential_missing",
@@ -331,8 +445,11 @@ export async function readSecret(
   const path = source.file ?? "";
   let value: string;
   try {
-    value = trimTrailingNewlines(await io.readFile(path));
+    value = trimTrailingNewlines(
+      await (io.readPrivateFile?.(path, MAX_SECRET_BYTES) ?? io.readFile(path)),
+    );
   } catch (error) {
+    if (error instanceof CliError) throw error;
     throw new CliError(
       "credential_missing",
       `Failed to read ${spec.label.replace(/^The /, "the ")} from ${path}.`,

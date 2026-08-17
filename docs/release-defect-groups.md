@@ -127,7 +127,7 @@ secret-shaped fields, URL userinfo, and encoded signed-query values from both
 success and failure surfaces. Provider fixtures cover successful and failed
 secret echoes without changing the values sent on the wire.
 
-## Session 7: Local Secret I/O
+## Session 7: Local Secret I/O (Done)
 
 Defects: **DEF-003, DEF-021, DEF-022**
 
@@ -143,6 +143,12 @@ boundaries:
 Use shared secure-file primitives where they already exist instead of creating a
 second permissions or atomic-write implementation. Add focused runner and file
 safety tests, with platform-specific behavior injected where necessary.
+
+Completed with a fixed macOS Security.framework bridge that sends credential
+content over stdin, bounded stdin and owner-only regular-file secret reads that
+reject symlinks, and atomic private output whose temporary file is secured
+before content is written. Regression tests cover argv isolation, size and file
+safety boundaries, symlink replacement, and pre-write permissions.
 
 ## Session 8: Config Trust Boundary
 

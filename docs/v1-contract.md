@@ -277,9 +277,10 @@ empty-string override is treated as unset.
 
 The OS credential service is `ai.novamira.hq` and never `ai.novamira.cli`;
 Windows Credential Manager targets are `ai.novamira.hq/<id>`. Backends are inbox
-platform commands invoked without a shell — macOS `security`, Linux
-`secret-tool`, Windows Credential Manager through PowerShell `Add-Type` P/Invoke
-of Advapi32 — with an explicit owner-only file fallback under
+platform commands invoked without a shell — macOS `security` for reads and
+deletes plus an `osascript` Security.framework bridge for stdin-only writes,
+Linux `secret-tool`, Windows Credential Manager through PowerShell `Add-Type`
+P/Invoke of Advapi32 — with an explicit owner-only file fallback under
 `credentials/v1/<id>.json` selected only when the platform command is
 unavailable or is explicitly requested. The file fallback is not OS-backed
 encryption and warns on first use.

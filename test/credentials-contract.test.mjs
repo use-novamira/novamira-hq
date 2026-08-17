@@ -343,6 +343,39 @@ test("a killed keychain command is an integration failure, never a missing crede
   );
 });
 
+test("macOS keychain replacement sends the secret only through stdin", async () => {
+  const calls = [];
+  const executor = {
+    async execute(command, args, stdin, environment) {
+      calls.push({ command, args, stdin, environment });
+      return { code: 0, signal: null, truncated: false, stdout: "" };
+    },
+  };
+  const account = "c".repeat(64);
+  const serialized = `${PLACEHOLDER}\nwith unicode \u00e0 and ${"x".repeat(512)}`;
+
+  await new MacOsKeychainBackend(executor).replace(account, serialized);
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command, "osascript");
+  assert.deepEqual(calls[0].args.slice(0, 3), ["-l", "JavaScript", "-e"]);
+  assert.deepEqual(calls[0].args.slice(-2), [account, CREDENTIAL_SERVICE]);
+  assert.equal(calls[0].stdin, serialized);
+  assert.equal(calls[0].environment, undefined);
+  assert.equal(
+    calls[0].args.some((arg) => arg.includes(serialized)),
+    false,
+  );
+  assert.equal(
+    calls[0].args.some((arg) =>
+      arg.includes(Buffer.from(serialized, "utf8").toString("hex")),
+    ),
+    false,
+  );
+  assert.match(calls[0].args[3], /readDataToEndOfFile/);
+  assert.match(calls[0].args[3], /SecItemUpdate/);
+});
+
 test("the spawning executor reports a killed child distinguishably", async (t) => {
   if (process.platform === "win32") {
     t.skip("POSIX signals are asserted on Unix only");

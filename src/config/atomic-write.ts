@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { open, readFile, rename, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { dirname, basename, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { FileSecurity } from "./file-security.js";
@@ -12,8 +12,30 @@ export async function atomicWriteFile(
   content: string,
   security: FileSecurity,
 ): Promise<void> {
+  await writeAtomically(destination, content, security, true);
+}
+
+/**
+ * Atomically writes a private file selected by the user without changing the
+ * permissions of its parent directory.
+ */
+export async function atomicWritePrivateFile(
+  destination: string,
+  content: string,
+  security: FileSecurity,
+): Promise<void> {
+  await writeAtomically(destination, content, security, false);
+}
+
+async function writeAtomically(
+  destination: string,
+  content: string,
+  security: FileSecurity,
+  secureParent: boolean,
+): Promise<void> {
   const directory = dirname(destination);
-  await secureDirectory(directory, security);
+  if (secureParent) await secureDirectory(directory, security);
+  else await mkdir(directory, { recursive: true });
   const temporary = join(
     directory,
     `.${basename(destination)}.${String(process.pid)}.${randomUUID()}.tmp`,
@@ -23,6 +45,9 @@ export async function atomicWriteFile(
     const handle = await open(temporary, "wx", 0o600);
     created = true;
     try {
+      // Windows ignores the POSIX creation mode and inherits the directory ACL,
+      // so privacy must be established before any content reaches the file.
+      await security.secureFile(temporary);
       await handle.writeFile(content, { encoding: "utf8" });
       await handle.sync();
     } finally {

@@ -15,6 +15,27 @@ import { CliError } from "../errors.js";
 export const CREDENTIAL_SERVICE = "ai.novamira.hq";
 export const CREDENTIAL_LABEL = "Novamira HQ";
 
+const MACOS_KEYCHAIN_WRITE_SCRIPT = String.raw`
+ObjC.import('Foundation');
+ObjC.import('Security');
+function run(argv) {
+  const account = argv[0];
+  const service = argv[1];
+  const secret = $.NSFileHandle.fileHandleWithStandardInput.readDataToEndOfFile;
+  const query = $.NSMutableDictionary.dictionary;
+  query.setObjectForKey($.kSecClassGenericPassword, $.kSecClass);
+  query.setObjectForKey($(service), $.kSecAttrService);
+  query.setObjectForKey($(account), $.kSecAttrAccount);
+  const update = $.NSMutableDictionary.dictionary;
+  update.setObjectForKey(secret, $.kSecValueData);
+  let status = $.SecItemUpdate(query, update);
+  if (status === -25300) {
+    query.setObjectForKey(secret, $.kSecValueData);
+    status = $.SecItemAdd(query, null);
+  }
+  if (status !== 0) throw new Error('Keychain write failed with status ' + status);
+}`;
+
 export interface CommandResult {
   /** Exit status, or `null` when the child was killed by a signal. */
   readonly code: number | null;
@@ -196,33 +217,21 @@ export class MacOsKeychainBackend extends CommandCredentialBackend {
   }
 
   async replace(account: string, serialized: string): Promise<void> {
-    // The secret MUST be passed as the inline value of `-w`. `security
-    // add-generic-password -w` with no inline value does not read the secret
-    // from stdin; it drops into the interactive "password data" / "retype
-    // password" prompt, which is backed by readpassphrase(3) and silently
-    // truncates input at 128 bytes. Provider API keys can exceed that (Pantheon
-    // machine tokens and WP Engine passwords in particular), so any
-    // prompt/stdin approach risks storing a truncated, unusable record — and
-    // feeding it zero or one line instead stores an empty one. Inline
-    // `-w <value>` has no length limit.
-    //
-    // Trade-off: the value is briefly visible in this process's argv (e.g. to
-    // `ps`). That is unavoidable with the `security` CLI for secrets over 128
-    // bytes, the exposure window is momentary, and macOS restricts argv
-    // visibility to the same user. This is the OS keychain's own argv, never
-    // HQ's: no HQ command accepts a secret-valued option. Linux (secret-tool)
-    // and Windows (CredWrite) read the secret from stdin without a length cap
-    // and keep using it.
-    const result = await this.executor.execute("security", [
-      "add-generic-password",
-      "-U",
-      "-s",
-      CREDENTIAL_SERVICE,
-      "-a",
-      account,
-      "-w",
+    // `security add-generic-password -w` requires the value in argv, while its
+    // interactive prompt truncates long values. JXA calls Security.framework
+    // directly and reads the complete secret from stdin instead.
+    const result = await this.executor.execute(
+      "osascript",
+      [
+        "-l",
+        "JavaScript",
+        "-e",
+        MACOS_KEYCHAIN_WRITE_SCRIPT,
+        account,
+        CREDENTIAL_SERVICE,
+      ],
       serialized,
-    ]);
+    );
     this.requireSuccess(result);
   }
 
