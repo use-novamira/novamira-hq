@@ -173,7 +173,7 @@ prove an unsafe attacker-controlled API origin is rejected before credential
 resolution, doctor reports and repairs unsafe storage, and dashboard fixtures
 exercise the production private-write path.
 
-## Session 9: Lock Recovery Correctness
+## Session 9: Lock Recovery Correctness (Done)
 
 Defects: **DEF-009, DEF-024**
 
@@ -188,6 +188,13 @@ Regression tests should use independent lock managers and controlled
 interleavings, not only in-process queueing. Both defects must be fixed under the
 same ownership protocol so malformed-lock handling does not reintroduce the
 multiple-owner race.
+
+Completed with unique owner tokens, atomically published recovery claims tied to
+the inspected filesystem identity, and ownership verification before entering
+or releasing a critical section. Old malformed locks and abandoned recovery
+claims are recoverable while fresh or live claims remain protected. Controlled
+independent-manager tests cover concurrent stale recovery, malformed lock age,
+replacement races, and obsolete releases.
 
 ## Session 10: Setup-Job Concurrency and Lifecycle
 
