@@ -1022,9 +1022,8 @@ test("a site URL HQ would never advertise is rejected locally", async () => {
 
 test("a --url carrying userinfo is refused without repeating it", async () => {
   // The failure envelope goes to stdout in --json mode and into CI logs.
-  // `redact()` does not help here: `url` is not a secret-looking key, a bare
-  // `user:pass@host` has no query string, and `error.message` is never
-  // redacted — so the value must never enter the CliError in the first place.
+  // Normalize before constructing the CliError as defense in depth rather than
+  // relying on the output boundary to be the first component that scrubs it.
   const client = fakeClient();
   const { run } = harness({ client, overrides: { fetch: forbiddenFetch() } });
   const { envelope, stdout, stderr } = await run([

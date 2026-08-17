@@ -22,6 +22,7 @@
  */
 
 import type { NovamiraSetupResult } from "./setup.js";
+import { redactText } from "../output/redact.js";
 
 /** The separate CLI that owns the site credential. HQ only prints its name. */
 export const SITE_CLI_EXECUTABLE = "novamira";
@@ -59,7 +60,7 @@ export function handoffData(
     url: result.siteUrl,
     plugin: {
       slug: result.plugin.slug,
-      source: result.plugin.source,
+      source: redactText(result.plugin.source),
       version: result.plugin.version,
       activated: result.plugin.activated,
       network_activated: result.plugin.networkActivated,

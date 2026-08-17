@@ -33,6 +33,7 @@ import type { ProviderClient } from "../hosting/client.js";
 import { shellJoin } from "../hosting/shell.js";
 import type { OperationStatus } from "../hosting/types.js";
 import { asRecord } from "../json.js";
+import { redactAssociatedText, redactText } from "../output/redact.js";
 import {
   discardBody,
   readBoundedText,
@@ -150,7 +151,7 @@ function releaseTag(release: unknown): string {
 function pluginRequestTimeout(source: string): CliError {
   return new CliError(
     "timeout",
-    `Timed out reading the plugin source ${source}.`,
+    `Timed out reading the plugin source ${redactText(source)}.`,
     { retryable: true, details: { source } },
   );
 }
@@ -182,7 +183,7 @@ async function refusePluginRedirect(
   await discardBody(response);
   throw new CliError(
     "network_error",
-    `The plugin source ${source} redirected; redirects are not permitted.`,
+    `The plugin source ${redactText(source)} redirected; redirects are not permitted.`,
     { retryable: false, details: { source, status: response.status } },
   );
 }
@@ -282,7 +283,7 @@ export async function validateRemotePluginSource(
     if (error instanceof CliError) throw error;
     throw new CliError(
       "network_error",
-      `Failed to validate the plugin source ${source}.`,
+      `Failed to validate the plugin source ${redactText(source)}.`,
       { retryable: true, cause: error, details: { source } },
     );
   }
@@ -293,7 +294,7 @@ export async function validateRemotePluginSource(
   if (response.status < 200 || response.status >= 400) {
     throw new CliError(
       "not_found",
-      `The plugin source ${source} is not downloadable: HTTP ${String(response.status)}.`,
+      `The plugin source ${redactText(source)} is not downloadable: HTTP ${String(response.status)}.`,
       { details: { source, status: response.status } },
     );
   }
@@ -437,13 +438,17 @@ export async function preflightWpCli(
   }
   if (!status?.failed) return;
   const hint = await preflightHint(client, envId, budget);
+  const operationId = redactAssociatedText(status.operationId, status);
   throw new CliError(
     "provider_error",
-    `WP-CLI preflight failed before plugin install: ${status.message ?? "provider reported failure"}${hint}`,
+    redactAssociatedText(
+      `WP-CLI preflight failed before plugin install: ${status.message ?? "provider reported failure"}${hint}`,
+      status,
+    ),
     {
       details: {
         provider: status.provider,
-        operationId: status.operationId,
+        operationId,
         status: status.status,
       },
     },
@@ -480,13 +485,17 @@ export async function installedPluginIsActive(
   }
   if (status === undefined) return false;
   if (status.failed) {
+    const operationId = redactAssociatedText(status.operationId, status);
     throw new CliError(
       "provider_error",
-      `Plugin status operation ${status.operationId} failed after install: ${status.message ?? "provider reported failure"}`,
+      redactAssociatedText(
+        `Plugin status operation ${status.operationId} failed after install: ${status.message ?? "provider reported failure"}`,
+        status,
+      ),
       {
         details: {
           provider: status.provider,
-          operationId: status.operationId,
+          operationId,
           status: status.status,
         },
       },
@@ -523,13 +532,17 @@ export async function activatePlugin(
     throw contextualize(error, "Plugin activation failed after install");
   }
   if (status?.failed === true) {
+    const operationId = redactAssociatedText(status.operationId, status);
     throw new CliError(
       "provider_error",
-      `Plugin activation operation ${status.operationId} failed after install: ${status.message ?? "provider reported failure"}`,
+      redactAssociatedText(
+        `Plugin activation operation ${status.operationId} failed after install: ${status.message ?? "provider reported failure"}`,
+        status,
+      ),
       {
         details: {
           provider: status.provider,
-          operationId: status.operationId,
+          operationId,
           status: status.status,
         },
       },

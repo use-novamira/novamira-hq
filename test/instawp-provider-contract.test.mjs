@@ -304,11 +304,11 @@ test("validate prefers the profile team id and tolerates an empty team list", as
 
 test("validate fails loudly when the envelope reports status false", async () => {
   await withClient(
-    [{ body: `{"status":false,"message":"Invalid API key."}` }],
+    [{ body: `{"status":false,"message":"Rejected ${API_KEY}"}` }],
     async (client) => {
       await assert.rejects(client.validate(), (error) => {
         assert.equal(error.code, "provider_error");
-        assert.match(error.message, /Invalid API key\./);
+        assert.match(error.message, /\[REDACTED\]/);
         assert.equal(error.message.includes(API_KEY), false);
         return true;
       });
@@ -607,7 +607,7 @@ test("create-site posts to /sites and never leaks the site credentials", async (
   await withClient(
     [
       {
-        body: `{"status":true,"message":"Site installation work is completed, Your website is ready!","data":{"id":1405177,"wp_url":"https://demo-site.instawp.xyz","wp_username":"admin","wp_password":"wp-secret","s_hash":"hash-secret"}}`,
+        body: `{"status":true,"message":"Completed with ${API_KEY}","echoed":"${API_KEY}","data":{"id":1405177,"wp_url":"https://demo-site.instawp.xyz","wp_username":"admin","wp_password":"wp-secret","s_hash":"hash-secret"}}`,
       },
     ],
     async (client, state) => {

@@ -49,6 +49,7 @@ import {
 } from "../hosting/client.js";
 import { waitForOperationStatus } from "../hosting/operations.js";
 import { shellJoin, wpCliCommandPayload } from "../hosting/shell.js";
+import { redactAssociatedText } from "../output/redact.js";
 import type { InvocationWarning } from "../output/render.js";
 import {
   checkSiteCompatibility,
@@ -383,13 +384,17 @@ export async function provisionNovamira(
       budget,
     );
     if (status.failed) {
+      const operationId = redactAssociatedText(status.operationId, status);
       throw new CliError(
         "provider_error",
-        `Plugin install operation ${status.operationId} failed: ${status.message ?? "provider reported failure"}${await installHint()}`,
+        redactAssociatedText(
+          `Plugin install operation ${status.operationId} failed: ${status.message ?? "provider reported failure"}${await installHint()}`,
+          status,
+        ),
         {
           details: {
             provider: status.provider,
-            operationId: status.operationId,
+            operationId,
             status: status.status,
           },
         },
@@ -398,7 +403,10 @@ export async function provisionNovamira(
   } else if (installResult.status >= 400) {
     throw new CliError(
       "provider_error",
-      `Plugin install failed: provider returned status ${String(installResult.status)}: ${installResult.message ?? "request failed"}${await installHint()}`,
+      redactAssociatedText(
+        `Plugin install failed: provider returned status ${String(installResult.status)}: ${installResult.message ?? "request failed"}${await installHint()}`,
+        installResult,
+      ),
       {
         details: {
           provider: installResult.provider,

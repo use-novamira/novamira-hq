@@ -21,6 +21,7 @@ import { createServer } from "node:http";
 import test from "node:test";
 
 import { SecretValue } from "../dist/credentials/store.js";
+import { renderRaw } from "../dist/cli/print.js";
 import { wpCliResultsObservable } from "../dist/hosting/client.js";
 import { createHttpClient } from "../dist/hosting/http-client.js";
 import { createKinstaClient } from "../dist/hosting/providers/kinsta.js";
@@ -533,6 +534,23 @@ test("the capabilities read needs no network call", async () => {
   });
 });
 
+test("raw reads redact provider credentials echoed under ordinary keys", async () => {
+  await withKinsta(
+    [{ body: `{"echoed":"${API_KEY}"}` }],
+    SCOPED,
+    async ({ client, requests }) => {
+      const value = await client.read({
+        kind: "plugins",
+        envId: "env-1",
+      });
+      assert.equal(requests[0].authorization, `Bearer ${API_KEY}`);
+      const output = JSON.stringify(renderRaw(value));
+      assert.equal(output.includes(API_KEY), false, output);
+      assert.match(output, /\[REDACTED\]/);
+    },
+  );
+});
+
 test("action requests map to the documented Kinsta endpoints", async () => {
   const table = [
     [
@@ -843,6 +861,33 @@ test("an action result falls back to the HTTP status", async () => {
   );
 });
 
+test("echoed action input secrets are redacted from successful results", async () => {
+  const password = "wordpress-admin-password";
+  await withKinsta(
+    [
+      {
+        body: JSON.stringify({
+          status: 202,
+          message: `queued ${password}`,
+          echoed: password,
+        }),
+      },
+    ],
+    SCOPED,
+    async ({ client, requests }) => {
+      const result = await client.action({
+        kind: "reset-site",
+        siteId: "site-1",
+        body: { admin_password: password },
+      });
+      assert.equal(requests[0].body.includes(password), true);
+      const serialized = JSON.stringify(serializeActionResult(result));
+      assert.equal(serialized.includes(password), false, serialized);
+      assert.match(serialized, /\[REDACTED\]/);
+    },
+  );
+});
+
 test("bulk plugin updates collect the updatable inventory", async () => {
   const inventory = JSON.stringify({
     environment: {
@@ -1086,6 +1131,31 @@ test("provider failures map onto the shared taxonomy and never leak the key", as
     SCOPED,
     async ({ client }) => {
       await assert.rejects(client.getSite("missing"), { code: "not_found" });
+    },
+  );
+
+  const password = "failed-wordpress-password";
+  await withKinsta(
+    [{ status: 422, body: `{"message":"Rejected ${password}"}` }],
+    SCOPED,
+    async ({ client, requests }) => {
+      await assert.rejects(
+        client.action({
+          kind: "reset-site",
+          siteId: "site-1",
+          body: { admin_password: password },
+        }),
+        (error) => {
+          const serialized = JSON.stringify({
+            message: error.message,
+            details: error.details,
+          });
+          assert.equal(serialized.includes(password), false, serialized);
+          assert.match(serialized, /\[REDACTED\]/);
+          return true;
+        },
+      );
+      assert.equal(requests[0].body.includes(password), true);
     },
   );
 });

@@ -22,6 +22,11 @@
  */
 
 import { CliError } from "../../errors.js";
+import {
+  redactAssociatedText,
+  registerSensitiveValues,
+  registeredSensitiveValues,
+} from "../../output/redact.js";
 import { DEFAULT_ROCKETNET_USERNAME_ENV } from "../../config/schema.js";
 import {
   type ActionBody,
@@ -357,11 +362,16 @@ export const createRocketNetClient: ProviderClientFactory = (context) => {
       const path = "/v1/account/me";
       const envelope = await getEnvelope(path);
       if (envelope.success !== true) {
-        throw new CliError(
+        const error = new CliError(
           "provider_error",
-          `${LABEL} API validation failed: ${joinMessages(envelope.messages)}`,
+          redactAssociatedText(
+            `${LABEL} API validation failed: ${joinMessages(envelope.messages)}`,
+            envelope,
+          ),
           { details: { provider: PROVIDER, path } },
         );
+        registerSensitiveValues(error, registeredSensitiveValues(envelope));
+        throw error;
       }
       const result = isRecord(envelope.result) ? envelope.result : {};
       const clientRecord = isRecord(result.client) ? result.client : {};
@@ -696,11 +706,16 @@ export const createRocketNetClient: ProviderClientFactory = (context) => {
 
 function requireSuccess(envelope: Record<string, unknown>, path: string): void {
   if (envelope.success === true) return;
-  throw new CliError(
+  const error = new CliError(
     "provider_error",
-    `${LABEL} API request to ${path} failed: ${joinMessages(envelope.messages)}`,
+    redactAssociatedText(
+      `${LABEL} API request to ${path} failed: ${joinMessages(envelope.messages)}`,
+      envelope,
+    ),
     { details: { provider: PROVIDER, path } },
   );
+  registerSensitiveValues(error, registeredSensitiveValues(envelope));
+  throw error;
 }
 
 function joinMessages(value: unknown): string {
@@ -1182,14 +1197,16 @@ function extractSiteId(body: ActionBody): string {
  * stdout, a diagnostic, or the dashboard.
  */
 function redactSecrets(value: unknown): unknown {
-  if (Array.isArray(value)) return (value as unknown[]).map(redactSecrets);
-  if (isRecord(value)) {
+  let safe: unknown;
+  if (Array.isArray(value)) safe = (value as unknown[]).map(redactSecrets);
+  else if (isRecord(value)) {
     const redacted: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value))
       redacted[key] = isSecretKey(key) ? "redacted" : redactSecrets(child);
-    return redacted;
-  }
-  return value;
+    safe = redacted;
+  } else safe = value;
+  registerSensitiveValues(safe, registeredSensitiveValues(value));
+  return safe;
 }
 
 function isSecretKey(key: string): boolean {

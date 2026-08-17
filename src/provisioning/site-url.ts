@@ -62,11 +62,9 @@ const USERINFO = /^([A-Za-z][A-Za-z0-9+.-]*:\/\/)[^/?#]*@/;
 /**
  * The form of a URL a diagnostic may print. `https://admin:hunter2@example.com`
  * is a credential, and this module's own rejection of it would otherwise echo
- * it into `error.message` and into `details.url` — neither of which
- * `src/output/redact.ts` scrubs, because `url` is not a secret-looking key and
- * a bare `user:pass@host` has no query string for the query-parameter rule to
- * catch. So userinfo is replaced before the value ever reaches a `CliError`,
- * and no caller of {@link invalid} is given the raw string to pass.
+ * it through internal error handling before the output layer can redact it.
+ * Userinfo is replaced before the value ever reaches a `CliError`, and no
+ * caller of {@link invalid} is given the raw string to pass.
  */
 function safeUrl(value: string): string {
   return value.replace(USERINFO, "$1[REDACTED]@");

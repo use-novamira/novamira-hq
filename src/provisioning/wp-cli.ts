@@ -28,6 +28,7 @@
  */
 
 import { CliError, asCliError } from "../errors.js";
+import { redactAssociatedText } from "../output/redact.js";
 import type { ProviderClient } from "../hosting/client.js";
 import { waitForOperationStatus } from "../hosting/operations.js";
 import { wpCliCommandPayload } from "../hosting/shell.js";
@@ -174,19 +175,26 @@ export function contextualize(error: unknown, prefix: string): CliError {
 function syncFailure(result: ActionResult): CliError {
   return new CliError(
     "provider_error",
-    `Provider returned status ${String(result.status)}: ${result.message ?? "request failed"}`,
+    redactAssociatedText(
+      `Provider returned status ${String(result.status)}: ${result.message ?? "request failed"}`,
+      result,
+    ),
     { details: { provider: result.provider, status: result.status } },
   );
 }
 
 function asyncFailure(status: OperationStatus): CliError {
+  const operationId = redactAssociatedText(status.operationId, status);
   return new CliError(
     "provider_error",
-    `WP-CLI operation ${status.operationId} failed: ${status.message ?? "provider reported failure"}`,
+    redactAssociatedText(
+      `WP-CLI operation ${status.operationId} failed: ${status.message ?? "provider reported failure"}`,
+      status,
+    ),
     {
       details: {
         provider: status.provider,
-        operationId: status.operationId,
+        operationId,
         status: status.status,
       },
     },

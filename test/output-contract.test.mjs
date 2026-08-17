@@ -135,6 +135,39 @@ test("the failure envelope is byte-for-byte the documented shape", () => {
   );
 });
 
+test("failure messages redact URL userinfo and signed query secrets", () => {
+  const source =
+    "https://admin:hunter2@example.test/plugin.zip?X-Amz-Credential=temporary-access&X-Amz-%53ignature=signed-value";
+  const error = new CliError(
+    "network_error",
+    `Failed to validate the plugin source ${source}.`,
+    { details: { source } },
+  );
+
+  const json = capture({ json: true });
+  json.renderer.failure(error);
+  const human = capture();
+  human.renderer.failure(error);
+
+  for (const output of [json.stdout(), human.stderr()]) {
+    assert.equal(output.includes("admin"), false, output);
+    assert.equal(output.includes("hunter2"), false, output);
+    assert.equal(output.includes("temporary-access"), false, output);
+    assert.equal(output.includes("signed-value"), false, output);
+    assert.match(output, /\[REDACTED\]/);
+  }
+  assert.equal(json.stderr(), "");
+  assert.equal(human.stdout(), "");
+
+  const ftp = failureEnvelope(
+    new CliError(
+      "network_error",
+      "Failed to read ftp://deploy:ftp-password@example.test/plugin.zip.",
+    ),
+  );
+  assert.equal(JSON.stringify(ftp).includes("ftp-password"), false);
+});
+
 test("JSON mode keeps stdout a single parseable value with diagnostics on stderr", () => {
   const streams = capture({ json: true, verbose: true });
   streams.renderer.note("this note is human-mode only");

@@ -19,6 +19,11 @@
  */
 
 import { CliError } from "../../errors.js";
+import {
+  redactAssociatedText,
+  registerSensitiveValues,
+  registeredSensitiveValues,
+} from "../../output/redact.js";
 import { DEFAULT_PRESSABLE_CLIENT_ID_ENV } from "../../config/schema.js";
 import {
   type ActionRequest,
@@ -235,11 +240,14 @@ export const createPressableClient: ProviderClientFactory = (
     const envelope = asObject(data);
     const message = stringField(envelope, "message") ?? "";
     if (message !== "Success") {
-      throw new CliError(
+      const safeMessage = redactAssociatedText(message, data);
+      const error = new CliError(
         "provider_error",
-        `The Pressable API request to ${path} failed: ${message}`,
-        { details: { provider: PROVIDER, path, message } },
+        `The Pressable API request to ${path} failed: ${safeMessage}`,
+        { details: { provider: PROVIDER, path, message: safeMessage } },
       );
+      registerSensitiveValues(error, registeredSensitiveValues(data));
+      throw error;
     }
     return envelope;
   }
@@ -313,11 +321,14 @@ export const createPressableClient: ProviderClientFactory = (
     const envelope = asObject(data);
     const message = stringField(envelope, "message") ?? "";
     if (message !== "Success") {
-      throw new CliError(
+      const safeMessage = redactAssociatedText(message, data);
+      const error = new CliError(
         "provider_error",
-        `Pressable API validation failed: ${message}`,
-        { details: { provider: PROVIDER, message } },
+        `Pressable API validation failed: ${safeMessage}`,
+        { details: { provider: PROVIDER, message: safeMessage } },
       );
+      registerSensitiveValues(error, registeredSensitiveValues(data));
+      throw error;
     }
     return {
       provider: PROVIDER,

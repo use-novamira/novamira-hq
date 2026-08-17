@@ -29,6 +29,11 @@
 import type { ProviderKind } from "../../config/schema.js";
 import { CliError } from "../../errors.js";
 import {
+  redactAssociatedText,
+  registerSensitiveValues,
+  registeredSensitiveValues,
+} from "../../output/redact.js";
+import {
   type ActionRequest,
   type ListSitesOptions,
   type ProviderClient,
@@ -408,11 +413,16 @@ export const createInstaWpClient: ProviderClientFactory = (
     });
     const record = asRecord(data);
     if (record?.status !== true) {
-      throw new CliError(
+      const error = new CliError(
         "provider_error",
-        `The ${LABEL} API reported a failure for ${subject}: ${fallbackMessage(stringField(record, "message"))}`,
+        redactAssociatedText(
+          `The ${LABEL} API reported a failure for ${subject}: ${fallbackMessage(stringField(record, "message"))}`,
+          data,
+        ),
         { details: { provider: PROVIDER, path } },
       );
+      registerSensitiveValues(error, registeredSensitiveValues(data));
+      throw error;
     }
     return record;
   }
@@ -618,15 +628,17 @@ function extractOperationId(raw: unknown): string | undefined {
  * mutating the parsed body in place.
  */
 function redactSecrets(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map((child) => redactSecrets(child));
-  if (typeof value === "object" && value !== null) {
+  let safe: unknown;
+  if (Array.isArray(value)) safe = value.map((child) => redactSecrets(child));
+  else if (typeof value === "object" && value !== null) {
     const source = value as Record<string, unknown>;
     const redacted: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(source))
       redacted[key] = isSecretKey(key) ? "redacted" : redactSecrets(child);
-    return redacted;
-  }
-  return value;
+    safe = redacted;
+  } else safe = value;
+  registerSensitiveValues(safe, registeredSensitiveValues(value));
+  return safe;
 }
 
 function isSecretKey(key: string): boolean {

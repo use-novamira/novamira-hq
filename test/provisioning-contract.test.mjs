@@ -483,9 +483,8 @@ test("every rejected site URL is a usage_error naming its source", async () => {
 });
 
 test("a rejected site URL never echoes the credential it carried", async () => {
-  // `redact()` masks secret-NAMED keys and query parameters; `url` is neither,
-  // and `error.message` is not redacted at all — so the scrubbing has to happen
-  // here, before the CliError exists. A leak lands on stdout in --json mode.
+  // Normalize userinfo before the CliError exists as defense in depth; output
+  // redaction must not be the first component to learn that this URL is unsafe.
   const carriers = [
     "https://admin:hunter2@example.com",
     "ftp://admin:hunter2@example.com",
@@ -970,7 +969,8 @@ test("plugin release metadata is rejected past its body ceiling", async () => {
 });
 
 test("remote plugin HEAD validation is bounded and refuses redirects", async () => {
-  const source = "https://downloads.example/novamira.zip";
+  const source =
+    "https://download:source-password@downloads.example/novamira.zip?X-Amz-%53ignature=signed-source";
   const http = scriptedFetch(() =>
     redirect("https://cdn.example/novamira.zip"),
   );
@@ -984,6 +984,9 @@ test("remote plugin HEAD validation is bounded and refuses redirects", async () 
   assert.equal(http.calls[0].init.method, "HEAD");
   assert.equal(http.calls[0].init.redirect, "manual");
   assert.ok(http.calls[0].init.signal instanceof AbortSignal);
+  assert.equal(http.calls[0].url, source);
+  assert.equal(error.message.includes("source-password"), false);
+  assert.equal(error.message.includes("signed-source"), false);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -999,12 +1002,18 @@ async function documentFails(overrides, block, label) {
 test("the advertised resource must belong to the site", async () => {
   // 51 and 52.
   const other = await documentFails(
-    { resource: "https://other.example/wp-json/mcp/novamira-oauth" },
+    {
+      resource:
+        "https://admin:hunter2@other.example/wp-json/mcp/novamira-oauth?sig=signed-resource",
+    },
     {},
     "cross-origin resource",
   );
   assert.equal(other.details.check, "metadata.resource");
   assert.match(other.message, /does not belong to https:\/\/example\.com/);
+  assert.equal(other.message.includes("hunter2"), false);
+  assert.equal(other.message.includes("signed-resource"), false);
+  assert.equal(JSON.stringify(other.details).includes("hunter2"), false);
 
   const notAString = await documentFails({ resource: 42 }, {}, "resource 42");
   assert.equal(notAString.details.check, "metadata.resource");
@@ -1342,6 +1351,20 @@ test("the boundary rule holds in the emitted data: no site credential, ever", ()
   });
   assert.equal(data.compatibility.status, "supported");
   assert.equal(data.plugin.network_activated, false);
+
+  const secretSource = handoffData(
+    setupResult({
+      plugin: {
+        ...setupResult().plugin,
+        source:
+          "https://download:source-password@example.test/novamira.zip?sig=signed-source",
+      },
+    }),
+  );
+  const secretSourceJson = JSON.stringify(secretSource);
+  assert.equal(secretSourceJson.includes("source-password"), false);
+  assert.equal(secretSourceJson.includes("signed-source"), false);
+  assert.match(secretSourceJson, /\[REDACTED\]/);
 });
 
 test("a skipped compatibility check nulls every derived field", () => {

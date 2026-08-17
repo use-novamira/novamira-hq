@@ -6,6 +6,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { CliError } from "../dist/errors.js";
 import { UnixFileSecurity } from "../dist/config/file-security.js";
 import { ProfileLockManager } from "../dist/config/lock.js";
 import { platformPaths } from "../dist/config/paths.js";
@@ -34,8 +35,14 @@ import {
   registeredProviders,
 } from "../dist/hosting/factory.js";
 import {
+  operationFailure,
+  waitForOperationStatus,
+} from "../dist/hosting/operations.js";
+import { renderAction, renderOperation } from "../dist/cli/print.js";
+import {
   providerCapabilities,
   providerLabel,
+  serializeActionResult,
   serializeHostingSite,
   serializeProviderValidation,
 } from "../dist/hosting/types.js";
@@ -363,6 +370,155 @@ test("a registered provider receives a provider-neutral, secret-safe context", a
     await assert.rejects(unset.clientFromProfile("production"), {
       code: "credential_missing",
     });
+  } finally {
+    await rm(state.root, { recursive: true, force: true });
+  }
+});
+
+test("provider action inputs remain available internally but are redacted from output", async () => {
+  const state = await isolatedStore();
+  const adminPassword = "admin-password-from-input";
+  const sftpPassword = "sftp-password-from-input";
+  const sslKey = "private-ssl-key-from-input";
+  let received;
+  try {
+    const factory = createHostingClientFactory({
+      store: state.store,
+      registry: {
+        kinsta: () => ({
+          provider: "kinsta",
+          validate: async () => {
+            throw new Error("unused");
+          },
+          listSites: async () => [],
+          getSite: async () => {
+            throw new Error("unused");
+          },
+          listEnvironments: async () => [],
+          read: async () => null,
+          action: async (request) => {
+            received = request.body;
+            return {
+              provider: "kinsta",
+              action: "sites.create",
+              status: 202,
+              operationId: adminPassword,
+              message: `queued ${adminPassword}`,
+              raw: {
+                echoed: [adminPassword, sftpPassword, sslKey],
+              },
+            };
+          },
+          operationStatus: async (operationId) => ({
+            provider: "kinsta",
+            operationId,
+            status: 200,
+            done: false,
+            failed: false,
+            message: `finished ${sftpPassword}`,
+            raw: { echoed: sslKey },
+          }),
+        }),
+      },
+      env: { KINSTA_API_KEY: "placeholder-not-a-secret" },
+    });
+    const client = await factory.clientFromProfile("production");
+    const body = {
+      admin_password: adminPassword,
+      password: sftpPassword,
+      custom_ssl_key: sslKey,
+    };
+    const result = await client.action({
+      kind: "create-site",
+      mode: "wordpress",
+      body,
+    });
+    assert.deepEqual(received, body);
+
+    const actionOutput = JSON.stringify(renderAction(result));
+    for (const secret of [adminPassword, sftpPassword, sslKey])
+      assert.equal(actionOutput.includes(secret), false, actionOutput);
+    assert.match(actionOutput, /\[REDACTED\]/);
+
+    const status = await client.operationStatus(adminPassword);
+    const operationOutput = JSON.stringify(renderOperation(status));
+    for (const secret of [adminPassword, sftpPassword, sslKey])
+      assert.equal(operationOutput.includes(secret), false, operationOutput);
+    const failure = operationFailure(status);
+    const derivedFailure = `${failure.message} ${JSON.stringify(failure.details)}`;
+    for (const secret of [adminPassword, sftpPassword, sslKey])
+      assert.equal(derivedFailure.includes(secret), false, derivedFailure);
+
+    await assert.rejects(
+      waitForOperationStatus(client, adminPassword, {
+        intervalSeconds: 1,
+        timeoutSeconds: 0,
+        now: () => 0,
+        sleep: async () => undefined,
+      }),
+      (error) => {
+        const output = `${error.message} ${JSON.stringify(error.details)}`;
+        assert.equal(output.includes(adminPassword), false, output);
+        assert.match(output, /\[REDACTED\]/);
+        return true;
+      },
+    );
+  } finally {
+    await rm(state.root, { recursive: true, force: true });
+  }
+});
+
+test("provider semantic errors redact action input secrets", async () => {
+  const state = await isolatedStore();
+  const password = "failed-action-password";
+  try {
+    const factory = createHostingClientFactory({
+      store: state.store,
+      registry: {
+        kinsta: () => ({
+          provider: "kinsta",
+          validate: async () => {
+            throw new Error("unused");
+          },
+          listSites: async () => [],
+          getSite: async () => {
+            throw new Error("unused");
+          },
+          listEnvironments: async () => [],
+          read: async () => null,
+          action: async () => {
+            throw new CliError(
+              "provider_error",
+              `Provider echoed ${password}`,
+              {
+                details: { echoed: password },
+              },
+            );
+          },
+          operationStatus: async () => {
+            throw new Error("unused");
+          },
+        }),
+      },
+      env: { KINSTA_API_KEY: "placeholder-not-a-secret" },
+    });
+    const client = await factory.clientFromProfile("production");
+    await assert.rejects(
+      client.action({
+        kind: "reset-site",
+        siteId: "site-1",
+        body: { admin_password: password },
+      }),
+      (error) => {
+        const serialized = JSON.stringify({
+          message: error.message,
+          details: error.details,
+        });
+        assert.equal(serialized.includes(password), false, serialized);
+        assert.match(serialized, /\[REDACTED\]/);
+        return true;
+      },
+    );
   } finally {
     await rm(state.root, { recursive: true, force: true });
   }

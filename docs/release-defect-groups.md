@@ -102,7 +102,7 @@ follows redirects, while retaining its total deadline and streamed body limit.
 Plugin release lookup and remote-source validation now use explicit deadlines
 and manual redirects; release metadata is streamed with a fixed size ceiling.
 
-## Session 6: Secret-Safe Provider Output
+## Session 6: Secret-Safe Provider Output (Done)
 
 Defects: **DEF-010, DEF-023**
 
@@ -119,6 +119,13 @@ path rather than adding provider-specific string replacements:
 
 This session may touch provisioning files also used by Session 5, so the two
 should be performed serially.
+
+Completed with provider-neutral sensitive-value tracking across request bodies,
+provider responses, asynchronous operations, raw reads, semantic errors, and
+setup results. The shared output redactor now removes known literals,
+secret-shaped fields, URL userinfo, and encoded signed-query values from both
+success and failure surfaces. Provider fixtures cover successful and failed
+secret echoes without changing the values sent on the wire.
 
 ## Session 7: Local Secret I/O
 

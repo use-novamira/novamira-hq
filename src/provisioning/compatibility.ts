@@ -55,6 +55,7 @@
 
 import { CliError } from "../errors.js";
 import { asRecord } from "../json.js";
+import { redactText } from "../output/redact.js";
 import { compareSemver, parseSemver } from "../semver.js";
 import { VERSION } from "../version.js";
 import {
@@ -401,12 +402,13 @@ function assertResource(
   site: NormalizedSite,
   context: CompatibilityContext,
 ): void {
+  const safeValue = typeof value === "string" ? redactText(value) : undefined;
   const reject = (): never => {
     throw unsupported(
       "metadata.resource",
-      `The site advertises the OAuth resource ${typeof value === "string" ? value : "(not a string)"}, which does not belong to ${site.siteUrl}. HQ used the WordPress "home" URL; if that is not the address visitors use, rerun with --url <the correct URL>.`,
+      `The site advertises the OAuth resource ${safeValue ?? "(not a string)"}, which does not belong to ${site.siteUrl}. HQ used the WordPress "home" URL; if that is not the address visitors use, rerun with --url <the correct URL>.`,
       context,
-      typeof value === "string" ? { resource: value } : {},
+      safeValue === undefined ? {} : { resource: safeValue },
     );
   };
   if (typeof value !== "string") return reject();

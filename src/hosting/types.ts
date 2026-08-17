@@ -14,6 +14,11 @@
  */
 
 import type { ProviderKind } from "../config/schema.js";
+import {
+  redact,
+  redactText,
+  registeredSensitiveValues,
+} from "../output/redact.js";
 
 /**
  * An ordered list of query-string parameters, mirroring Go's
@@ -302,26 +307,37 @@ export function serializeProviderCapability(
 }
 
 export function serializeActionResult(result: ActionResult): JsonObject {
+  const secrets = [
+    ...registeredSensitiveValues(result),
+    ...registeredSensitiveValues(result.raw),
+  ];
   const json: Record<string, unknown> = {
     provider: result.provider,
     action: result.action,
     status: result.status,
   };
-  if (result.message !== undefined) json.message = result.message;
-  if (result.operationId !== undefined) json.operation_id = result.operationId;
-  json.raw = result.raw;
+  if (result.message !== undefined)
+    json.message = redactText(result.message, secrets);
+  if (result.operationId !== undefined)
+    json.operation_id = redactText(result.operationId, secrets);
+  json.raw = redact(result.raw, secrets);
   return json;
 }
 
 export function serializeOperationStatus(status: OperationStatus): JsonObject {
+  const secrets = [
+    ...registeredSensitiveValues(status),
+    ...registeredSensitiveValues(status.raw),
+  ];
   const json: Record<string, unknown> = {
     provider: status.provider,
-    operation_id: status.operationId,
+    operation_id: redactText(status.operationId, secrets),
     status: status.status,
     done: status.done,
     failed: status.failed,
   };
-  if (status.message !== undefined) json.message = status.message;
-  json.raw = status.raw;
+  if (status.message !== undefined)
+    json.message = redactText(status.message, secrets);
+  json.raw = redact(status.raw, secrets);
   return json;
 }

@@ -15,7 +15,9 @@
  */
 
 import { CliError } from "../errors.js";
+import { redactAssociatedText } from "../output/redact.js";
 import type { ProviderClient } from "./client.js";
+import { redactOperationText, releaseOperationSecrets } from "./redaction.js";
 import type { OperationStatus } from "./types.js";
 
 export interface WaitForOperationOptions {
@@ -60,13 +62,19 @@ export async function waitForOperationStatus(
     const status = await client.operationStatus(operationId);
     if (status.done || status.failed) return status;
     if (now() - started >= options.timeoutSeconds * 1000) {
+      const safeOperationId = redactOperationText(
+        client,
+        operationId,
+        operationId,
+      );
+      releaseOperationSecrets(client, operationId);
       throw new CliError(
         "timeout",
-        `Timed out waiting for operation ${operationId}.`,
+        `Timed out waiting for operation ${safeOperationId}.`,
         {
           retryable: true,
           details: {
-            operationId,
+            operationId: safeOperationId,
             timeoutSeconds: options.timeoutSeconds,
           },
         },
@@ -81,13 +89,17 @@ export async function waitForOperationStatus(
  * mapped onto `provider_error`.
  */
 export function operationFailure(status: OperationStatus): CliError {
+  const operationId = redactAssociatedText(status.operationId, status);
   return new CliError(
     "provider_error",
-    `Operation ${status.operationId} failed: ${status.message ?? "provider reported failure"}`,
+    redactAssociatedText(
+      `Operation ${status.operationId} failed: ${status.message ?? "provider reported failure"}`,
+      status,
+    ),
     {
       details: {
         provider: status.provider,
-        operationId: status.operationId,
+        operationId,
         status: status.status,
       },
     },

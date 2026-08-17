@@ -33,6 +33,7 @@ import {
   type OperationStatus,
   type ProviderValidation,
 } from "../hosting/types.js";
+import { redact } from "../output/redact.js";
 import type { CommandMeta, InvocationWarning } from "../output/render.js";
 
 /**
@@ -76,12 +77,13 @@ function column(value: string, width: number): string {
 
 /**
  * Go's `printValue`: a read request's parsed provider response, pretty-printed
- * in human mode and passed through untouched under `data` in JSON mode.
+ * in human mode and passed through under `data` in JSON mode after the shared
+ * secret redaction required for every provider response.
  * `undefined` becomes `null`, the value Go's `parseJSONBody` produced for an
  * empty response body.
  */
 export function renderRaw(value: unknown): RenderedResult {
-  const data = value ?? null;
+  const data = redact(value ?? null);
   return { data, human: JSON.stringify(data, null, 2) };
 }
 
@@ -177,25 +179,27 @@ export function renderEnvironment(
 
 /** Go's `printAction`. */
 export function renderAction(result: ActionResult): RenderedResult {
+  const data = serializeActionResult(result);
   const parts = [result.action, `status=${String(result.status)}`];
-  if (result.operationId !== undefined)
-    parts.push(`operation=${result.operationId}`);
-  if (result.message !== undefined && result.message !== "")
-    parts.push(result.message);
-  return { data: serializeActionResult(result), human: parts.join(" ") };
+  if (typeof data.operation_id === "string")
+    parts.push(`operation=${data.operation_id}`);
+  if (typeof data.message === "string" && data.message !== "")
+    parts.push(data.message);
+  return { data, human: parts.join(" ") };
 }
 
 /** Go's `printOperation`. */
 export function renderOperation(status: OperationStatus): RenderedResult {
+  const data = serializeOperationStatus(status);
   const parts = [
-    status.operationId,
+    typeof data.operation_id === "string" ? data.operation_id : "",
     `status=${String(status.status)}`,
     `done=${String(status.done)}`,
     `failed=${String(status.failed)}`,
   ];
-  if (status.message !== undefined && status.message !== "")
-    parts.push(status.message);
-  return { data: serializeOperationStatus(status), human: parts.join(" ") };
+  if (typeof data.message === "string" && data.message !== "")
+    parts.push(data.message);
+  return { data, human: parts.join(" ") };
 }
 
 /** The `hosting providers validate` line from Go's `hosting.go`. */

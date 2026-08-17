@@ -36,6 +36,10 @@
 
 import { CliError } from "../../errors.js";
 import {
+  registerSensitiveValues,
+  registeredSensitiveValues,
+} from "../../output/redact.js";
+import {
   DEFAULT_CLOUDWAYS_EMAIL_ENV,
   type ProviderKind,
 } from "../../config/schema.js";
@@ -911,15 +915,17 @@ function domainBody(envId: string, body: unknown): Record<string, unknown> {
  * Deviation: a new structure is built instead of mutating in place.
  */
 function redactSecretValues(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(redactSecretValues);
-  if (isJsonObject(value)) {
+  let safe: unknown;
+  if (Array.isArray(value)) safe = value.map(redactSecretValues);
+  else if (isJsonObject(value)) {
     const result: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value)) {
       result[key] = isSecretKey(key) ? "redacted" : redactSecretValues(child);
     }
-    return result;
-  }
-  return value;
+    safe = result;
+  } else safe = value;
+  registerSensitiveValues(safe, registeredSensitiveValues(value));
+  return safe;
 }
 
 function isSecretKey(key: string): boolean {

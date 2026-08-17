@@ -45,6 +45,7 @@ import {
   createHttpClient as createProviderHttpClient,
 } from "./http-client.js";
 import type { ProviderClient } from "./client.js";
+import { secretSafeProviderClient } from "./redaction.js";
 import { providerLabel } from "./types.js";
 
 /**
@@ -177,7 +178,9 @@ export function createHostingClientFactory(
       options.registry,
       entry.profile.provider,
     );
-    return factory(await contextFromEntry(entry));
+    return secretSafeProviderClient(
+      await factory(await contextFromEntry(entry)),
+    );
   }
 
   return {

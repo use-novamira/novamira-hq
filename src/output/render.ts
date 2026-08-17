@@ -8,7 +8,7 @@ import {
   type CliError,
   type ErrorCode,
 } from "../errors.js";
-import { redact } from "./redact.js";
+import { redact, redactText, registeredSensitiveValues } from "./redact.js";
 
 export interface OutputStreams {
   readonly stdout: { write(chunk: string): unknown };
@@ -128,19 +128,22 @@ export function successEnvelope(
 }
 
 export function failureEnvelope(error: CliError): FailureEnvelope {
+  const secrets = registeredSensitiveValues(error);
   return {
     ok: false,
     error: {
       code: error.code,
-      message: error.message,
+      message: redactText(error.message, secrets),
       retryable: error.retryable,
       ...(error.remoteCode === undefined
         ? {}
-        : { remoteCode: error.remoteCode }),
+        : { remoteCode: redactText(error.remoteCode, secrets) }),
       ...(error.details === undefined
         ? {}
         : {
-            details: redact(error.details) as Readonly<Record<string, unknown>>,
+            details: redact(error.details, secrets) as Readonly<
+              Record<string, unknown>
+            >,
           }),
     },
   };
@@ -204,10 +207,13 @@ export function createRenderer(
 
     failure(error) {
       const cliError = asCliError(error);
+      const envelope = failureEnvelope(cliError);
       renderer.diagnostic("error", { requestId, error: cliError });
-      if (json)
-        streams.stdout.write(`${JSON.stringify(failureEnvelope(cliError))}\n`);
-      else writeStderrLine(`Error [${cliError.code}]: ${cliError.message}`);
+      if (json) streams.stdout.write(`${JSON.stringify(envelope)}\n`);
+      else
+        writeStderrLine(
+          `Error [${envelope.error.code}]: ${envelope.error.message}`,
+        );
       return exitCodeFor(cliError);
     },
 

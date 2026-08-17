@@ -5,7 +5,12 @@ import { Buffer } from "node:buffer";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { CliError, type ErrorCode } from "../errors.js";
-import { redact, redactText } from "../output/redact.js";
+import {
+  collectSensitiveValues,
+  redact,
+  redactText,
+  registerSensitiveValues,
+} from "../output/redact.js";
 
 /**
  * Provider-facing HTTP client.
@@ -380,6 +385,9 @@ class ProviderHttpClient implements HttpClient {
     const secrets = [
       ...(authorization?.secrets ?? []),
       ...(request.secrets ?? []),
+      ...collectSensitiveValues(request.headers),
+      ...collectSensitiveValues(request.query),
+      ...collectSensitiveValues(request.body),
     ].filter((secret) => secret !== "");
     const headers = lowerCaseHeaders({
       ...this.defaultHeaders,
@@ -590,6 +598,7 @@ class ProviderHttpClient implements HttpClient {
           },
         );
       }
+      registerSensitiveValues(data, hop.secrets);
 
       return {
         status: response.status,
@@ -695,11 +704,11 @@ class ProviderHttpClient implements HttpClient {
   ): CliError {
     const status = response.status;
     const code = statusErrorCode(status);
-    const remote = remoteMessage(text);
+    const remote = remoteMessage(text, context.secrets);
     const safeRemote =
       remote === undefined
         ? undefined
-        : redactText(truncate(remote, ERROR_MESSAGE_LIMIT), context.secrets);
+        : truncate(redactText(remote, context.secrets), ERROR_MESSAGE_LIMIT);
     const summary = `The ${this.providerLabel} API request failed with HTTP ${String(status)}`;
     const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"));
     const details: Record<string, unknown> = {
@@ -847,7 +856,10 @@ function asProviderError(error: unknown, providerLabel: string): CliError {
 }
 
 /** Extracts the provider's own error message from a JSON error body. */
-function remoteMessage(text: string): string | undefined {
+function remoteMessage(
+  text: string,
+  secrets: readonly string[],
+): string | undefined {
   const trimmed = text.trim();
   if (trimmed === "") return undefined;
   let value: unknown;
@@ -874,7 +886,7 @@ function remoteMessage(text: string): string | undefined {
       if (typeof nested === "string" && nested.trim() !== "") return nested;
     }
   }
-  return trimmed;
+  return JSON.stringify(redact(value, secrets));
 }
 
 function truncate(value: string, limit: number): string {
