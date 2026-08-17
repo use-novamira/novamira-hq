@@ -145,6 +145,50 @@ function snapshotFor(queries, states, cliAvailable = true, profiles = {}) {
   return { byKey, checkedAt: NOW, cliAvailable };
 }
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
+
+function serviceSite(label) {
+  return {
+    id: "shared",
+    name: "shared",
+    displayName: label,
+    status: "live",
+    primaryDomain: `${label.toLowerCase()}.example.com`,
+    environments: [env("shared-env")],
+  };
+}
+
+function emptyInventory(profileName = undefined) {
+  return {
+    connections: {
+      byKey: new Map(),
+      checkedAt: NOW,
+      cliAvailable: true,
+    },
+    profiles: {
+      profiles:
+        profileName === undefined
+          ? []
+          : [
+              {
+                name: profileName,
+                siteUrl: `https://${profileName}.example.com`,
+                origin: `https://${profileName}.example.com`,
+                state: "connected",
+              },
+            ],
+      checkedAt: NOW,
+      cliAvailable: true,
+    },
+  };
+}
+
 async function fixture(options = {}) {
   const home = await mkdtemp(join(tmpdir(), "novamira-hq-sites-"));
   roots.push(home);
@@ -467,6 +511,102 @@ test("5c: a failing provider is a group error, and the others still render", asy
   // The message reaches the page; `details` never does, because a notice
   // bypasses `failureEnvelope`'s redaction entirely.
   assert.ok(!recorder.body.includes("api.pantheon.invalid"));
+});
+
+test("5d: invalidation supersedes an older in-flight provider load", async () => {
+  const oldLoad = deferred();
+  const newLoad = deferred();
+  let calls = 0;
+  const service = createSitesService({
+    store: {
+      listHostingProfiles: async () => [
+        { name: "prod", profile: CONFIG.hostingProfiles.prod },
+      ],
+    },
+    hosting: {
+      clientFromEntry: async () => ({
+        listSites: async () => {
+          calls += 1;
+          return calls === 1 ? oldLoad.promise : newLoad.promise;
+        },
+      }),
+    },
+    integration: { siteInventory: async () => emptyInventory() },
+    now: () => NOW,
+  });
+  const request = {
+    profile: "__all__",
+    includeEnvs: true,
+    refresh: false,
+  };
+
+  const oldResult = service.list(request);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(calls, 1);
+  service.invalidate();
+  const newResult = service.list(request);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(
+    calls,
+    2,
+    "post-invalidation work does not join the old promise",
+  );
+
+  newLoad.resolve([serviceSite("New")]);
+  assert.equal((await newResult).groups[0].sites[0].displayName, "New");
+  oldLoad.resolve([serviceSite("Old")]);
+  assert.equal(
+    (await oldResult).groups[0].sites[0].displayName,
+    "New",
+    "the obsolete request retries against the current generation",
+  );
+  assert.equal(
+    (await service.list(request)).groups[0].sites[0].displayName,
+    "New",
+  );
+  assert.equal(calls, 2, "the obsolete load did not repopulate the cache");
+});
+
+test("5e: invalidation discards a delayed warm CLI-profile refresh", async () => {
+  const delayedInventory = deferred();
+  let inventoryCalls = 0;
+  const service = createSitesService({
+    store: {
+      listHostingProfiles: async () => [
+        { name: "prod", profile: CONFIG.hostingProfiles.prod },
+      ],
+    },
+    hosting: {
+      clientFromEntry: async () => ({
+        listSites: async () => [serviceSite("Current")],
+      }),
+    },
+    integration: {
+      siteInventory: async () => {
+        inventoryCalls += 1;
+        return inventoryCalls === 1
+          ? emptyInventory()
+          : delayedInventory.promise;
+      },
+    },
+    now: () => NOW,
+  });
+  const request = {
+    profile: "__all__",
+    includeEnvs: true,
+    refresh: false,
+  };
+  await service.list(request);
+
+  const refresh = service.refreshWarm("__all__", true);
+  await Promise.resolve();
+  assert.equal(inventoryCalls, 2);
+  service.invalidate();
+  delayedInventory.resolve(emptyInventory("obsolete-profile"));
+  assert.equal(await refresh, undefined);
+  assert.equal(service.warm("__all__", true), undefined);
 });
 
 /* -------------------------------------------------------------------------- */

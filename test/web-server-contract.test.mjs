@@ -158,10 +158,12 @@ function routeContext(overrides = {}) {
         connections: null,
       }),
       warm: () => undefined,
+      refreshWarm: async () => undefined,
       invalidate: () => undefined,
-      envResolver: () => (envId) => ({ name: envId, domain: "" }),
+      envResolver:
+        () =>
+        ({ envId }) => ({ name: envId, domain: "" }),
       resolveSite: () => undefined,
-      refreshConnections: async () => null,
     },
     deployPaths: { upsert: async () => "x", remove: async () => "x" },
     integration: {

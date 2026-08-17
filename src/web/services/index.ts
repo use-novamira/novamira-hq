@@ -39,6 +39,7 @@ export {
   SITES_CACHE_TTL_MS,
   type ConnectedStateSource,
   type EnvDisplay,
+  type EnvResolution,
   type EnvResolver,
   type ResolvedSite,
   type SiteGroup,

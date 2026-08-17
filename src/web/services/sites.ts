@@ -14,7 +14,7 @@
  * did the same to find one site (`:920-957`). Every one of those was a method on
  * the HTTP server, so none could be exercised without one.
  *
- * **What HQ does instead.** A value with five methods and no HTTP in sight. Node
+ * **What HQ does instead.** A value with six methods and no HTTP in sight. Node
  * is single-threaded, so Go's mutex becomes a plain `Map` — but a mutex is not
  * the only thing that was doing work there. Two simultaneous loads of the same
  * key (the toolbar's `data-init` racing an operator's Refresh) would have issued
@@ -28,7 +28,7 @@
  * API call, it goes stale faster (a `novamira auth login` in another window
  * changes it), and `/_dashboard/connect` has to be able to refresh it *alone*,
  * without re-listing. So `list` recomputes it on the cached path too, and
- * {@link SitesService.refreshConnections} exposes it on its own.
+ * {@link SitesService.refreshWarm} exposes an atomic warm-only refresh.
  *
  * **Connected state degrades, it never fails.** `connectionStates` is documented
  * never to throw, but if an injected one does, this module answers with an empty
@@ -107,10 +107,17 @@ export interface EnvDisplay {
 
 /**
  * Go's `resolve` closure inside `deployPathSummaries`: the warm inventory's name
- * and domain for an environment id, falling back to the name stored on the
- * deploy path and then to the raw id.
+ * and domain for an environment's full ownership tuple, falling back to the
+ * name stored on the deploy path and then to the raw id.
  */
-export type EnvResolver = (envId: string, storedName: string) => EnvDisplay;
+export interface EnvResolution {
+  readonly profile: string;
+  readonly siteId: string;
+  readonly envId: string;
+  readonly storedName: string;
+}
+
+export type EnvResolver = (resolution: EnvResolution) => EnvDisplay;
 
 /** One site found in the warm cache, for the new-deploy-path page. */
 export interface ResolvedSite {
@@ -129,23 +136,20 @@ export interface SitesService {
   list(options: SitesListOptions): Promise<SitesResult>;
   /** The warm cache only — never triggers a provider call. */
   warm(profile: string, includeEnvs: boolean): SitesResult | undefined;
+  /** Refresh local CLI state for a still-current warm entry, without providers. */
+  refreshWarm(
+    profile: string,
+    includeEnvs: boolean,
+  ): Promise<SitesResult | undefined>;
   /** Drop everything. Go's `clearSitesCacheLocked`, on any provider mutation. */
   invalidate(): void;
-  /** Env id → name and domain, from the warm `__all__` inventory. */
+  /** Owned environment → name and domain, from the warm `__all__` inventory. */
   envResolver(): EnvResolver;
   /**
    * Find one site in the warm cache, trying `{profile, envs}` then
    * `{__all__, envs}` — Go's `deployNewViewFromRequest` order (`server.go:931`).
    */
   resolveSite(profile: string, siteId: string): ResolvedSite | undefined;
-  /** Connected state for an already-listed set of groups, without re-listing. */
-  refreshConnections(
-    groups: readonly SiteGroup[],
-  ): Promise<ConnectionSnapshot | null>;
-  /** Refresh CLI profiles and matching for warm hosting groups, without providers. */
-  refreshInventory(
-    groups: readonly SiteGroup[],
-  ): Promise<SiteInventorySnapshot>;
 }
 
 /**
@@ -243,7 +247,8 @@ export function displayLabel(
 export function createSitesService(options: SitesServiceOptions): SitesService {
   const ttlMs = options.ttlMs ?? SITES_CACHE_TTL_MS;
   const cache = new Map<string, CacheEntry>();
-  const inFlight = new Map<string, Promise<CacheEntry>>();
+  const inFlight = new Map<number, Map<string, Promise<CacheEntry>>>();
+  let generation = 0;
 
   /** An entry that has not expired, deleting it when it has. Go's `cachedSites`. */
   const read = (key: string): CacheEntry | undefined => {
@@ -298,8 +303,12 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
     key: string,
     profile: string,
     includeEnvs: boolean,
+    startedGeneration: number,
   ): Promise<CacheEntry> => {
-    const pending = inFlight.get(key);
+    const generationWork =
+      inFlight.get(startedGeneration) ?? new Map<string, Promise<CacheEntry>>();
+    inFlight.set(startedGeneration, generationWork);
+    const pending = generationWork.get(key);
     if (pending !== undefined) return pending;
     const started = (async (): Promise<CacheEntry> => {
       const groups = await loadGroups(profile, includeEnvs);
@@ -309,13 +318,14 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
         storedAt,
         expiresAt: storedAt + ttlMs,
       };
-      cache.set(key, entry);
+      if (startedGeneration === generation) cache.set(key, entry);
       return entry;
     })();
     const tracked = started.finally(() => {
-      inFlight.delete(key);
+      generationWork.delete(key);
+      if (generationWork.size === 0) inFlight.delete(startedGeneration);
     });
-    inFlight.set(key, tracked);
+    generationWork.set(key, tracked);
     return tracked;
   };
 
@@ -403,16 +413,34 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
   return {
     list: async (request) => {
       const key = cacheKey(request.profile, request.includeEnvs);
-      const warmEntry = request.refresh ? undefined : read(key);
-      const entry =
-        warmEntry ?? (await fill(key, request.profile, request.includeEnvs));
-      return resultFrom(
-        request.profile,
-        request.includeEnvs,
-        entry,
-        warmEntry !== undefined,
-        await refreshInventory(entry.groups),
-      );
+      for (;;) {
+        const startedGeneration = generation;
+        const warmEntry = request.refresh ? undefined : read(key);
+        let entry: CacheEntry;
+        try {
+          entry =
+            warmEntry ??
+            (await fill(
+              key,
+              request.profile,
+              request.includeEnvs,
+              startedGeneration,
+            ));
+        } catch (error) {
+          if (startedGeneration !== generation) continue;
+          throw error;
+        }
+        if (startedGeneration !== generation) continue;
+        const inventory = await refreshInventory(entry.groups);
+        if (startedGeneration !== generation || read(key) !== entry) continue;
+        return resultFrom(
+          request.profile,
+          request.includeEnvs,
+          entry,
+          warmEntry !== undefined,
+          inventory,
+        );
+      }
     },
 
     warm: (profile, includeEnvs) => {
@@ -434,24 +462,43 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
           });
     },
 
+    refreshWarm: async (profile, includeEnvs) => {
+      const key = cacheKey(profile, includeEnvs);
+      for (;;) {
+        const startedGeneration = generation;
+        const entry = read(key);
+        if (entry === undefined) return undefined;
+        const inventory = await refreshInventory(entry.groups);
+        if (startedGeneration !== generation || read(key) !== entry) continue;
+        return resultFrom(profile, includeEnvs, entry, true, inventory);
+      }
+    },
+
     invalidate: () => {
+      generation += 1;
       cache.clear();
     },
 
     envResolver: () => {
-      const known = new Map<string, EnvDisplay>();
+      const known = new Map<string, Map<string, Map<string, EnvDisplay>>>();
       for (const group of warmAll()?.groups ?? []) {
         for (const site of group.sites) {
           for (const env of site.environments ?? []) {
-            known.set(env.id, {
+            const bySite =
+              known.get(group.profile) ??
+              new Map<string, Map<string, EnvDisplay>>();
+            known.set(group.profile, bySite);
+            const byEnv = bySite.get(site.id) ?? new Map<string, EnvDisplay>();
+            bySite.set(site.id, byEnv);
+            byEnv.set(env.id, {
               name: displayLabel(env.displayName, env.name, env.id),
               domain: env.primaryDomain ?? "",
             });
           }
         }
       }
-      return (envId, storedName) => {
-        const found = known.get(envId);
+      return ({ profile, siteId, envId, storedName }) => {
+        const found = known.get(profile)?.get(siteId)?.get(envId);
         if (found !== undefined) return found;
         if (storedName !== "") return { name: storedName, domain: "" };
         return { name: envId, domain: "" };
@@ -465,6 +512,7 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
         cacheKey(ALL_PROFILES_SENTINEL, true),
       ]) {
         for (const group of read(key)?.groups ?? []) {
+          if (group.profile !== profile) continue;
           for (const site of group.sites) {
             if (site.id !== siteId) continue;
             return {
@@ -476,9 +524,5 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
       }
       return undefined;
     },
-
-    refreshConnections: async (groups) =>
-      (await refreshInventory(groups)).connections,
-    refreshInventory,
   };
 }

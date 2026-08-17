@@ -94,6 +94,7 @@ export {
   MAX_JOBS,
   SITES_CACHE_TTL_MS,
   type DeployPathService,
+  type EnvResolution,
   type EnvResolver,
   type ProviderMutation,
   type ProviderService,

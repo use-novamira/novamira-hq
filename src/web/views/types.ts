@@ -305,8 +305,18 @@ export function deployPathView(
   path: DeployPath,
   context: DeployPathViewContext,
 ): DeployPathView {
-  const source = context.resolve(path.sourceEnvId, path.sourceEnvName);
-  const target = context.resolve(path.targetEnvId, path.targetEnvName);
+  const source = context.resolve({
+    profile: path.hostingProfile,
+    siteId: path.siteId,
+    envId: path.sourceEnvId,
+    storedName: path.sourceEnvName,
+  });
+  const target = context.resolve({
+    profile: path.hostingProfile,
+    siteId: path.siteId,
+    envId: path.targetEnvId,
+    storedName: path.targetEnvName,
+  });
   return {
     name: path.name,
     hostingProfile: path.hostingProfile,

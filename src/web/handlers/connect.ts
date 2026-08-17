@@ -90,7 +90,10 @@ export function createConnectHandler(context: RouteContext): RouteHandler {
           const warm =
             options.profile === ""
               ? undefined
-              : context.sites.warm(options.profile, options.includeEnvs);
+              : await context.sites.refreshWarm(
+                  options.profile,
+                  options.includeEnvs,
+                );
           const connected: DashboardNotice = {
             level: "ok",
             message: `Connected. ${site.siteUrl}`,
@@ -100,17 +103,7 @@ export function createConnectHandler(context: RouteContext): RouteHandler {
             // stale listing alone rather than fanning out across the providers.
             patchToast(stream, connected);
           } else {
-            const inventory = await context.sites.refreshInventory(warm.groups);
-            patchSites(
-              stream,
-              options,
-              {
-                ...warm,
-                connections: inventory.connections,
-                siteProfiles: inventory.profiles,
-              },
-              connected,
-            );
+            patchSites(stream, options, warm, connected);
           }
         }
       } catch (error) {

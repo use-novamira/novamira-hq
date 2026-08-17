@@ -91,22 +91,15 @@ async function patchDestination(
   notice: DashboardNotice,
 ): Promise<void> {
   const options = listOptions(request, signals);
-  const warm = context.sites.warm(options.profile, options.includeEnvs);
+  const warm = await context.sites.refreshWarm(
+    options.profile,
+    options.includeEnvs,
+  );
   if (warm === undefined) {
     patchToast(stream, notice);
     return;
   }
-  const inventory = await context.sites.refreshInventory(warm.groups);
-  patchSites(
-    stream,
-    options,
-    {
-      ...warm,
-      connections: inventory.connections,
-      siteProfiles: inventory.profiles,
-    },
-    notice,
-  );
+  patchSites(stream, options, warm, notice);
 }
 
 /**

@@ -223,7 +223,7 @@ and regression tests cover pre-resolution duplicate starts, saturated capacity,
 late client resolution, history retention, polling cancellation, and server
 shutdown.
 
-## Session 11: Dashboard Cache Identity and Generations
+## Session 11: Dashboard Cache Identity and Generations (Done)
 
 Defects: **DEF-011, DEF-012, DEF-013**
 
@@ -238,6 +238,13 @@ entry still represents the requested resource:
 
 Use fixtures with duplicate provider-scoped IDs and delayed loads that complete
 after invalidation. Do not add another domain-origin matching implementation.
+
+Completed with profile-owned site lookup, environment display resolution keyed
+by the full profile/site/environment tuple, and generation-scoped provider and
+site-CLI work. Invalidation now prevents older loads from repopulating the cache
+or repainting stale profile links, while post-invalidation requests start a new
+provider round instead of joining obsolete work. Regression tests cover
+duplicate IDs across profiles and sites plus delayed provider and CLI refreshes.
 
 ## Session 12: Hosting Timeout Semantics
 

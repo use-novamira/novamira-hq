@@ -166,8 +166,15 @@ async function fixture(options = {}) {
   const hosting = createHostingClientFactory({
     store,
     registry: {
-      kinsta: () => client("kinsta", options.kinstaSites ?? KINSTA_SITES),
-      pantheon: () => client("pantheon", []),
+      kinsta: (context) =>
+        client(
+          "kinsta",
+          options.sitesByProfile?.[context.profileName] ??
+            options.kinstaSites ??
+            KINSTA_SITES,
+        ),
+      pantheon: (context) =>
+        client("pantheon", options.sitesByProfile?.[context.profileName] ?? []),
     },
     env: environment,
   });
@@ -406,6 +413,59 @@ test("3: environments resolve from the warm cache, then the stored name, then th
   assert.equal(cold.listCalls.length, 0);
 });
 
+test("3b: environment display resolution keeps profile and site ownership", async () => {
+  const ownedEnv = (id, owner) => ({
+    ...env(id, `${owner.toLowerCase()}.example.com`),
+    displayName: `${owner} ${id}`,
+  });
+  const ownedSite = (id, owner) => ({
+    id,
+    name: id,
+    displayName: `${owner} Site`,
+    status: "live",
+    primaryDomain: `${owner.toLowerCase()}-site.example.com`,
+    environments: [ownedEnv("source", owner), ownedEnv("target", owner)],
+  });
+  const path = (name, hostingProfile, siteId) => ({
+    name,
+    hostingProfile,
+    siteId,
+    siteLabel: `${name} stored site`,
+    sourceEnvId: "source",
+    sourceEnvName: `${name} stored source`,
+    targetEnvId: "target",
+    targetEnvName: `${name} stored target`,
+    pushDb: false,
+    pushFiles: false,
+    searchReplace: false,
+  });
+  const hostingProfiles = {
+    alpha: PROFILES.prod,
+    beta: PROFILES.prod,
+  };
+  const { server } = await fixture({
+    hostingProfiles,
+    sitesByProfile: {
+      alpha: [ownedSite("shared", "Alpha"), ownedSite("other", "Other")],
+      beta: [ownedSite("shared", "Beta")],
+    },
+    deployPaths: {
+      alpha: path("alpha", "alpha", "shared"),
+      beta: path("beta", "beta", "shared"),
+      other: path("other", "alpha", "other"),
+      missing: path("missing", "beta", "other"),
+    },
+  });
+  await warmCache(server);
+  const markup = await page(server, "/deploy-paths");
+  for (const owner of ["Alpha", "Beta", "Other"])
+    assert.ok(markup.includes(`${owner} source → ${owner} target`), owner);
+  assert.ok(
+    markup.includes("missing stored source → missing stored target"),
+    "another site's matching environment IDs do not override stored names",
+  );
+});
+
 /* -------------------------------------------------------------------------- */
 /* 4-5: the new-path page                                                     */
 /* -------------------------------------------------------------------------- */
@@ -433,6 +493,53 @@ test("4: the form renders with the cached environments and highlights Deploy pat
   // The submit sets the three fields the selects do not carry.
   assert.ok(markup.includes("$deployForm.hostingProfile = "));
   assert.ok(markup.includes("$deployForm.siteId = "));
+});
+
+test("4b: the form resolves a duplicate site id only within its requested profile", async () => {
+  const site = (owner) => ({
+    id: "shared",
+    name: "shared",
+    displayName: `${owner} Site`,
+    status: "live",
+    primaryDomain: `${owner.toLowerCase()}.example.com`,
+    environments: [
+      {
+        ...env("source", "source.example.com"),
+        displayName: `${owner} Source`,
+      },
+      {
+        ...env("target", "target.example.com"),
+        displayName: `${owner} Target`,
+      },
+    ],
+  });
+  const { server } = await fixture({
+    hostingProfiles: {
+      alpha: PROFILES.prod,
+      beta: PROFILES.prod,
+      gamma: PROFILES.prod,
+    },
+    sitesByProfile: {
+      alpha: [site("Alpha")],
+      beta: [site("Beta")],
+      gamma: [],
+    },
+  });
+  await warmCache(server);
+
+  const beta = await page(server, "/deploy-paths/new?profile=beta&site=shared");
+  assert.ok(
+    beta.includes("Push changes between two environments of Beta Site."),
+  );
+  assert.ok(beta.includes('<option value="source">Beta Source</option>'));
+  assert.ok(!beta.includes("Alpha Source"));
+
+  const missing = await page(
+    server,
+    "/deploy-paths/new?profile=gamma&site=shared",
+  );
+  assert.ok(missing.includes("Open this from the Hosting Sites page"));
+  assert.ok(!missing.includes("deployForm.sourceEnvId"));
 });
 
 test("5: without two resolvable environments the page is guidance, not a form", async () => {
