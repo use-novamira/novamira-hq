@@ -16,10 +16,12 @@
 # package it installs is circular. It is consumed from the repository's raw URL
 # and from the GitHub release assets.
 #
-# The smoke test is `novamira-hq doctor --offline`, and it is offline on purpose.
-# A fresh machine has no hosting profiles and no site CLI, so `profile.credentials`
-# and `integration.site_cli` both warn — and a produced doctor report is exit 0
-# whatever its status, which is what makes it usable here.
+# The smoke test is `novamira-hq doctor --offline --json`, and it is offline on
+# purpose. A fresh machine has no hosting profiles and no site CLI, so
+# `profile.credentials` and `integration.site_cli` both warn — and a produced
+# doctor report is exit 0 whatever its status, which is why the installer asks
+# for machine-readable output and rejects an overall `fail` itself: a `warn`
+# report is a healthy install, a `fail` report is a broken one.
 
 set -eu
 
@@ -156,7 +158,26 @@ novamira_hq_bin=$npm_prefix/bin/novamira-hq
   fail "npm installed Novamira HQ, but novamira-hq is not available in PATH (npm prefix: $npm_prefix)"
 
 "$novamira_hq_bin" --version
-"$novamira_hq_bin" doctor --offline
+if ! "$novamira_hq_bin" doctor --offline --json | node -e '
+  let text = "";
+  process.stdin.on("data", (chunk) => (text += chunk));
+  process.stdin.on("end", () => {
+    let report;
+    try {
+      report = JSON.parse(text);
+    } catch {
+      console.error("doctor produced no machine-readable report");
+      process.exit(1);
+    }
+    const status = report && report.data && report.data.status;
+    if (status !== "pass" && status !== "warn") {
+      console.error(`doctor reported an unhealthy installation: ${status}`);
+      process.exit(1);
+    }
+  });
+'; then
+  fail "doctor reported an unhealthy installation"
+fi
 install_menu_entry
 
 skill_source=$(npm root --global)/@novamira/hq

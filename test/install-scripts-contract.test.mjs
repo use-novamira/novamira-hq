@@ -119,16 +119,35 @@ test("4: the skills CLI is pinned to an exact version, never a range", () => {
   assert.equal(pin.exec(shell)[1], "1.5.18");
 });
 
-test("5: the smoke test is doctor --offline, which is why a warn report exits 0", () => {
+test("5: the smoke test is doctor --offline --json, rejecting only a fail report", () => {
   for (const [name, source] of Object.entries(scripts)) {
     assert.ok(source.includes("doctor"), name);
     assert.ok(source.includes("--offline"), name);
     assert.ok(source.includes("--version"), name);
+    assert.ok(source.includes("--json"), name);
   }
-  assert.match(shell, /"\$novamira_hq_bin" doctor --offline/);
+  assert.match(shell, /"\$novamira_hq_bin" doctor --offline --json/);
+  assert.match(code["install.sh"], /node -e/);
+  // A `warn` report is a healthy first install (no profiles, no site CLI); a
+  // `fail` report is what the smoke test must reject rather than treat as OK
+  // just because the process exited 0.
+  assert.match(code["install.sh"], /status !== "pass" && status !== "warn"/);
+  assert.match(
+    code["install.sh"],
+    /fail "doctor reported an unhealthy installation"/,
+  );
   assert.match(
     powershell,
-    /Invoke-Checked \$novamiraHqBin @\("doctor", "--offline"\)/,
+    /& \$novamiraHqBin @\("doctor", "--offline", "--json"\)/,
+  );
+  assert.match(code["install.ps1"], /ConvertFrom-Json/);
+  assert.match(
+    code["install.ps1"],
+    /\$doctorReport\.data\.status -ne "pass" -and \$doctorReport\.data\.status -ne "warn"/,
+  );
+  assert.match(
+    code["install.ps1"],
+    /Fail "doctor reported an unhealthy installation/,
   );
 });
 

@@ -320,7 +320,7 @@ regression test asserts the per-prefix and `bin`-beside-`lib` entry-script
 layouts, the missing-shim and missing-entry fallbacks, and that POSIX commands
 are never rewritten.
 
-## Session 15: Doctor and Installer Verification
+## Session 15: Doctor and Installer Verification (Done)
 
 Defects: **DEF-025, DEF-026**
 
@@ -335,6 +335,13 @@ doctor report rather than treating every produced report as healthy:
 
 Update shell and PowerShell tests together so the two installers retain matching
 acceptance behavior.
+
+Completed with `fixed` now meaning "changed state and reinspection passes"
+rather than "`--fix` was supplied": `storage.permissions` sets it only when every
+reinspected target is safe, and `storage.atomic` sets it only when the state
+directory was actually created. Both installers run `doctor --offline --json` and
+reject an overall `fail` status while accepting `warn`, which is the healthy
+fresh-install result (no profiles, no site CLI).
 
 ## Session 16: SSE Framing Safety
 

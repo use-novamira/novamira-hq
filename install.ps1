@@ -87,7 +87,18 @@ if (-not (Test-Path -LiteralPath $novamiraHqBin -PathType Leaf)) {
 }
 
 Invoke-Checked $novamiraHqBin @("--version")
-Invoke-Checked $novamiraHqBin @("doctor", "--offline")
+$doctorOutput = & $novamiraHqBin @("doctor", "--offline", "--json")
+if ($LASTEXITCODE -ne 0) {
+  Fail "novamira-hq doctor failed with exit code $LASTEXITCODE"
+}
+$doctorJson = $doctorOutput | Out-String
+$doctorReport = ConvertFrom-Json $doctorJson
+if ($null -eq $doctorReport.data) {
+  Fail "novamira-hq doctor produced no machine-readable report"
+}
+if ($doctorReport.data.status -ne "pass" -and $doctorReport.data.status -ne "warn") {
+  Fail "doctor reported an unhealthy installation: $($doctorReport.data.status)"
+}
 
 $npmRoot = & $npm root --global
 if ($LASTEXITCODE -ne 0) {

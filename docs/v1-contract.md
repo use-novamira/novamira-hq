@@ -1237,8 +1237,11 @@ offline report carries eight checks, and the background release notice is
 suppressed for the invocation. `--fix` is limited to repairing
 owner-only permissions on HQ's private paths and initializing the state
 directory: it writes no credential, removes no profile, edits no configuration
-and calls no provider. `--profile`, when given, narrows `profile.credentials` to
-that profile and changes nothing else.
+and calls no provider. A check sets `fixed: true` only when `--fix` actually
+changed state and the reinspection proves the relevant condition now passes: it
+is evidence of a repair performed, never of the flag being supplied. `--profile`,
+when given, narrows `profile.credentials` to that profile and changes nothing
+else.
 
 Evidence is output-safe by construction. `profile.credentials` renders
 `env:NAME` / `file:PATH` / `stored:ID` and a boolean, never a secret value;

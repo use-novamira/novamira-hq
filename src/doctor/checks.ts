@@ -374,10 +374,13 @@ async function permissionCheck(
         // an exception: the point of `--fix` is a complete report either way.
       }
     }
-    fixed = true;
     inspected = await Promise.all(
       targets.map((target) => inspect(target, dependencies.security)),
     );
+    // `fixed: true` is evidence, not intent: `--fix` was given, a repair was
+    // attempted, and the re-inspection proves the relevant condition now
+    // passes. Nothing here reports the flag on its own.
+    fixed = inspected.every((entry) => !entry.exists || entry.safe);
   }
 
   const evidence = { targets: inspected };
@@ -426,6 +429,7 @@ async function atomicCheck(
 ): Promise<CheckResult> {
   const stateDir = dependencies.paths.stateDir;
   const evidence = { stateDir };
+  let created = false;
   try {
     const info = await stat(stateDir);
     if (!info.isDirectory()) {
@@ -444,6 +448,7 @@ async function atomicCheck(
       };
     }
     await secureDirectory(stateDir, dependencies.security);
+    created = true;
   }
 
   try {
@@ -458,9 +463,14 @@ async function atomicCheck(
   }
   return {
     status: "pass",
-    summary: "Atomic storage is available.",
+    summary: created
+      ? "Atomic storage was initialized."
+      : "Atomic storage is available.",
     evidence,
-    ...(fix ? { fixed: true } : {}),
+    // `fixed: true` only when `--fix` actually changed state by creating the
+    // directory; a probe against an already-initialized directory is not a
+    // repair performed.
+    ...(created ? { fixed: true } : {}),
   };
 }
 

@@ -384,15 +384,50 @@ test("5: storage.permissions fails on a group-readable config file and --fix rep
   assert.equal((await stat(paths.configFile)).mode & 0o777, 0o600);
 });
 
-test("6: storage.atomic warns on an uninitialized state directory and passes after --fix", async () => {
+test("5b: storage.permissions does not report fixed when --fix cannot repair the type", async () => {
+  if (process.platform === "win32") return;
+  const { dependencies, paths } = await fixture({
+    config: JSON.stringify({
+      version: 1,
+      hostingProfiles: {},
+      deployPaths: {},
+    }),
+  });
+  // A directory where the config *file* must be: chmod cannot turn it into a
+  // regular file, so the repair is attempted but the reinspection still fails.
+  await rm(paths.configFile, { force: true });
+  await mkdir(paths.configFile);
+
+  const report = await runDoctor(dependencies, { offline: true, fix: true });
+  const check = checkOf(report, "storage.permissions");
+  assert.equal(check.status, "fail");
+  assert.equal(check.fixed, undefined);
+
+  const configTarget = check.evidence.targets.find(
+    (target) => target.label === "config.file",
+  );
+  assert.equal(configTarget.exists, true);
+  assert.equal(configTarget.safe, false);
+});
+
+test("6: storage.atomic warns on an uninitialized state directory and initializes with --fix", async () => {
   const { dependencies, paths } = await fixture();
   const warned = await runDoctor(dependencies, { offline: true, fix: false });
   const warning = checkOf(warned, "storage.atomic");
   assert.equal(warning.status, "warn");
+  assert.equal(warning.fixed, undefined);
   assert.equal(warning.evidence.stateDir, paths.stateDir);
 
   const fixed = await runDoctor(dependencies, { offline: true, fix: true });
-  assert.equal(checkOf(fixed, "storage.atomic").status, "pass");
+  const initialized = checkOf(fixed, "storage.atomic");
+  assert.equal(initialized.status, "pass");
+  assert.equal(initialized.fixed, true);
+
+  // A second --fix changes no state, so it must not claim a repair performed.
+  const again = await runDoctor(dependencies, { offline: true, fix: true });
+  const unchanged = checkOf(again, "storage.atomic");
+  assert.equal(unchanged.status, "pass");
+  assert.equal(unchanged.fixed, undefined);
 });
 
 test("7: credential.backend warns for the file fallback and passes for a keychain", async () => {
