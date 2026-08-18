@@ -296,7 +296,7 @@ unchanged. Regression tests spawn real grandchildren that ignore SIGTERM and
 hold inherited pipes open, and assert the settled outcome, the bounded settle
 time, and that no tree member survives on Linux, macOS, and Windows.
 
-## Session 14: Windows npm Self-Update
+## Session 14: Windows npm Self-Update (Done)
 
 Defects: **DEF-004**
 
@@ -308,6 +308,17 @@ CLI or dashboard output.
 
 Keep this separate from release publication: it concerns the installed
 application's updater, not the GitHub Actions publishing path.
+
+Completed with a spawn resolver that, on Windows, walks `PATH` for the `npm.cmd`
+shim and spawns `process.execPath` with the shim's underlying `npm-cli.js` entry
+script as the one prefix argument — never a shell, never a `.cmd` handed to
+`spawn`. The printable command stays `npm.cmd install --global …` so a failed
+install can still be repeated by hand; only the spawn argv changes, and it
+remains an argv array with `shell: false` on every platform. Non-Windows `npm`
+and `bun` spawn directly with no prefix. The resolver is injectable, and the
+regression test asserts the per-prefix and `bin`-beside-`lib` entry-script
+layouts, the missing-shim and missing-entry fallbacks, and that POSIX commands
+are never rewritten.
 
 ## Session 15: Doctor and Installer Verification
 

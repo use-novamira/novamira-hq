@@ -25,10 +25,21 @@
  * **Two package managers, distinguished by the running module's path.** A
  * global Bun install puts the package under `<home>/.bun/install/global/`, and
  * `npm install --global` into a Bun-managed prefix is not what that operator
- * asked for. Everything else gets npm — with `npm.cmd` on Windows, because
- * `spawn` without a shell cannot execute a `.cmd` shim, and **`--ignore-scripts`
+ * asked for. Everything else gets npm — spelled `npm.cmd` on Windows, because
+ * that is the name the operator can repeat by hand — and **`--ignore-scripts`
  * always**, matching the documented install line and the repository's own
  * supply-chain posture.
+ *
+ * **Windows cannot spawn a `.cmd` shim without a shell**, and HQ never uses a
+ * shell. Node 22 refuses to spawn `npm.cmd` directly (the CVE-2024-27980
+ * hardening), so the runner does not hand `npm.cmd` to `spawn` at all. It
+ * resolves the shim's underlying entry script — `node_modules/npm/bin/npm-cli.js`
+ * beside the `npm.cmd` found on `PATH` — and spawns `process.execPath` with that
+ * script as the first argument, exactly as `src/integration/resolve.ts` does for
+ * the site CLI's shim. The printable command stays `npm.cmd install --global …`
+ * so the operator can still repeat a failed install by hand; only the *spawn
+ * argv* changes, and it stays an argv array with `shell: false` on every
+ * platform.
  *
  * **The registry that answered the version is the registry that is installed
  * from.** Passing `--registry` through means a `NOVAMIRA_HQ_REGISTRY` mirror
@@ -46,7 +57,8 @@
  */
 
 import { spawn } from "node:child_process";
-import { sep } from "node:path";
+import { stat } from "node:fs/promises";
+import { posix as posixPath, sep, win32 as win32Path } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
@@ -111,15 +123,139 @@ export function printableCommand(command: InstallCommand): string {
   return [command.command, ...command.args].join(" ");
 }
 
+/**
+ * The executable to spawn, and any arguments that must precede the
+ * package-manager argv. For `npm`/`bun` this is the bare name with no prefix;
+ * for the Windows `npm.cmd` shim it is `process.execPath` with the shim's
+ * underlying `npm-cli.js` entry script as the one prefix argument.
+ */
+export interface SpawnSpec {
+  readonly command: string;
+  readonly prefixArgs: readonly string[];
+}
+
+/** The seam that turns a printable command into a spawnable argv. */
+export type ResolveSpawnSpec = (command: InstallCommand) => Promise<SpawnSpec>;
+
+/** The production `isFile`: a regular file, and `false` for anything else. */
+export async function nodeIsFile(candidate: string): Promise<boolean> {
+  try {
+    return (await stat(candidate)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Where a global npm install puts the package-manager entry script relative to
+ * the `npm.cmd` shim. The first form is npm's per-prefix layout, the second is
+ * the `bin`-beside-`lib` layout used by nvm-windows and by npm's default
+ * Windows prefix.
+ */
+const NPM_ENTRY_CANDIDATES: readonly (readonly string[])[] = [
+  ["node_modules", "npm", "bin", "npm-cli.js"],
+  ["..", "lib", "node_modules", "npm", "bin", "npm-cli.js"],
+];
+
+export interface SpawnResolverOptions {
+  /** The injected process environment; only `PATH`/`Path`/`path` is read. */
+  readonly environment: NodeJS.ProcessEnv;
+  readonly platform: NodeJS.Platform;
+  /** Defaults to `;` on Windows and `:` elsewhere. */
+  readonly pathSeparator?: string;
+  /** Injected so no test walks a real filesystem entry it did not create. */
+  readonly isFile: (candidate: string) => Promise<boolean>;
+  /** Defaults to `process.execPath`; only used on the Windows shim path. */
+  readonly execPath?: string;
+}
+
+/**
+ * Build the spawn resolver. On Windows, `npm.cmd` is a `.cmd` shim that Node 22
+ * refuses to spawn without a shell, so the resolver walks `PATH` for the shim,
+ * resolves its underlying `npm-cli.js` entry script, and returns
+ * `process.execPath` with that script as the one prefix argument. Every other
+ * command — `npm` on POSIX, `bun` — spawns directly with no prefix, so argument
+ * safety on non-Windows platforms is unchanged.
+ */
+export function createSpawnResolver(
+  options: SpawnResolverOptions,
+): ResolveSpawnSpec {
+  const windows = options.platform === "win32";
+  const segments = windows ? win32Path : posixPath;
+  const join = (...parts: readonly string[]): string => segments.join(...parts);
+  const dirname = (value: string): string => segments.dirname(value);
+  const separator = options.pathSeparator ?? (windows ? ";" : ":");
+  const execPath = options.execPath ?? process.execPath;
+
+  const pathVariable = (): string =>
+    options.environment.PATH ??
+    options.environment.Path ??
+    options.environment.path ??
+    "";
+
+  const cleanEntry = (entry: string): string => {
+    const trimmed = entry.trim();
+    return trimmed.startsWith('"') &&
+      trimmed.endsWith('"') &&
+      trimmed.length > 1
+      ? trimmed.slice(1, -1)
+      : trimmed;
+  };
+
+  const resolveShimEntry = async (
+    shim: string,
+  ): Promise<string | undefined> => {
+    const shimDirectory = dirname(shim);
+    for (const parts of NPM_ENTRY_CANDIDATES) {
+      const entry = join(shimDirectory, ...parts);
+      if (await options.isFile(entry)) return entry;
+    }
+    return undefined;
+  };
+
+  const findOnPath = async (name: string): Promise<string | undefined> => {
+    for (const rawEntry of pathVariable().split(separator)) {
+      const directory = cleanEntry(rawEntry);
+      if (directory === "") continue;
+      const candidate = join(directory, name);
+      if (await options.isFile(candidate)) return candidate;
+    }
+    return undefined;
+  };
+
+  return async (command) => {
+    if (!windows || command.command !== "npm.cmd") {
+      return { command: command.command, prefixArgs: [] };
+    }
+    const shim = await findOnPath("npm.cmd");
+    if (shim === undefined) {
+      return { command: command.command, prefixArgs: [] };
+    }
+    const entry = await resolveShimEntry(shim);
+    if (entry === undefined) {
+      return { command: command.command, prefixArgs: [] };
+    }
+    return { command: execPath, prefixArgs: [entry] };
+  };
+}
+
 export class SpawnInstallRunner implements InstallRunner {
-  constructor(private readonly timeoutMs = DEFAULT_INSTALL_TIMEOUT_MS) {}
+  constructor(
+    private readonly timeoutMs = DEFAULT_INSTALL_TIMEOUT_MS,
+    private readonly resolveSpec: ResolveSpawnSpec = createSpawnResolver({
+      environment: process.env,
+      platform: process.platform,
+      isFile: nodeIsFile,
+    }),
+  ) {}
 
   async run(
     command: InstallCommand,
     onOutput: (chunk: string) => void,
   ): Promise<number> {
+    const spec = await this.resolveSpec(command);
     return new Promise<number>((resolve, reject) => {
-      const child = spawn(command.command, [...command.args], {
+      const child = spawn(spec.command, [...spec.prefixArgs, ...command.args], {
         shell: false,
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],

@@ -45,6 +45,7 @@ import {
   UpdateChecker,
   UPDATE_CHECK_FILE,
   UPDATE_CHECK_LOCK,
+  createSpawnResolver,
 } from "../dist/update/index.js";
 
 const roots = [];
@@ -281,6 +282,76 @@ test("6: the install command is npm by default and bun under a bun global", () =
     assert.ok(command.args.includes("--registry"));
     assert.ok(command.args.includes("@novamira/hq@2.0.0"));
   }
+});
+
+test("6b: the Windows runner resolves npm.cmd to its entry script, never a shell", async () => {
+  const npmCmd = installCommandFor(
+    "2.0.0",
+    "/usr/lib/node_modules/x.js",
+    undefined,
+    "win32",
+  );
+  assert.equal(npmCmd.command, "npm.cmd");
+
+  // The layout `npm i -g` actually writes on Windows: an `npm.cmd` shim beside
+  // `node_modules/npm/bin/npm-cli.js`. The resolver returns Node with the entry
+  // script as the one prefix argument, so `spawn` never sees a `.cmd` shim.
+  const shimDirectory = "C:\\Users\\op\\AppData\\Roaming\\npm";
+  const entry = `${shimDirectory}\\node_modules\\npm\\bin\\npm-cli.js`;
+  const resolve = createSpawnResolver({
+    environment: { Path: shimDirectory, PATHEXT: ".COM;.EXE;.BAT;.CMD" },
+    platform: "win32",
+    isFile: async (candidate) =>
+      candidate === `${shimDirectory}\\npm.cmd` || candidate === entry,
+    execPath: "C:\\Program Files\\nodejs\\node.exe",
+  });
+  assert.deepEqual(await resolve(npmCmd), {
+    command: "C:\\Program Files\\nodejs\\node.exe",
+    prefixArgs: [entry],
+  });
+
+  // The second layout: `bin` beside `lib`, which nvm-windows and npm's default
+  // prefix use.
+  const libEntry = `C:\\Users\\op\\AppData\\Roaming\\lib\\node_modules\\npm\\bin\\npm-cli.js`;
+  const resolveLib = createSpawnResolver({
+    environment: { Path: shimDirectory, PATHEXT: ".COM;.EXE;.BAT;.CMD" },
+    platform: "win32",
+    isFile: async (candidate) =>
+      candidate === `${shimDirectory}\\npm.cmd` || candidate === libEntry,
+    execPath: "C:\\Program Files\\nodejs\\node.exe",
+  });
+  assert.deepEqual(await resolveLib(npmCmd), {
+    command: "C:\\Program Files\\nodejs\\node.exe",
+    prefixArgs: [libEntry],
+  });
+
+  // A missing shim or a missing entry script falls back to the bare name, so a
+  // non-Windows npm or a bun command is never rewritten and argument safety is
+  // unchanged on every other platform.
+  const missing = createSpawnResolver({
+    environment: { Path: "C:\\empty" },
+    platform: "win32",
+    isFile: async () => false,
+    execPath: "C:\\node\\node.exe",
+  });
+  assert.deepEqual(await missing(npmCmd), {
+    command: "npm.cmd",
+    prefixArgs: [],
+  });
+
+  const posixNpm = installCommandFor(
+    "2.0.0",
+    "/usr/lib/node_modules/x.js",
+    undefined,
+    "linux",
+  );
+  const posix = createSpawnResolver({
+    environment: { PATH: "/usr/bin" },
+    platform: "linux",
+    isFile: async () => false,
+    execPath: "/usr/bin/node",
+  });
+  assert.deepEqual(await posix(posixNpm), { command: "npm", prefixArgs: [] });
 });
 
 /* -------------------------------------------------------------------------- */

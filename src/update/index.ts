@@ -37,10 +37,15 @@ export {
   installVersion,
   printableCommand,
   SpawnInstallRunner,
+  createSpawnResolver,
+  nodeIsFile,
   DEFAULT_INSTALL_TIMEOUT_MS,
   type InstallCommand,
   type InstallRunner,
   type SelfUpdateResult,
+  type SpawnSpec,
+  type ResolveSpawnSpec,
+  type SpawnResolverOptions,
 } from "./install.js";
 
 export {
