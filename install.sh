@@ -158,26 +158,35 @@ novamira_hq_bin=$npm_prefix/bin/novamira-hq
   fail "npm installed Novamira HQ, but novamira-hq is not available in PATH (npm prefix: $npm_prefix)"
 
 "$novamira_hq_bin" --version
-if ! "$novamira_hq_bin" doctor --offline --json | node -e '
-  let text = "";
-  process.stdin.on("data", (chunk) => (text += chunk));
-  process.stdin.on("end", () => {
-    let report;
-    try {
-      report = JSON.parse(text);
-    } catch {
-      console.error("doctor produced no machine-readable report");
-      process.exit(1);
-    }
-    const status = report && report.data && report.data.status;
-    if (status !== "pass" && status !== "warn") {
-      console.error(`doctor reported an unhealthy installation: ${status}`);
-      process.exit(1);
-    }
-  });
-'; then
-  fail "doctor reported an unhealthy installation"
+doctor_report=$(mktemp) || fail "could not create the doctor report file"
+trap 'rm -f "$doctor_report"' EXIT HUP INT TERM
+if "$novamira_hq_bin" doctor --offline --json >"$doctor_report"; then
+  doctor_status=0
+else
+  doctor_status=$?
 fi
+if [ "$doctor_status" -ne 0 ]; then
+  fail "novamira-hq doctor failed with exit code $doctor_status"
+fi
+node -e '
+  const fs = require("fs");
+  const text = fs.readFileSync(process.argv[1], "utf8");
+  let report;
+  try {
+    report = JSON.parse(text);
+  } catch {
+    console.error("doctor produced no machine-readable report");
+    process.exit(1);
+  }
+  const status = report && report.data && report.data.status;
+  if (status !== "pass" && status !== "warn") {
+    console.error(`doctor reported an unhealthy installation: ${status}`);
+    process.exit(1);
+  }
+' "$doctor_report" ||
+  fail "doctor reported an unhealthy installation"
+rm -f "$doctor_report"
+trap - EXIT HUP INT TERM
 install_menu_entry
 
 skill_source=$(npm root --global)/@novamira/hq

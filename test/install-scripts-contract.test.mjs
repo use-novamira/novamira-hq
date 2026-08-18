@@ -126,8 +126,18 @@ test("5: the smoke test is doctor --offline --json, rejecting only a fail report
     assert.ok(source.includes("--version"), name);
     assert.ok(source.includes("--json"), name);
   }
-  assert.match(shell, /"\$novamira_hq_bin" doctor --offline --json/);
+  assert.match(
+    shell,
+    /"\$novamira_hq_bin" doctor --offline --json >"\$doctor_report"/,
+  );
   assert.match(code["install.sh"], /node -e/);
+  // The doctor's own exit status is observed explicitly — a nonzero exit after
+  // emitting valid pass/warn JSON must still fail the install rather than be
+  // masked by the node parser's own success.
+  assert.match(
+    code["install.sh"],
+    /fail "novamira-hq doctor failed with exit code \$doctor_status"/,
+  );
   // A `warn` report is a healthy first install (no profiles, no site CLI); a
   // `fail` report is what the smoke test must reject rather than treat as OK
   // just because the process exited 0.
