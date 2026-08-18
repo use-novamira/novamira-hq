@@ -157,6 +157,81 @@ test("patchSignals emits one datastar-patch-signals block", async () => {
   ]);
 });
 
+test("a carriage return in element markup is removed before framing", async () => {
+  const stub = stubs();
+  await streamSse(stub.message, stub.response, (stream) => {
+    stream.patchElements(html`<main id="main">a\rc<b</main>`, {
+      selectorId: "main",
+      mode: "outer",
+    });
+  });
+  const body = stub.body();
+  // The `\r` never reaches the wire, so the browser cannot read a field or
+  // event line that the sender did not frame.
+  assert.ok(!body.includes("\r"));
+  assert.deepEqual(blocks(body), [
+    [
+      "event: datastar-patch-elements",
+      "data: selector #main",
+      'data: elements <main id="main">ac<b</main>',
+    ],
+  ]);
+});
+
+test("a carriage-return/line-feed pair becomes a single data-line split", async () => {
+  const stub = stubs();
+  await streamSse(stub.message, stub.response, (stream) => {
+    stream.patchElements(html`<main id="main">a\r\n<b id="x"></main>`, {
+      selectorId: "main",
+      mode: "outer",
+    });
+  });
+  assert.ok(!stub.body().includes("\r"));
+  // A CRLF collapses to the LF split the SDK already performs, yielding one
+  // continuation data line, never an attacker-selected field or event.
+  assert.deepEqual(blocks(stub.body()), [
+    [
+      "event: datastar-patch-elements",
+      "data: selector #main",
+      'data: elements <main id="main">a',
+      'data: elements <b id="x"></main>',
+    ],
+  ]);
+});
+
+test("a line feed still splits element markup into data lines", async () => {
+  const stub = stubs();
+  await streamSse(stub.message, stub.response, (stream) => {
+    stream.patchElements(html`<main id="main">a\n<b id="x"></main>`, {
+      selectorId: "main",
+      mode: "outer",
+    });
+  });
+  assert.deepEqual(blocks(stub.body()), [
+    [
+      "event: datastar-patch-elements",
+      "data: selector #main",
+      'data: elements <main id="main">a',
+      'data: elements <b id="x"></main>',
+    ],
+  ]);
+});
+
+test("a carriage return in signaled JSON is normalized before framing", async () => {
+  const stub = stubs();
+  await streamSse(stub.message, stub.response, (stream) => {
+    stream.patchSignals({ message: "a\rb" });
+  });
+  const body = stub.body();
+  // `JSON.stringify` already escapes a control character as its two-character
+  // `\r` literal, so no raw carriage return reaches the SDK from this path at
+  // all; the assertion pins that invariant.
+  assert.ok(!body.includes("\r"));
+  assert.deepEqual(blocks(body), [
+    ["event: datastar-patch-signals", 'data: signals {"message":"a\\rb"}'],
+  ]);
+});
+
 /** A running job, for the two `setup-work` renderers. */
 const SETUP_JOB = {
   id: "a1b2c3",

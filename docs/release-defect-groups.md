@@ -343,7 +343,7 @@ directory was actually created. Both installers run `doctor --offline --json` an
 reject an overall `fail` status while accepting `warn`, which is the healthy
 fresh-install result (no profiles, no site CLI).
 
-## Session 16: SSE Framing Safety
+## Session 16: SSE Framing Safety (Done)
 
 Defects: **DEF-005**
 
@@ -356,6 +356,12 @@ attacker-selected field or event.
 Keep this as a focused security session because the escaping and framing layers
 must agree on where normalization occurs, and a broad HTML escaping change could
 alter non-SSE rendering.
+
+Completed by stripping every carriage return in `src/web/sse.ts` after escaping
+and rendering and before the SDK frames the value: a lone `\r` is removed and a
+`\r\n` pair collapses to the line feed the SDK already splits on, so neither can
+select its own SSE field or event. Regression tests cover lone `\r`, `\r\n`, and
+lone `\n` in element markup and the JSON signal path.
 
 ## Session 17: Quick, Unrelated Fixes
 

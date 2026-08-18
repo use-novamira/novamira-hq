@@ -92,6 +92,23 @@ export interface SseStreamOptions {
 }
 
 /**
+ * Remove every carriage return before it reaches the SDK.
+ *
+ * The SDK splits a value on line feed only before prefixing `data: `, but
+ * browsers treat a bare `\r`, an `\r\n` pair or a lone `\n` alike as a SSE line
+ * delimiter. A `\r` therefore survives the SDK's `split("\n")`, reaches the wire
+ * inside what looks like one `data:` line, and is re-interpreted by the browser
+ * as the start of a field or event the sender never wrote. Stripping `\r` here —
+ * after escaping and rendering, and before framing — turns `\r\n` into `\n`
+ * (still a data-line split) and removes a lone `\r` outright, so neither can
+ * select its own field or event. This is the only module that can touch both
+ * sides of the boundary: it renders, normalizes, and frames in one place.
+ */
+function normalizeSseValue(value: string): string {
+  return value.replaceAll("\r", "");
+}
+
+/**
  * Adapt one `node:http` request/response pair into an {@link SseStream} and run
  * `handler` over it.
  *
@@ -117,13 +134,13 @@ export async function streamSse(
       let closed = false;
       const stream: SseStream = {
         patchElements(markup, target) {
-          generator.patchElements(renderHtml(markup), {
+          generator.patchElements(normalizeSseValue(renderHtml(markup)), {
             selector: `#${target.selectorId}`,
             mode: target.mode,
           });
         },
         patchSignals(values) {
-          generator.patchSignals(JSON.stringify(values));
+          generator.patchSignals(normalizeSseValue(JSON.stringify(values)));
         },
         close() {
           // The SDK's `close` is a bare `res.end()`; a second one would raise
