@@ -871,7 +871,8 @@ test("the payload validators require what HQ reads and tolerate the rest", () =>
 // inline script: no `novamira` is ever started, nothing is read from `PATH`, and
 // no network call is made. The property under test is the lesson carried over
 // from `SpawnCommandExecutor` — a killed child must not look like a normal exit
-// status — plus the caps, the argv rule, and "it never throws".
+// status — plus the caps, the argv rule, process-tree termination, and "it never
+// throws".
 
 const NEVER_ABORTED = new AbortController().signal;
 
@@ -935,6 +936,120 @@ test("a killed child never looks like a normal exit status", async () => {
     stdout: "",
     stderr: "",
   });
+});
+
+test("a timeout kills the whole process tree and settles the outcome", async () => {
+  // The direct child spawns a grandchild that ignores SIGTERM and keeps its
+  // inherited stdout pipe open, then hangs. Signaling only the direct child
+  // leaves both problems standing: the grandchild survives the deadline, and
+  // its retained pipe keeps `close` — and therefore the promise — pending. The
+  // outcome must settle on time, keep the output written before the kill, and
+  // leave no member of the tree alive.
+  const script = `
+    const { spawn } = require("child_process");
+    const descendant = spawn(process.execPath, ["-e", [
+      'process.stdout.write("keep");',
+      'process.on("SIGTERM", () => {});',
+      'setTimeout(() => {}, 60000);',
+    ].join(" ")], { stdio: ["ignore", "inherit", "inherit"] });
+    descendant.unref();
+    process.stdout.write(String(descendant.pid));
+    setTimeout(() => {}, 60000);
+  `;
+  const started = Date.now();
+  const outcome = await runNode(script, { timeoutMs: 200 });
+  assert.equal(outcome.kind, "timed_out");
+  assert.equal(outcome.code, null);
+  assert.ok(outcome.stdout.includes("keep"), "pre-kill output is retained");
+  assert.ok(
+    Date.now() - started < 8_000,
+    "the promise settled shortly after the deadline, grace period included",
+  );
+
+  const descendantPid = Number.parseInt(outcome.stdout.replace("keep", ""), 10);
+  assert.ok(Number.isInteger(descendantPid), "the grandchild pid was captured");
+  // The escalated kill is asynchronous, so poll rather than assert at once.
+  const deadline = Date.now() + 5_000;
+  let alive = true;
+  while (alive && Date.now() < deadline) {
+    try {
+      process.kill(descendantPid, 0);
+      await new Promise((resolve) => {
+        setTimeout(resolve, 100);
+      });
+    } catch {
+      alive = false;
+    }
+  }
+  assert.equal(alive, false, "no descendant survives the timeout");
+});
+
+test("a timeout kills a descendant that retains no pipe", async () => {
+  // Distinguished against the tree case above: here the grandchild ignores
+  // SIGTERM but inherits *no* pipe (`stdio: "ignore"`), so the direct child's
+  // `close` fires as soon as the direct child dies — before the SIGKILL
+  // escalation. The escalation must stay armed past settlement to reap the
+  // descendant; clearing it on `close` would leave the descendant alive.
+  const script = `
+    const { spawn } = require("child_process");
+    const descendant = spawn(process.execPath, ["-e", [
+      'process.on("SIGTERM", () => {});',
+      'setTimeout(() => {}, 60000);',
+    ].join(" ")], { stdio: "ignore" });
+    process.stdout.write(String(descendant.pid));
+    setTimeout(() => {}, 60000);
+  `;
+  const started = Date.now();
+  const outcome = await runNode(script, { timeoutMs: 200 });
+  assert.equal(outcome.kind, "timed_out");
+  assert.equal(outcome.code, null);
+  assert.ok(
+    Date.now() - started < 8_000,
+    "the promise settled shortly after the deadline, grace period included",
+  );
+
+  const descendantPid = Number.parseInt(outcome.stdout, 10);
+  assert.ok(Number.isInteger(descendantPid), "the grandchild pid was captured");
+  const deadline = Date.now() + 5_000;
+  let alive = true;
+  while (alive && Date.now() < deadline) {
+    try {
+      process.kill(descendantPid, 0);
+      await new Promise((resolve) => {
+        // Keep the poll timer referenced so this test's own process stays
+        // alive while it waits for the escalated SIGKILL.
+        setTimeout(resolve, 100);
+      });
+    } catch {
+      alive = false;
+    }
+  }
+  assert.equal(alive, false, "no descendant survives the timeout");
+});
+
+test("an abort settles even when a descendant retains the output pipes", async () => {
+  // Same shape as the timeout case, but the deadline is the shared refresh
+  // signal. The descendant holds the stderr pipe open past the abort; the
+  // outcome must still settle, as `aborted`, without waiting for it.
+  const controller = new AbortController();
+  setTimeout(() => {
+    controller.abort();
+  }, 100).unref();
+  const script = `
+    const { spawn } = require("child_process");
+    spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000);"], {
+      stdio: ["ignore", "inherit", "inherit"],
+    }).unref();
+    setTimeout(() => {}, 60000);
+  `;
+  const started = Date.now();
+  const outcome = await runNode(script, { signal: controller.signal });
+  assert.equal(outcome.kind, "aborted");
+  assert.equal(outcome.code, null);
+  assert.ok(
+    Date.now() - started < 8_000,
+    "the abort settled the outcome without waiting on the descendant",
+  );
 });
 
 test("output over the cap truncates, and the captured string stays under it", async () => {

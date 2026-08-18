@@ -1160,7 +1160,9 @@ normalized origins against hosting environments, and then runs
 matched profiles only, with bounded concurrency. The executable is run directly
 with an argv array and never through a shell; each child has its own timeout and
 shares one overall refresh deadline, and captured output is capped and discarded
-after parsing. HQ never reads the site CLI's configuration, profile store,
+after parsing. A killed child — timeout, refresh deadline, or output cap — is
+terminated as its whole process tree, so a descendant can neither outlive the
+deadline nor hold the outcome open through an inherited pipe. HQ never reads the site CLI's configuration, profile store,
 credential storage, keychain records, or `NOVAMIRA_HOME`. Integration failure is
 always a connection state and never a hosting error, so every other dashboard
 capability works with `novamira` absent.

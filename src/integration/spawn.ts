@@ -42,6 +42,11 @@
  *   overflow, so a runaway child cannot grow the dashboard's heap.
  * - Bounded time, twice: a per-child timer and a shared {@link AbortSignal} that
  *   carries the whole refresh's deadline.
+ * - Killing a child owns its whole process tree. The child starts as a POSIX
+ *   process-group leader (or a Windows new-process-group), and termination is
+ *   delivered to the group, negatively on Unix and through `taskkill /T` on
+ *   Windows, so descendants neither survive the deadline nor keep the promise
+ *   open through inherited pipes.
  * - It never throws and never rejects. Every failure, including a synchronous
  *   `spawn` throw, is a `ChildOutcome`.
  * - Captured output lives in memory for the duration of the call and no longer.
@@ -49,7 +54,7 @@
  *   an SSE frame, and never attached to an error.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 
 export interface ChildInvocation {
   /** An executable path or a bare name resolved from `PATH`. Never a command line. */
@@ -131,9 +136,16 @@ export const nodeSpawnChild: SpawnChild = (invocation) =>
 
     let child: ChildProcess;
     try {
+      // The child leads its own process group (POSIX) or new process group
+      // (Windows) so `terminate` can signal its whole tree, never just the
+      // direct child. `detached` affects process-group membership, never
+      // stdio. The child is deliberately kept referenced: an unref'd child
+      // plus unref'd timers lets Node exit while this promise is still
+      // pending, so the outcome can never settle (see the invariants above).
       child = spawn(invocation.command, [...invocation.args], {
         shell: false,
         windowsHide: true,
+        detached: true,
         stdio: ["ignore", "pipe", "pipe"],
         env: invocation.env,
       });
@@ -153,20 +165,56 @@ export const nodeSpawnChild: SpawnChild = (invocation) =>
     let terminationKind: ChildOutcomeKind | undefined;
     let killTimer: NodeJS.Timeout | undefined;
 
+    /**
+     * Signal the child's whole tree, not just the direct child. POSIX: the
+     * negative pid addresses the process group the child was created as the
+     * leader of. Windows: `taskkill /T` walks the process tree rooted at the
+     * child (`/F` because `taskkill` has no graceful variant). Either call can
+     * race the tree's own exit, and the outcome is the child's to report, so a
+     * failure here is absorbed. A direct `child.kill()` remains the fallback:
+     * if the group id ever differs from the child's pid, killing at least the
+     * direct child is better than killing nothing.
+     */
+    const killTree = (signal: "SIGTERM" | "SIGKILL"): void => {
+      const pid = child.pid;
+      if (pid === undefined) return;
+      if (process.platform === "win32") {
+        execFile(
+          "taskkill",
+          ["/pid", String(pid), "/T", ...(signal === "SIGKILL" ? ["/F"] : [])],
+          { windowsHide: true, timeout: KILL_GRACE_MS },
+          () => undefined,
+        );
+        return;
+      }
+      try {
+        process.kill(-pid, signal);
+      } catch {
+        try {
+          child.kill(signal);
+        } catch {
+          // The child is already gone; the `close` event settles the outcome.
+        }
+      }
+    };
+
     const terminate = (kind: ChildOutcomeKind): void => {
       terminationKind ??= kind;
       if (killTimer !== undefined) return;
-      child.kill("SIGTERM");
+      killTree("SIGTERM");
       killTimer = setTimeout(() => {
-        child.kill("SIGKILL");
+        killTree("SIGKILL");
       }, KILL_GRACE_MS);
-      killTimer.unref();
+      // Referenced: this escalation is what reaps a descendant that ignores
+      // SIGTERM and holds no pipe, so Node must stay alive until it fires.
     };
 
     const timer = setTimeout(() => {
       terminate("timed_out");
     }, invocation.timeoutMs);
-    timer.unref();
+    // Referenced: `finish` clears it on settlement, so it never outlives the
+    // promise. Unref'ing it would let Node exit while the child is still
+    // running, with the outcome never settling (see `child.unref()` removal).
 
     const onAbort = (): void => {
       terminate("aborted");
@@ -177,7 +225,14 @@ export const nodeSpawnChild: SpawnChild = (invocation) =>
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (killTimer !== undefined) clearTimeout(killTimer);
+      // The outcome settles the moment the direct child's pipes flush, but a
+      // descendant that ignores SIGTERM and holds no pipe can outlive that. The
+      // SIGKILL escalation is therefore left armed — referenced, so Node stays
+      // alive until it fires — rather than cleared on settlement. It reaches the
+      // whole process group, so it reaps such descendants after the grace period
+      // even though this promise has already resolved. On a normal exit no
+      // escalation was ever scheduled (`killTimer` is set only inside
+      // `terminate`), so there is nothing to clear here.
       invocation.signal.removeEventListener("abort", onAbort);
       resolve({
         kind,
@@ -211,7 +266,11 @@ export const nodeSpawnChild: SpawnChild = (invocation) =>
       finish(startFailureKind(error), null);
     });
     // `close` rather than `exit`: both pipes have flushed by then, so a child
-    // that writes its envelope and exits immediately cannot lose it.
+    // that writes its envelope and exits immediately cannot lose it. `close`
+    // also guarantees the promise settles after a kill: termination is
+    // delivered to the whole tree, and a pipe can only stay open while a tree
+    // member still lives — so the forced-kill escalation always ends in a
+    // `close`, never in a promise held open by orphaned descendants.
     child.once("close", (code: number | null) => {
       finish(terminationKind ?? "exited", code);
     });

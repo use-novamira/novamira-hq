@@ -272,7 +272,7 @@ tests cover the composition-root path, shorter total budgets, zero and exact
 polling deadlines, late terminal answers, and clamped sleeps without live
 provider calls.
 
-## Session 13: Site CLI Process-Tree Timeouts
+## Session 13: Site CLI Process-Tree Timeouts (Done)
 
 Defects: **DEF-018**
 
@@ -284,6 +284,17 @@ classification behavior.
 This deserves a focused session because process-group behavior differs across
 Unix and Windows and an incorrect fix can leak children or kill unrelated
 processes.
+
+Completed by starting every integration child as the leader of its own process
+group and directing both the graceful kill and its escalation at the group —
+`process.kill(-pid, …)` on POSIX, `taskkill /pid … /T` on Windows — so a
+timeout, refresh abort, or output-cap kill terminates the whole tree and the
+promise settles even when a descendant retains an inherited stdout or stderr
+pipe. A killed child still resolves with `code: null` and never as `"exited"`;
+argv arrays, `shell: false`, bounded output, and the outcome classification are
+unchanged. Regression tests spawn real grandchildren that ignore SIGTERM and
+hold inherited pipes open, and assert the settled outcome, the bounded settle
+time, and that no tree member survives on Linux, macOS, and Windows.
 
 ## Session 14: Windows npm Self-Update
 

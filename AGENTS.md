@@ -207,7 +207,10 @@ calls just to test.
   `not_configured` / `connected` / `reconnect_required` / `unavailable`, plus
   `connect.ts`'s Connect action (`novamira auth login <url>`, the non-secret URL
   as its only argument) and `classify.ts`, the child-outcome classification both
-  share. `profiles.ts` is the site-profile management service the dashboard's
+  share. The spawn seam's termination is directed at the child's whole process
+  tree — a group-directed signal on POSIX, `taskkill /T` on Windows — so a
+  timeout or abort kills every descendant and the promise settles even when one
+  of them retains an inherited output pipe. `profiles.ts` is the site-profile management service the dashboard's
   panel calls — `sites list`, `auth status --site`, `auth logout --site` and
   `sites rename`, and `sites remove` — and it is composed into
   `SiteCliIntegration` rather than
