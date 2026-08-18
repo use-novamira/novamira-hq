@@ -325,18 +325,41 @@ test("6b: the Windows runner resolves npm.cmd to its entry script, never a shell
     prefixArgs: [libEntry],
   });
 
-  // A missing shim or a missing entry script falls back to the bare name, so a
-  // non-Windows npm or a bun command is never rewritten and argument safety is
-  // unchanged on every other platform.
-  const missing = createSpawnResolver({
+  // A shim with no resolvable entry script, or no shim at all, is not
+  // spawnable: the resolver throws a controlled usage_error rather than ever
+  // returning the bare `npm.cmd` for `spawn` to hand to `shell: false`.
+  const noShim = createSpawnResolver({
     environment: { Path: "C:\\empty" },
     platform: "win32",
     isFile: async () => false,
     execPath: "C:\\node\\node.exe",
   });
-  assert.deepEqual(await missing(npmCmd), {
-    command: "npm.cmd",
-    prefixArgs: [],
+  await assert.rejects(noShim(npmCmd), { code: "usage_error" });
+
+  const shimNoEntry = createSpawnResolver({
+    environment: { Path: shimDirectory },
+    platform: "win32",
+    isFile: async (candidate) => candidate === `${shimDirectory}\\npm.cmd`,
+    execPath: "C:\\Program Files\\nodejs\\node.exe",
+  });
+  await assert.rejects(shimNoEntry(npmCmd), { code: "usage_error" });
+
+  // A later PATH entry with an intact layout still wins when an earlier shim
+  // has no entry script: the resolver keeps searching rather than giving up.
+  const laterGood = "C:\\nodejs\\npm";
+  const laterEntry = `${laterGood}\\node_modules\\npm\\bin\\npm-cli.js`;
+  const keepsSearching = createSpawnResolver({
+    environment: { Path: `${shimDirectory};${laterGood}` },
+    platform: "win32",
+    isFile: async (candidate) =>
+      candidate === `${shimDirectory}\\npm.cmd` ||
+      candidate === `${laterGood}\\npm.cmd` ||
+      candidate === laterEntry,
+    execPath: "C:\\Program Files\\nodejs\\node.exe",
+  });
+  assert.deepEqual(await keepsSearching(npmCmd), {
+    command: "C:\\Program Files\\nodejs\\node.exe",
+    prefixArgs: [laterEntry],
   });
 
   const posixNpm = installCommandFor(

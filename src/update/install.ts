@@ -213,12 +213,18 @@ export function createSpawnResolver(
     return undefined;
   };
 
-  const findOnPath = async (name: string): Promise<string | undefined> => {
+  const findOnPath = async (
+    resolve: (shim: string) => Promise<string | undefined>,
+  ): Promise<string | undefined> => {
     for (const rawEntry of pathVariable().split(separator)) {
       const directory = cleanEntry(rawEntry);
       if (directory === "") continue;
-      const candidate = join(directory, name);
-      if (await options.isFile(candidate)) return candidate;
+      const shim = join(directory, "npm.cmd");
+      if (!(await options.isFile(shim))) continue;
+      const entry = await resolve(shim);
+      if (entry !== undefined) return entry;
+      // A shim whose entry script is absent is not spawnable; keep searching so
+      // a later PATH entry with an intact layout can still win.
     }
     return undefined;
   };
@@ -227,13 +233,12 @@ export function createSpawnResolver(
     if (!windows || command.command !== "npm.cmd") {
       return { command: command.command, prefixArgs: [] };
     }
-    const shim = await findOnPath("npm.cmd");
-    if (shim === undefined) {
-      return { command: command.command, prefixArgs: [] };
-    }
-    const entry = await resolveShimEntry(shim);
+    const entry = await findOnPath(resolveShimEntry);
     if (entry === undefined) {
-      return { command: command.command, prefixArgs: [] };
+      throw new CliError(
+        "usage_error",
+        `npm.cmd was not found with a resolvable entry script in PATH, so Novamira HQ cannot be updated on Windows.`,
+      );
     }
     return { command: execPath, prefixArgs: [entry] };
   };
