@@ -176,6 +176,32 @@ test("a credential reference never carries an inline secret", () => {
   );
 });
 
+test("a stored credential id must match the store's hexadecimal grammar", () => {
+  assert.deepEqual(
+    parseCredentialRef({ type: "stored", id: STORED_ID }, "credential"),
+    { type: "stored", id: STORED_ID },
+  );
+  for (const id of [
+    "a".repeat(63),
+    "a".repeat(65),
+    "A".repeat(64), // uppercase is not in the lowercase hexadecimal grammar
+    "g".repeat(64),
+    "g".padEnd(64, "0"),
+    `${STORED_ID.slice(0, -1)} `, // trailing control-free but non-hex space
+    "../../etc/passwd",
+    "",
+  ]) {
+    assert.throws(
+      () => parseCredentialRef({ type: "stored", id }, "credential"),
+      (error) => {
+        assert.equal(error.code, "schema_validation_failed", id);
+        return true;
+      },
+      id,
+    );
+  }
+});
+
 test("a missing config file loads as an empty version-1 document", async () => {
   const state = await isolatedConfig();
   try {

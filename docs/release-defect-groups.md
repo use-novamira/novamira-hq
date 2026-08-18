@@ -363,7 +363,7 @@ and rendering and before the SDK frames the value: a lone `\r` is removed and a
 select its own SSE field or event. Regression tests cover lone `\r`, `\r\n`, and
 lone `\n` in element markup and the JSON signal path.
 
-## Session 17: Quick, Unrelated Fixes
+## Session 17: Quick, Unrelated Fixes (Done)
 
 Defects: **DEF-032, DEF-033, DEF-034, DEF-035**
 
@@ -381,6 +381,12 @@ verify in one agent session:
 
 Keep each fix as a separate commit or clearly separated patch within the agent
 session so one can be reverted without coupling unrelated behavior.
+
+Completed with all four fixes: the README page count corrected to seven,
+bracketed Host authorities rejecting malformed suffixes, `sites list` profile
+names validated against the profile-name grammar before argv reuse, and
+persisted stored-credential IDs validated against the store's 64-character
+lowercase hexadecimal grammar.
 
 ## Coverage Check
 

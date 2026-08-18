@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CliError } from "../errors.js";
+import { isCredentialId } from "../credentials/store.js";
 
 /**
  * The one and only on-disk configuration version. HQ's Go predecessor was never
@@ -234,20 +235,6 @@ export function emptyConfigDocument(): ConfigDocument {
 
 const NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const CREDENTIAL_ID_MAX_LENGTH = 256;
-
-/**
- * Credential ids are opaque and may be derived from provider kind, profile
- * name, and credential field, so their shape stays permissive — but a control
- * character would leak into keychain account names and fallback file names.
- */
-function hasControlCharacters(value: string): boolean {
-  for (const character of value) {
-    const code = character.codePointAt(0) ?? 0;
-    if (code < 0x20 || code === 0x7f) return true;
-  }
-  return false;
-}
 
 function schemaError(path: string, requirement: string): CliError {
   return new CliError(
@@ -424,13 +411,11 @@ export function parseCredentialRef(
     }
     case "stored": {
       const id = requireNonEmptyString(record, "id", path);
-      if (id.length > CREDENTIAL_ID_MAX_LENGTH)
+      if (!isCredentialId(id))
         throw schemaError(
           `${path}.id`,
-          `must be at most ${String(CREDENTIAL_ID_MAX_LENGTH)} characters.`,
+          "must be a 64-character lowercase hexadecimal credential id.",
         );
-      if (hasControlCharacters(id))
-        throw schemaError(`${path}.id`, "must not contain control characters.");
       return { type: "stored", id };
     }
     default:

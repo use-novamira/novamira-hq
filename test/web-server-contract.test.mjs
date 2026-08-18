@@ -680,6 +680,13 @@ test("the Host guard refuses a rebound name and a mismatched port", async () => 
       // An omitted host component is a malformed authority, not the "omitted
       // means loopback" spelling a *listen address* is allowed.
       `:${bound.port}`,
+      // Malformed suffixes on a bracketed authority must be refused outright,
+      // never read as a bracketed loopback host that ignores the bogus suffix.
+      "[::1]garbage",
+      "[::1]:",
+      "[::1]:abc",
+      `[::1]:${bound.port}junk`,
+      "[::1]:8787:8787",
     ]) {
       const response = await rawRequest(bound.port, "/", { host });
       assert.equal(response.status, 403, host);

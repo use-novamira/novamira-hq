@@ -601,11 +601,19 @@ export function createDashboardServer(
       if (end < 0) {
         return { host: value, port: undefined };
       }
+      const host = value.slice(0, end + 1);
       const rest = value.slice(end + 1);
-      return {
-        host: value.slice(0, end + 1),
-        port: rest.startsWith(":") ? rest.slice(1) : undefined,
-      };
+      if (rest === "") {
+        return { host, port: undefined };
+      }
+      // A bracketed authority may end with a single `:port` suffix and nothing
+      // else. `[::1]garbage`, `[::1]:` and `[::1]:1:2` are malformed and must be
+      // refused rather than read as a bracketed loopback host that happens to
+      // carry (or ignore) a bogus suffix.
+      if (!/^:[0-9]+$/.test(rest)) {
+        return { host: value, port: undefined };
+      }
+      return { host, port: rest.slice(1) };
     }
     const separator = value.lastIndexOf(":");
     return separator < 0

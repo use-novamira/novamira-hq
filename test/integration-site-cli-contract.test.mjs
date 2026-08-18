@@ -829,6 +829,12 @@ test("the payload validators require what HQ reads and tolerate the rest", () =>
   assert.equal(parseSitesList([null]), undefined);
   assert.deepEqual(parseSitesList([]), []);
 
+  // A listed name must satisfy the profile-name grammar before it is ever
+  // reused as `--site <name>`; anything else is malformed CLI output.
+  for (const name of ["--help", "-prod", "a b", "prod/.."]) {
+    assert.equal(parseSitesList([{ ...PROFILE, name }]), undefined, name);
+  }
+
   assert.deepEqual(
     parseAuthStatus({
       credentialState: "fresh",

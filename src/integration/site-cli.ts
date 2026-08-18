@@ -50,6 +50,7 @@
  */
 
 import { asRecord } from "../json.js";
+import { isSiteProfileName } from "../site-profiles.js";
 
 /* -------------------------------------------------------------------------- */
 /* argv and the child environment                                             */
@@ -293,7 +294,16 @@ export function parseSitesList(
     const siteUrl = nonEmptyString(record.siteUrl);
     const origin = nonEmptyString(record.origin);
     // One bad element rejects the whole list; see the header comment.
-    if (name === undefined || siteUrl === undefined || origin === undefined) {
+    if (
+      name === undefined ||
+      siteUrl === undefined ||
+      origin === undefined ||
+      // A name is later reused as an argv element (`--site <name>`), so it must
+      // satisfy the same grammar the actions enforce. Otherwise a malformed or
+      // incompatible listing could smuggle a leading `-`-name into an argv that
+      // runs a different command than the one HQ meant.
+      !isSiteProfileName(name)
+    ) {
       return undefined;
     }
     profiles.push({ name, siteUrl, origin });

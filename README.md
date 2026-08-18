@@ -29,7 +29,7 @@ diagnostics, the eight provider clients, the whole `config` and `hosting`
 command line, the provisioning flow behind `hosting novamira setup`, the bundled
 agent skills behind `skills`, the local installation report behind `doctor`,
 npm-only self-update behind `update`, the two installer scripts, and the local
-dashboard — all eight pages, including Diagnostics, which runs the same report
+dashboard — all seven pages, including Diagnostics, which runs the same report
 `doctor` does, and Settings, which carries the update card.
 
 One thing is deliberately _not_ frozen: the markup inside a dashboard page,
