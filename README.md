@@ -136,11 +136,12 @@ The site CLI's `NOVAMIRA_HOME`, `NOVAMIRA_ALLOW_INSECURE_HTTP`,
 
 ## Commands
 
-Three top-level groups plus three commands: `config` manages HQ's own
+Three top-level groups plus four commands: `config` manages HQ's own
 configuration and its hosting profiles, `hosting` operates provider resources
 through one profile, `skills` prints the bundled agent instructions, `dashboard`
-serves the local web UI, `doctor` checks the installation, and `update` installs
-a newer release.
+serves the local web UI, `doctor` checks the installation, `update` installs a
+newer release, and `mcp` serves the policy-controlled command surface over MCP
+stdio.
 
 ```sh
 novamira-hq config add kinsta --credential-env KINSTA_API_KEY
@@ -151,6 +152,7 @@ novamira-hq skills get hosting
 novamira-hq doctor --offline
 novamira-hq update --check
 novamira-hq dashboard --open
+novamira-hq mcp
 
 novamira-hq --profile kinsta hosting providers validate
 novamira-hq --profile kinsta hosting sites list --include-envs
@@ -262,6 +264,47 @@ package, or peer dependency, HQ never imports it, and uninstalling it breaks
 nothing. Hosting inventory, provider actions, provisioning, and plugin-installed
 status all work without it; only the dashboard's connected-state detection and
 Connect action require it.
+
+## MCP server
+
+HQ can be configured as a local stdio MCP server in AI agents. The server writes
+only newline-delimited JSON-RPC messages to stdout and performs no background
+update check. Configure the package directly through `npx`:
+
+```json
+{
+  "mcpServers": {
+    "novamira-hq": {
+      "command": "npx",
+      "args": ["-y", "@novamira/hq", "mcp"]
+    }
+  }
+}
+```
+
+MCP defaults to full access to the existing HQ command surface. Configure a
+smaller launch-time capability set when an agent should have less access:
+
+```sh
+npx -y @novamira/hq mcp --access read
+npx -y @novamira/hq mcp --allow hosting-read --allow provisioning
+npx -y @novamira/hq mcp --access all --deny update --deny dashboard
+```
+
+`--allow` is repeatable and, when present, replaces the preset. `--deny` is
+repeatable and removes capabilities from it. Capabilities are `config`,
+`hosting-read`, `hosting-write`, `provisioning`, `dashboard`, `doctor`, `skills`
+and `update`. Alongside focused read tools, `novamira_hq_cli` accepts an argv
+array and runs any existing HQ command allowed by that launch policy, capturing
+its stdout and stderr inside the MCP result. This means the default can mutate
+or delete hosting resources, run provider WP-CLI, change local configuration and
+self-update; use launch flags to apply least privilege.
+
+MCP cannot invoke itself or use CLI options that read payloads, commands, or
+secrets from stdin because stdin belongs to the MCP transport. Tool inputs never
+accept provider credential values; credentials continue to resolve from the HQ
+profile's configured environment, file, or credential store reference. The MCP
+server retains HQ's WordPress-site boundary rule.
 
 ## Agent skills
 

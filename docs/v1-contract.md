@@ -399,9 +399,40 @@ secrets. Live provider API calls are explicitly gated and never run in CI.
 
 The command surface has exactly three top-level groups — `config`, for local HQ
 configuration and hosting profiles; `hosting`, for provider resources; and
-`skills`, for the bundled agent instructions — plus exactly three top-level
-commands: `dashboard`, `doctor` and `update`. There is no `site` group and no
-command that reaches a configured WordPress site.
+`skills`, for the bundled agent instructions — plus four top-level commands:
+`dashboard`, `doctor`, `update` and `mcp`. There is no `site` group and no command
+that reaches a configured WordPress site.
+
+`novamira-hq mcp` is the stdio MCP transport intended for AI-agent configuration
+as `npx -y @novamira/hq mcp`. It owns stdin and stdout for its process lifetime:
+stdin is newline-delimited JSON-RPC 2.0 and stdout contains only newline-delimited
+JSON-RPC responses. It supports protocol versions `2025-11-25`, `2025-06-18` and
+`2025-03-26`, the initialize lifecycle, `ping`, `tools/list` and `tools/call`, and
+advertises only the `tools` capability. It performs no background update check.
+
+The MCP launch policy defaults to `--access all`. `--access read` selects
+`config`, `hosting-read`, `doctor` and `skills`; repeated `--allow <capability>`
+replaces that preset with an explicit allowlist, and repeated
+`--deny <capability>` removes entries afterward. The frozen capability names are
+`config`, `hosting-read`, `hosting-write`, `provisioning`, `dashboard`, `doctor`,
+`skills` and `update`.
+
+The focused tools are `hosting_profiles_list`, `hosting_provider_validate`,
+`hosting_capabilities_get`, `hosting_sites_list`, `hosting_site_get`,
+`hosting_environments_list` and `hosting_operation_get`; they are advertised only
+when their capability is allowed. `novamira_hq_cli` accepts an argv string array
+without the executable name and invokes any existing HQ command whose classified
+capability is allowed. Its output is captured in the tool result and never
+written outside MCP framing. It cannot invoke `mcp`, and stdin-consuming forms
+(`--from-json -`, `--command-stdin` and every secret `*-stdin` option) are
+refused because stdin belongs exclusively to the transport. Credentials still
+come only from configured references, never an MCP credential argument.
+
+Expected command, hosting, policy and argument failures are MCP tool results with
+`isError: true`; malformed protocol requests remain JSON-RPC errors. All returned
+values and errors pass through HQ's output redaction. Enabling every capability
+does not weaken the WordPress boundary rule: no new HQ command or URL becomes
+reachable.
 
 ### Grammar conventions
 
