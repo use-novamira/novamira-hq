@@ -222,6 +222,33 @@ do by default. Without it that one panel reports "unavailable" with an install
 hint; provider inventory, deploy paths, provisioning and everything else are
 unaffected.
 
+## Desktop app
+
+The dashboard also ships as a native desktop window, built with
+[Deno](https://deno.com) and the [webview](https://jsr.io/@webview/webview)
+backend (WebKitGTK on Linux, WebKit on macOS, WebView2 on Windows):
+
+```sh
+bun run desktop:build          # writes dist-desktop/novamira-hq-desktop
+./dist-desktop/novamira-hq-desktop
+```
+
+It is the same dashboard, not a second one. The executable embeds HQ's own
+build and runs `novamira-hq dashboard --json --listen 127.0.0.1:0` in a child
+process — a fresh loopback port every time, never attached to a dashboard
+another process is running — then opens a window on the printed URL. Closing
+the window stops that server and only that server; if the window dies any
+other way the server notices and stops itself. Everything about the CLI
+holds: loopback only, the per-process mutation token, the `NOVAMIRA_HQ_*`
+storage namespace, and the site CLI found on `PATH` or through
+`NOVAMIRA_HQ_SITE_CLI`. Every release attaches a compiled executable per
+platform to its GitHub release.
+
+Linux needs `libwebkit2gtk-4.1` installed; macOS and Windows use the system
+web view. The first launch downloads the small native webview library into
+Deno's cache. During development `deno task --cwd desktop dev` runs the window
+from the checkout after `bun run build`.
+
 ## Provision a site
 
 One command installs the Novamira plugin on an environment, activates it, turns
@@ -404,6 +431,8 @@ bun install
 bun run check              # lint, format check, and the contract tests
 bun run pack:inspect       # what the published tarball contains
 bun run package:acceptance # pack it, install it, and run the installed CLI
+bun run desktop:check      # deno fmt, lint and type-check the desktop shell
+bun run desktop:build      # compile the desktop executable into dist-desktop/
 ```
 
 Live provider API calls are explicitly gated and never run in CI. See

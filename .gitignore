@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-desktop/
 *.tgz
 .DS_Store
 .envrc

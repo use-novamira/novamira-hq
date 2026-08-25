@@ -67,3 +67,47 @@ jobs:
       - run: bun run format:check
       - run: bun run pack:inspect
       - run: bun run package:acceptance
+
+  # The Deno desktop shell: format, lint and type-check `desktop/`, compile it
+  # with `dist/` embedded, and drive the compiled executable in its `--serve`
+  # role — the dashboard server, headless, on a loopback port. No window is
+  # opened, so the runner needs no display and no WebKitGTK. Offline like the
+  # rest: NOVAMIRA_HQ_UPDATE_CHECK=0, no provider credential.
+  desktop:
+    name: desktop / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.19
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: npm config set ignore-scripts true
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run desktop:check
+      - run: bun run desktop:build
+      - name: Smoke-test the compiled server role
+        env:
+          NOVAMIRA_HQ_UPDATE_CHECK: "0"
+        run: |
+          export NOVAMIRA_HQ_HOME="$(mktemp -d)"
+          ./dist-desktop/novamira-hq-desktop --serve > envelope.json &
+          server=$!
+          for _ in $(seq 1 60); do
+            [ -s envelope.json ] && break
+            sleep 1
+          done
+          cat envelope.json
+          url="$(node -e 'const e=JSON.parse(require("fs").readFileSync("envelope.json","utf8"));if(!e.ok)process.exit(1);process.stdout.write(e.data.url)')"
+          curl -fsS -o /dev/null "$url/assets/app.css"
+          kill "$server"
+          wait "$server"

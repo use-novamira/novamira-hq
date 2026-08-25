@@ -266,6 +266,21 @@ calls just to test.
   throwaway prefix and drives the installed executable; `bun run
 package:acceptance` runs it, and all three packaging jobs plus the release job
   do too.
+- `desktop/` is the Deno desktop shell: `main.ts` and `deno.json`, plus
+  `hq.d.ts`, the one-line type of the one HQ export it calls. It is **not** in
+  `package.json`'s `files`, it is ignored by ESLint and Prettier (`deno fmt`,
+  `deno lint` and `deno check` own it, through `bun run desktop:check`), and
+  `bun run desktop:build` compiles it with `dist/` and `skills/` embedded into
+  `dist-desktop/`. It contains no dashboard logic and no second server: the
+  executable re-spawns itself as `--serve`, which runs `dist/main.js`'s `main`
+  with `dashboard --json --listen 127.0.0.1:0` under Deno's Node compatibility,
+  and the window is a `@webview/webview` pointed at the URL in the envelope.
+  `Webview.run()` blocks the thread, which is why the server is a child rather
+  than a worker, why the server watches its stdin pipe for the window's death,
+  and why `@webview/webview` is imported lazily in the window role only. The
+  runtime dependencies pinned in `desktop/deno.json` must match `package.json`'s;
+  `test/desktop-contract.test.mjs` asserts that and runs `deno fmt`/`lint` when
+  a `deno` is on `PATH`. Never add a `deno`-only code path under `src/`.
 - Nothing is left deferred. `routes.ts`'s `DEFERRED_ROUTES` is **empty**, the
   `patches.ts` catalog is closed, and every page, route and fragment the contract
   names is shipped. The mechanism stays for a future phase to declare intent

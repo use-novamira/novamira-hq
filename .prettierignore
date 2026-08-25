@@ -4,3 +4,5 @@ docs
 fixtures
 LICENSE
 src/web/static
+desktop
+dist-desktop

@@ -16,6 +16,11 @@ export default tseslint.config(
       // not HQ TypeScript, they target the browser globals, and reformatting or
       // "fixing" them would break the vendoring.
       "src/web/static/**",
+      // The Deno desktop shell and its compiled output: Deno TypeScript against
+      // the `Deno` globals, owned by `deno lint` / `deno fmt` / `deno check`
+      // (`bun run desktop:check`), not by this Node toolchain.
+      "desktop/**",
+      "dist-desktop/**",
       "eslint.config.js",
     ],
   },
