@@ -19,6 +19,12 @@ Before creating a release tag:
    `use-novamira/novamira-hq`, workflow `release.yml`, environment `npm-release`.
 5. Keep publication credentials and provider credentials out of repository and
    workflow variables. Normal releases authenticate only through GitHub OIDC.
+6. Create the GitHub `macos-signing` environment, restrict it to release tags,
+   and give it the six Apple secrets below and no reviewers. It scopes the
+   signing certificate to one job; the human gate stays `npm-release`, which the
+   desktop jobs already run downstream of. Then dispatch **Verify macOS
+   signing** once, and read its Gatekeeper verdict, before relying on a release
+   to sign anything.
 
 All third-party actions in the publication workflow are pinned to reviewed
 commit SHAs. Update those SHAs deliberately rather than replacing them with
@@ -63,6 +69,77 @@ package acceptance, and GitHub release creation continue. A different integrity
 fails closed. Serialization and the dist-tag monotonicity check prevent an older
 run from moving `latest` or `next` backward.
 
+## macOS Desktop Signing
+
+The `desktop-macos` job compiles the Deno shell, then runs
+`scripts/macos-sign.sh`, which signs it with a Developer ID Application
+certificate under the Hardened Runtime, notarizes it, staples the ticket to the
+bundle, and publishes two assets:
+
+- `novamira-hq-desktop-macos-arm64` — the executable, signed and notarized.
+- `novamira-hq-desktop-macos-arm64.app.zip` — `Novamira HQ.app` around that same
+  executable, signed, notarized and **stapled**.
+
+Both exist because `xcrun stapler` accepts only a bundle, a disk image or an
+installer package. A bare executable can be notarized but never carries its
+ticket, so Gatekeeper has to reach Apple the first time it runs; the `.app`
+carries the ticket in the download and opens on a machine that is offline.
+Point people at the `.app`, and keep the executable for scripts.
+
+Set these six secrets on the `macos-signing` environment. Nothing else in the
+repository may hold them.
+
+| Secret                    | Where it comes from                                                                                     |
+| ------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `APPLE_CERT_P12_BASE64`   | Developer portal → Certificates → **Developer ID Application** (CSR from Keychain Access), exported with its private key as `.p12`, then `base64 -i cert.p12` |
+| `APPLE_CERT_PASSWORD`     | that `.p12`'s export password                                                                             |
+| `APPLE_SIGNING_IDENTITY`  | `Developer ID Application: Ovation S.r.l. (TEAMID)`, exactly as `security find-identity -v -p codesigning` prints it |
+| `APPLE_API_KEY_P8_BASE64` | App Store Connect → Users and Access → Integrations → **Team Key** with the Developer role, `base64 -i AuthKey_XXXX.p8` |
+| `APPLE_API_KEY_ID`        | that key's Key ID                                                                                         |
+| `APPLE_API_ISSUER_ID`     | that key's Issuer ID                                                                                      |
+
+Creating the Developer ID certificate requires the Account Holder or an Admin,
+and Apple issues a limited number of them: export the `.p12` once, store it where
+the team can find it, and reuse it. The App Store Connect key is used instead of
+an Apple ID and app-specific password because it belongs to the team rather than
+to a person, survives a password change, and is scoped to one role.
+
+`scripts/macos/entitlements.plist` holds the three Hardened Runtime exceptions
+the shell needs, and its comment says why each one is there. Two are V8's.
+The third, `disable-library-validation`, exists only because
+`@webview/webview` resolves its native library through `@denosaurs/plug`, which
+downloads `libwebview.<arch>.dylib` into the Deno cache on first run and hands it
+to `Deno.dlopen`; that dylib is not signed by our Team ID, so library validation
+would refuse it. Vendoring the dylib into `Contents/Frameworks/` and signing it
+with the bundle is how that key gets deleted.
+
+If `APPLE_SIGNING_IDENTITY` is unset the job emits a warning annotation and
+uploads an unsigned executable rather than failing the release. Before
+announcing a release, check the `desktop / macos-latest` job for that warning.
+
+### Proving the signing path without a release
+
+`.github/workflows/macos-signing.yml` — **Verify macOS signing** — is that job
+with the release removed. Dispatch it by hand: it compiles the shell, runs the
+same `scripts/macos-sign.sh` against the same `macos-signing` environment,
+notarizes for real, prints the signature, entitlements and Gatekeeper verdict,
+and attaches both artifacts to the run. It publishes nothing and holds no write
+permission, and unlike the release job it *fails* when a secret is missing,
+because a green run that skipped signing would answer the only question it
+exists to answer with the wrong word.
+
+Dispatch it after setting the six secrets, after renewing the certificate, and
+before any release that changes the entitlements, the desktop shell or the
+signing script. A Developer ID certificate expires; the first release after that
+date is the wrong place to notice.
+
+The artifacts are files, not an unpacked bundle, because GitHub re-zips an
+artifact's contents and drops the symlinks, modes and extended attributes a
+signed bundle is made of. Unzip the download once to get
+`novamira-hq-desktop-macos-arm64.app.zip` back byte for byte, then unzip that to
+get the stapled bundle. The bare executable loses its mode the same way, so
+`chmod +x` it before running.
+
 ## Accepted Risks
 
 - Installer and launcher behavior remains primarily statically tested; package
@@ -72,3 +149,8 @@ run from moving `latest` or `next` backward.
 - README installer URLs follow mutable `main` rather than a release asset.
 - Runtime dependency ranges can resolve newer compatible dependency graphs than
   the release lockfile.
+- The macOS desktop app is signed and notarized for arm64 only, and its first
+  launch downloads the webview dylib, so it needs the network once even though
+  its notarization ticket is stapled.
+- A release whose `macos-signing` secrets are missing still publishes; the
+  unsigned macOS asset is flagged by a workflow warning, not by a failure.

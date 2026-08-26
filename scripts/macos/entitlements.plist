@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
+  SPDX-License-Identifier: AGPL-3.0-or-later
+
+  The Hardened Runtime exceptions the desktop shell actually needs, and no
+  others. Notarization requires the Hardened Runtime, and the Hardened Runtime
+  turns on library validation and W^X; each key below buys back exactly one
+  thing the shell would otherwise be killed for.
+
+  allow-jit / allow-unsigned-executable-memory
+      Deno is V8. Without these, mapping executable pages fails and the process
+      dies before it prints anything.
+
+  disable-library-validation
+      `@webview/webview` resolves its native library through `@denosaurs/plug`,
+      which downloads `libwebview.<arch>.dylib` into the Deno cache on first run
+      and hands it to `Deno.dlopen`. That dylib is not signed by our Team ID, so
+      library validation refuses to load it. Vendoring the dylib into
+      `Contents/Frameworks/` and signing it with the bundle is how this key gets
+      deleted; until then the window cannot open without it.
+
+  Nothing here grants network, file or process access: those are Deno's own
+  compile-time permissions, and the sandbox entitlements are not in use.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>

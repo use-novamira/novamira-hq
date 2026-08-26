@@ -208,6 +208,9 @@ jobs:
   # always has a release to attach to, and after `publish` because the
   # executable embeds `dist/` at the published commit. The compile needs no
   # display and no WebKit; only the window does, at the user's.
+  #
+  # macOS is a separate job below, because it is the only one that signs and
+  # therefore the only one that may see the signing secrets.
   desktop:
     needs: [prepare, github-release]
     name: desktop / ${{ matrix.os }}
@@ -217,9 +220,6 @@ jobs:
         include:
           - os: ubuntu-latest
             asset: novamira-hq-desktop-linux-x86_64
-            binary: novamira-hq-desktop
-          - os: macos-latest
-            asset: novamira-hq-desktop-macos-arm64
             binary: novamira-hq-desktop
           - os: windows-latest
             asset: novamira-hq-desktop-windows-x86_64.exe
@@ -250,3 +250,101 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ env.RELEASE_TAG }}
         run: gh release upload "$RELEASE_TAG" "dist-desktop/${{ matrix.asset }}" --clobber
+
+  # The same compile, plus Apple's three steps: Developer ID signature,
+  # notarization, stapled ticket. It publishes two assets — the bare executable
+  # this release has always published, and "Novamira HQ.app" zipped, which is
+  # the only one of the two that can carry its notarization ticket offline.
+  #
+  # `macos-signing` is a secrets scope, not a second approval gate: the human
+  # gate is `npm-release`, which this job already sits downstream of. Restrict
+  # the environment to release tags and give it no reviewers. The secrets are
+  # here and nowhere else, so no other job — and no fork's pull request — can
+  # reach the certificate.
+  #
+  # A repository without those secrets still releases: the signing step is
+  # skipped with a loud warning and the unsigned executable is uploaded, exactly
+  # as it was before signing existed. It is the release runbook, not this
+  # workflow, that decides a release must be signed.
+  desktop-macos:
+    needs: [prepare, github-release]
+    name: desktop / macos-latest
+    runs-on: macos-latest
+    environment: macos-signing
+    permissions:
+      contents: write
+    env:
+      ASSET: novamira-hq-desktop-macos-arm64
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.2.19
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+      - run: npm config set ignore-scripts true
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run desktop:build
+      - run: mv dist-desktop/novamira-hq-desktop "dist-desktop/$ASSET"
+      - name: Sign, notarize and staple
+        id: sign
+        env:
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            echo "::warning title=Unsigned macOS desktop build::APPLE_SIGNING_IDENTITY is not set on the macos-signing environment. Uploading an unsigned, un-notarized executable; Gatekeeper will refuse it on a machine that downloads it."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          bash scripts/macos-sign.sh "dist-desktop/$ASSET"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+      # Re-signing rewrites the Mach-O the embedded `dist/` and `skills/` live
+      # in, so the signed executable is the one that has to prove it still runs.
+      # The server role only: headless, loopback, no window, no WebKit, and no
+      # registry read.
+      - name: Smoke-test the signed server role
+        env:
+          NOVAMIRA_HQ_UPDATE_CHECK: "0"
+        run: |
+          export NOVAMIRA_HQ_HOME="$(mktemp -d)"
+          "./dist-desktop/$ASSET" --serve > envelope.json &
+          server=$!
+          for _ in $(seq 1 60); do
+            [ -s envelope.json ] && break
+            sleep 1
+          done
+          cat envelope.json
+          url="$(node -e 'const e=JSON.parse(require("fs").readFileSync("envelope.json","utf8"));if(!e.ok)process.exit(1);process.stdout.write(e.data.url)')"
+          curl -fsS -o /dev/null "$url/assets/app.css"
+          kill "$server"
+          wait "$server"
+      - name: Verify the published signature
+        if: steps.sign.outputs.signed == 'true'
+        run: |
+          codesign --verify --strict --verbose=2 "dist-desktop/$ASSET"
+          spctl --assess --type execute -vv "dist-desktop/$ASSET" || true
+          unzip -q "dist-desktop/$ASSET.app.zip" -d "$RUNNER_TEMP/verify"
+          codesign --verify --deep --strict --verbose=2 "$RUNNER_TEMP/verify/Novamira HQ.app"
+          xcrun stapler validate "$RUNNER_TEMP/verify/Novamira HQ.app"
+          spctl --assess --type execute -vv "$RUNNER_TEMP/verify/Novamira HQ.app"
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ env.RELEASE_TAG }}
+        run: |
+          assets="dist-desktop/$ASSET"
+          if [ -f "dist-desktop/$ASSET.app.zip" ]; then
+            assets="$assets dist-desktop/$ASSET.app.zip"
+          fi
+          # shellcheck disable=SC2086
+          gh release upload "$RELEASE_TAG" $assets --clobber

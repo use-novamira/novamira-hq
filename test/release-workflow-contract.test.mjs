@@ -15,6 +15,15 @@ const workflow = await readFile(
   "utf8",
 );
 const runbook = await readFile(join(root, "docs/releasing.md"), "utf8");
+const verification = await readFile(
+  join(root, ".github/workflows/macos-signing.yml"),
+  "utf8",
+);
+const signer = await readFile(join(root, "scripts/macos-sign.sh"), "utf8");
+const entitlements = await readFile(
+  join(root, "scripts/macos/entitlements.plist"),
+  "utf8",
+);
 
 test("release metadata selects prerelease and stable dist-tags", async () => {
   const prerelease = runMetadata("v1.0.0-rc1");
@@ -74,6 +83,121 @@ test("first-publication and accepted risks are explicit", () => {
   assert.match(runbook, /Cancel the automatic tag-triggered run/);
   assert.match(runbook, /delete.*NPM_BOOTSTRAP_TOKEN/is);
   assert.match(runbook, /Accepted Risks/);
+});
+
+test("macOS signing secrets are reachable from the signing job alone", () => {
+  const jobs = workflow.split(/\n  (?=[a-z-]+:\n)/);
+  const signing = jobs.filter((job) => job.includes("secrets.APPLE_"));
+  assert.equal(signing.length, 1, "one job may see the Apple secrets");
+  assert.ok(signing[0].startsWith("desktop-macos:"));
+  assert.match(signing[0], /environment: macos-signing/);
+  assert.match(signing[0], /bash scripts\/macos-sign\.sh/);
+  // The gate is npm-release, upstream; this environment only scopes secrets.
+  assert.match(signing[0], /needs: \[prepare, github-release\]/);
+  for (const secret of [
+    "APPLE_CERT_P12_BASE64",
+    "APPLE_CERT_PASSWORD",
+    "APPLE_SIGNING_IDENTITY",
+    "APPLE_API_KEY_P8_BASE64",
+    "APPLE_API_KEY_ID",
+    "APPLE_API_ISSUER_ID",
+  ]) {
+    assert.ok(signer.includes(secret), `the signer requires ${secret}`);
+    assert.ok(
+      signing[0].includes(`secrets.${secret}`),
+      `the job must pass ${secret}`,
+    );
+  }
+  // Both macOS assets, and the signed executable proved to still run.
+  assert.match(signing[0], /novamira-hq-desktop-macos-arm64/);
+  assert.match(signing[0], /\$ASSET\.app\.zip/);
+  assert.match(signing[0], /--serve/);
+  assert.match(signing[0], /xcrun stapler validate/);
+  // The unsigned matrix must not have grown a macOS leg back.
+  const unsigned = jobs.find((job) => job.startsWith("desktop:"));
+  assert.ok(!unsigned.includes("macos-latest"), "macOS signs in its own job");
+});
+
+test("the macOS signer hardens, notarizes and leaves no credential behind", () => {
+  assert.match(signer, /^#!\/usr\/bin\/env bash$/m);
+  assert.match(signer, /^set -euo pipefail$/m);
+  // Notarization requires the Hardened Runtime and a secure timestamp.
+  assert.match(signer, /--options runtime/);
+  assert.match(signer, /--timestamp/);
+  assert.match(signer, /--entitlements "\$entitlements"/);
+  // An App Store Connect key, never a person's Apple ID and app password.
+  assert.match(signer, /xcrun notarytool "\$@"/);
+  assert.match(signer, /--key "\$api_key"/);
+  assert.ok(!/--apple-id|--password/.test(signer));
+  // `--wait` alone has been known to exit 0 on a rejected submission, and the
+  // status alone never says which binary was rejected.
+  assert.match(signer, /notary submit "\$work\/notarize\.zip" --wait/);
+  assert.match(signer, /if \[ "\$status" != "Accepted" \]; then/);
+  assert.match(signer, /notary log "\$\(field id "\$submission"\)"/);
+  // Only a bundle can carry its ticket, so only the bundle is stapled.
+  assert.match(signer, /xcrun stapler staple "\$app"/);
+  assert.match(signer, /spctl --assess --type execute/);
+  // The throwaway keychain, the .p12 and the .p8 go away on every exit path.
+  assert.match(signer, /trap cleanup EXIT INT TERM/);
+  assert.match(signer, /security delete-keychain/);
+  assert.match(signer, /rm -f "\$certificate" "\$api_key"/);
+  // A secret may be decoded into a file; none may reach stdout or stderr.
+  for (const line of signer.split("\n")) {
+    if (!/^\s*(echo|printf)/.test(line)) continue;
+    if (/>\s*"\$/.test(line)) continue;
+    assert.ok(
+      !/APPLE_CERT_PASSWORD|APPLE_CERT_P12_BASE64|APPLE_API_KEY_P8_BASE64|keychain_password/.test(
+        line,
+      ),
+      `the signer must not print a secret: ${line.trim()}`,
+    );
+  }
+});
+
+test("the hardened-runtime exceptions are the three the shell needs", () => {
+  const keys = [...entitlements.matchAll(/<key>([^<]+)<\/key>/g)].map(
+    (match) => match[1],
+  );
+  assert.deepEqual(keys, [
+    "com.apple.security.cs.allow-jit",
+    "com.apple.security.cs.allow-unsigned-executable-memory",
+    // `@webview/webview` dlopens a dylib `@denosaurs/plug` downloads; deleting
+    // this key means vendoring and signing that dylib first.
+    "com.apple.security.cs.disable-library-validation",
+  ]);
+  // `get-task-allow` is a debug entitlement and notarization refuses it.
+  assert.ok(!entitlements.includes("get-task-allow"));
+  assert.ok(!entitlements.includes("com.apple.security.app-sandbox"));
+});
+
+test("signing can be proved on demand, without publishing anything", () => {
+  // Dispatch only: it must never fire on a tag, a push or a pull request.
+  assert.match(verification, /^on:\n {2}workflow_dispatch:\n/m);
+  assert.ok(!/^ {2}(push|pull_request|schedule):/m.test(verification));
+  // It publishes nothing. No release, no registry, no write permission.
+  assert.match(verification, /^permissions:\n {2}contents: read$/m);
+  assert.ok(!verification.includes("gh release"));
+  assert.ok(!verification.includes("contents: write"));
+  assert.ok(!verification.includes("npm publish"));
+  // The same script and the same secret scope as the release job.
+  assert.match(verification, /environment: macos-signing/);
+  assert.match(verification, /bash scripts\/macos-sign\.sh/);
+  // Here a missing secret is a failure: the release job's warning fallback
+  // would make an unconfigured repository look configured.
+  assert.ok(!verification.includes("::warning"));
+  assert.match(verification, /xcrun stapler validate/);
+  assert.ok(
+    !/uses: [^\n]+@v\d/.test(verification),
+    "actions must be SHA-pinned",
+  );
+});
+
+test("the runbook explains the Apple credentials it asks for", () => {
+  assert.match(runbook, /macos-signing/);
+  assert.match(runbook, /Developer ID Application/);
+  assert.match(runbook, /notariz/i);
+  assert.match(runbook, /App Store Connect/);
+  assert.match(runbook, /Verify macOS signing/);
 });
 
 function runMetadata(...args) {
