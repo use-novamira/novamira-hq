@@ -58,19 +58,22 @@ done
 root=$(CDPATH= cd -P "$(dirname "$0")/.." && pwd)
 entitlements=$root/scripts/macos/entitlements.plist
 [ -f "$entitlements" ] || fail "missing entitlements at $entitlements"
+icon=$root/scripts/macos/icon.png
+[ -f "$icon" ] || fail "missing application icon at $icon"
 
 work=${RUNNER_TEMP:-$(mktemp -d)}
 keychain=$work/novamira-signing.keychain-db
 certificate=$work/novamira-signing.p12
 api_key=$work/novamira-notary.p8
 staging=$work/novamira-notarize
+iconset=$work/novamira-hq.iconset
 keychain_password=$(uuidgen)
 created_keychain=
 
 cleanup() {
   status=$?
   rm -f "$certificate" "$api_key"
-  rm -rf "$staging"
+  rm -rf "$staging" "$iconset"
   if [ -n "$created_keychain" ]; then
     security delete-keychain "$keychain" >/dev/null 2>&1 || true
   fi
@@ -118,7 +121,27 @@ sign() {
 version=$(node -e 'const fs=require("node:fs");process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).version)' "$root/package.json")
 app=$(dirname "$binary")/Novamira\ HQ.app
 rm -rf "$app"
-mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+
+# The icon is one 1024x1024 master; `iconutil` wants every representation the
+# Finder, the Dock and Get Info ask for, at both scale factors, or it refuses
+# the iconset. Built here rather than committed as an .icns so the master stays
+# the reviewable artefact and the derived sizes cannot drift from it.
+rm -rf "$iconset"
+mkdir -p "$iconset"
+for size in 16 32 128 256 512; do
+  retina=$((size * 2))
+  sips -z "$size" "$size" "$icon" \
+    --out "$iconset/icon_${size}x${size}.png" >/dev/null ||
+    fail "could not scale the application icon to ${size}x${size}"
+  sips -z "$retina" "$retina" "$icon" \
+    --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null ||
+    fail "could not scale the application icon to ${retina}x${retina}"
+done
+iconutil --convert icns "$iconset" \
+  --output "$app/Contents/Resources/novamira-hq.icns" ||
+  fail "could not build the application icon"
+rm -rf "$iconset"
 
 cat >"$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -129,6 +152,10 @@ cat >"$app/Contents/Info.plist" <<PLIST
   <string>Novamira HQ</string>
   <key>CFBundleExecutable</key>
   <string>novamira-hq-desktop</string>
+  <key>CFBundleIconFile</key>
+  <string>novamira-hq</string>
+  <key>CFBundleIconName</key>
+  <string>novamira-hq</string>
   <key>CFBundleIdentifier</key>
   <string>ai.novamira.hq.desktop</string>
   <key>CFBundleInfoDictionaryVersion</key>

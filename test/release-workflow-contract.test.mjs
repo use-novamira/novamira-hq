@@ -24,6 +24,7 @@ const entitlements = await readFile(
   join(root, "scripts/macos/entitlements.plist"),
   "utf8",
 );
+const appIcon = await readFile(join(root, "scripts/macos/icon.png"));
 
 test("release metadata selects prerelease and stable dist-tags", async () => {
   const prerelease = runMetadata("v1.0.0-rc1");
@@ -152,6 +153,35 @@ test("the macOS signer hardens, notarizes and leaves no credential behind", () =
       `the signer must not print a secret: ${line.trim()}`,
     );
   }
+});
+
+test("the app bundle carries its icon, built from one committed master", () => {
+  // A PNG's IHDR is the first chunk: 8 signature bytes, 4 length, "IHDR",
+  // then width and height as big-endian uint32s.
+  assert.equal(appIcon.subarray(1, 4).toString("ascii"), "PNG");
+  assert.equal(appIcon.subarray(12, 16).toString("ascii"), "IHDR");
+  assert.equal(appIcon.readUInt32BE(16), 1024);
+  assert.equal(appIcon.readUInt32BE(20), 1024);
+  // Derived at signing time from that master, never committed as an .icns.
+  assert.match(signer, /icon=\$root\/scripts\/macos\/icon\.png/);
+  assert.match(signer, /for size in 16 32 128 256 512; do/);
+  assert.match(signer, /sips -z "\$size" "\$size" "\$icon"/);
+  assert.match(signer, /sips -z "\$retina" "\$retina" "\$icon"/);
+  assert.match(
+    signer,
+    /iconutil --convert icns "\$iconset"[\s\S]{0,80}Contents\/Resources\/novamira-hq\.icns/,
+  );
+  // An .icns nothing in Info.plist names is an .icns the Finder ignores.
+  assert.match(
+    signer,
+    /<key>CFBundleIconFile<\/key>\n {2}<string>novamira-hq</,
+  );
+  assert.match(
+    signer,
+    /<key>CFBundleIconName<\/key>\n {2}<string>novamira-hq</,
+  );
+  // The iconset is scratch, and goes away on every exit path with the rest.
+  assert.match(signer, /rm -rf "\$staging" "\$iconset"/);
 });
 
 test("the hardened-runtime exceptions are the three the shell needs", () => {
