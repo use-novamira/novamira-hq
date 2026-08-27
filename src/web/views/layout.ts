@@ -131,7 +131,10 @@ export function renderSidebar(
  *
  * `navLink` marks a link active for its own page plus two aliases:
  * `novamira-setup` highlights Sites, and `deploy-path-new` highlights Deploy
- * paths. `/sites` is the unified hosting and site-CLI inventory.
+ * paths. `/sites` is the unified hosting and site-CLI inventory. `How to use
+ * it` is HQ's persistent handoff guide;
+ * it is a page rather than first-run copy so an operator can return to it after
+ * configuring providers and sites.
  */
 export function renderNav(page: DashboardPage, showActive = true): Html {
   const current = showActive ? page : undefined;
@@ -139,6 +142,7 @@ export function renderNav(page: DashboardPage, showActive = true): Html {
     navLink(current, "sites", "/sites", "Sites"),
     navLink(current, "deploy-paths", "/deploy-paths", "Deploy paths"),
     navLink(current, "providers", "/providers", "Hosting Providers"),
+    navLink(current, "how-to-use", "/how-to-use", "How to use it"),
     navLink(current, "diagnostics", "/diagnostics", "Diagnostics"),
     navLink(current, "settings", "/settings", "Settings"),
   ]}</nav>`;

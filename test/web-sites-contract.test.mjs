@@ -412,6 +412,7 @@ test("1: the toolbar loads on mount, reloads on change and refreshes on submit",
   ])
     assert.ok(!markup.includes(gone), gone);
   assert.ok(!/application[-_ ]?password/i.test(markup));
+  assert.ok(!markup.includes("How to use it"));
 });
 
 test("2: the segmented control carries the five frozen data-sf-* values", async () => {
@@ -770,6 +771,11 @@ test("11: a successful connect repaints the sites fragments and calls no provide
   assert.ok(
     recorder
       .find("toast")
+      .markup.includes("Connected. https://env-a.example.com"),
+  );
+  assert.ok(
+    !recorder
+      .find("sites-result")
       .markup.includes("Connected. https://env-a.example.com"),
   );
 });

@@ -933,6 +933,7 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 | `/` | GET | no |
 | `/providers` | GET | no |
 | `/sites` | GET | no |
+| `/how-to-use` | GET | no |
 | `/deploy-paths` | GET | no |
 | `/deploy-paths/new` | GET | no |
 | `/novamira-setup` | GET | no |
@@ -1108,9 +1109,11 @@ object, a nav, a `#main` body and a `#toast`. Every mutating control on them
 posts to a `/_dashboard/*` route and receives SSE patches; no page submits a
 form to itself and no page reloads.
 
-- **Hosting Providers** (`/`, `/providers`) — the provider form, the configured
+- **Home** (`/`) — the first-run onboarding only when both the hosting-profile
+  list and the site CLI's site list are empty; otherwise it opens **Sites**.
+- **Hosting Providers** (`/providers`) — the provider form, the configured
   table, and a per-row connection cell driven by `/_dashboard/providers/validate`.
-  With no profiles configured it is a single onboarding card. Credential
+  Credential
   *references* are rendered, never values; there is no field, column or details
   row that could hold a secret.
 - **Sites** (`/sites`) — one unified inventory. Hosting environments remain
@@ -1124,6 +1127,14 @@ form to itself and no page reloads.
   hosting account and a CLI site; the latter accepts a URL and an optional custom
   profile name. CLI actions reread only the warm hosting inventory and never
   trigger provider calls.
+- **How to use it** (`/how-to-use`) — the three-step handoff: prepare a site
+  through a hosting provider or by URL, authorize it until it is Connected, then
+  open the AI agent selected during HQ installation. The page states explicitly
+  that HQ prepares the connection and does not contain an AI chat. It also
+  prints the macOS/Linux and PowerShell `npx skills add` commands for direct npm
+  installs and for registering the packaged `novamira-hq` instructions with a
+  different agent; the dashboard does not spawn that interactive third-party
+  installer itself.
 - **Deploy paths** (`/deploy-paths`, `/deploy-paths/new`) — the configured paths
   with their resolved environment names and domains, and the creation form.
   Execution is not part of v1; the Deploy button renders disabled and says so.

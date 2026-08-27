@@ -36,8 +36,11 @@
  * **A failure is a notice, never an envelope.** The browser is waiting for a
  * patch stream; a JSON failure would leave it with nothing on screen. So the
  * handler catches, sends the same three fragments with the error's *message*
- * in `#sites-result`, and routes the `code` to `onDiagnostic`. `details` reach
- * nothing: `failureEnvelope`'s `redact()` runs on the JSON path only.
+ * in `#sites-result`, clears the toast so the sentence appears once, and routes
+ * the `code` to `onDiagnostic`. Successful actions do the inverse: the refreshed
+ * inventory stays in `#sites-result` and the message appears only in the toast.
+ * `details` reach nothing: `failureEnvelope`'s `redact()` runs on the JSON path
+ * only.
  */
 
 import { asCliError } from "../../errors.js";
@@ -112,6 +115,12 @@ export function patchSites(
   result: SitesResult | undefined,
   notice: DashboardNotice,
 ): void {
+  // A successful action keeps the inventory visible and reports through the
+  // global toast. A page-level listing failure has no inventory to show, so it
+  // occupies `#sites-result` and leaves the toast quiet. Never render one
+  // message in both places.
+  const inlineNotice = result === undefined ? notice : EMPTY_NOTICE;
+  const toastNotice = result === undefined ? EMPTY_NOTICE : notice;
   stream.patchElements(renderSitesStatus(result?.storedAt ?? null), {
     selectorId: "sites-status",
     mode: "inner",
@@ -123,11 +132,11 @@ export function patchSites(
       groups: result?.groups ?? [],
       connections: result?.connections ?? null,
       siteProfiles: result?.siteProfiles ?? null,
-      notice,
+      notice: inlineNotice,
     }),
     { selectorId: "sites-result", mode: "outer" },
   );
-  patchToast(stream, notice);
+  patchToast(stream, toastNotice);
 }
 
 export function createSitesHandler(context: RouteContext): RouteHandler {

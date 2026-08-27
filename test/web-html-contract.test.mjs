@@ -204,6 +204,7 @@ const CORPUS_PATHS = [
   "/providers?new=host",
   "/sites",
   "/sites?new=site",
+  "/how-to-use",
   "/deploy-paths",
   "/deploy-paths/new",
   "/novamira-setup?profile=dev&env=env-1",
@@ -1093,6 +1094,7 @@ test("29: every routed page carries main, nav and toast", async () => {
       ids: ["main", "nav", "toast", "diagnostics-output"],
     },
     { path: "/settings", ids: ["main", "nav", "toast", "updates-card"] },
+    { path: "/how-to-use", ids: ["main", "nav", "toast"] },
   ];
   for (const entry of pages) {
     const markup = await page(server, entry.path);

@@ -308,6 +308,130 @@ p {
   align-items: start;
 }
 
+.how-to-card {
+  display: grid;
+  gap: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.how-to-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.how-to-steps li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  padding: 2px 18px;
+  border-left: 1px solid var(--border);
+}
+
+.how-to-steps li:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.how-to-steps li:last-child {
+  padding-right: 0;
+}
+
+.how-to-number {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.how-to-steps strong {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.how-to-steps p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.how-to-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.how-to-actions .button {
+  min-height: 32px;
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+.agent-install-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.3fr);
+  gap: 18px 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.agent-install-card h2 {
+  margin: 4px 0 6px;
+  font-size: 20px;
+}
+
+.agent-install-card p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.agent-commands {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.agent-commands strong {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+}
+
+.agent-commands pre {
+  overflow-x: auto;
+  margin: 0;
+  border-radius: 8px;
+  background: var(--text);
+  color: #fff;
+  padding: 11px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.agent-install-card > .field-help {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
 .panel {
   overflow: hidden;
   border: 1px solid var(--border);
@@ -1193,6 +1317,26 @@ dd {
 .deploy-hint:hover { text-decoration: underline; }
 
 @media (max-width: 900px) {
+  .how-to-steps {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .how-to-steps li,
+  .how-to-steps li:first-child,
+  .how-to-steps li:last-child {
+    padding: 0;
+    border-left: 0;
+  }
+
+  .agent-install-card {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-install-card > .field-help {
+    grid-column: auto;
+  }
+
   .cli-sites .site-grid {
     grid-template-columns: 1fr;
   }

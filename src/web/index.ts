@@ -160,6 +160,8 @@ export {
 
 export { renderPageBody, type PageModel } from "./views/pages.js";
 
+export { renderHowToUsePage } from "./views/how-to-use.js";
+
 export {
   pageConnState,
   renderConnCell,

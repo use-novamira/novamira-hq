@@ -198,6 +198,9 @@ What it does:
   cached for five minutes; CLI actions use that warm inventory and never call a
   provider. Every CLI control runs one `novamira` command — HQ stores nothing
   and never talks to the site itself.
+- **How to use it** — the persistent three-step guide from preparing a site, to
+  authorizing it on the computer, to opening the AI agent selected during HQ's
+  installation. HQ prepares the connection; the AI work happens in the agent.
 - **Deploy paths** — create and remove the environment-to-environment paths.
   Running one is not part of this release.
 - **Novamira Setup** — install and activate the plugin on an environment with

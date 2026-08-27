@@ -250,6 +250,7 @@ const PAGE_PATHS: Readonly<Record<string, DashboardPage>> = {
   "/": "providers",
   "/providers": "providers",
   "/sites": "sites",
+  "/how-to-use": "how-to-use",
   "/deploy-paths": "deploy-paths",
   "/deploy-paths/new": "deploy-path-new",
   "/novamira-setup": "novamira-setup",

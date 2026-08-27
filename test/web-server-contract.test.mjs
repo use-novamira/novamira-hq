@@ -334,9 +334,10 @@ test("#main carries its per-page class, and renderPlaceholderBody is gone", asyn
   const { server, cleanup } = await fixture();
   try {
     for (const [path, page] of [
-      ["/", "providers"],
+      ["/", "sites"],
       ["/providers", "providers"],
       ["/sites", "sites"],
+      ["/how-to-use", "how-to-use"],
       ["/deploy-paths", "deploy-paths"],
       ["/deploy-paths/new", "deploy-path-new"],
       ["/novamira-setup", "novamira-setup"],
@@ -365,9 +366,10 @@ test("the nav active link follows the two page aliases", async () => {
     /<a class="nav-link active" href="([^"]+)"/.exec(markup)?.[1];
   try {
     for (const [path, href] of [
-      ["/", "/providers"],
+      ["/", "/sites"],
       ["/providers", "/providers"],
       ["/sites", "/sites"],
+      ["/how-to-use", "/how-to-use"],
       ["/novamira-setup", "/sites"],
       ["/deploy-paths", "/deploy-paths"],
       ["/deploy-paths/new", "/deploy-paths"],
@@ -377,6 +379,32 @@ test("the nav active link follows the two page aliases", async () => {
       const response = await server.dispatch(request(path));
       assert.equal(activeHref(response.body.markup), href, path);
     }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("How to use it explains the complete handoff and links to both entry paths", async () => {
+  const { server, cleanup } = await fixture();
+  try {
+    const response = await server.dispatch(request("/how-to-use"));
+    const markup = response.body.markup;
+    for (const want of [
+      "<h1>How to use it</h1>",
+      ">Prepare a site</strong>",
+      ">Connect it</strong>",
+      ">Ask your AI</strong>",
+      'href="/providers?new=host"',
+      'href="/sites?new=cli"',
+      "AI agent you selected during Novamira HQ installation",
+      "does not contain an AI chat",
+      "Configure a different AI agent",
+      "installer already configures the agent you select",
+      "installed HQ directly with npm",
+      'npx skills add &quot;$(npm root --global)/@novamira/hq&quot; --skill novamira-hq --global',
+      "Sites already connected on this computer do not need to be connected again.",
+    ])
+      assert.ok(markup.includes(want), want);
   } finally {
     await cleanup();
   }
@@ -885,6 +913,7 @@ const SHIPPED_ROUTES = [
   "GET /deploy-paths",
   "GET /deploy-paths/new",
   "GET /diagnostics",
+  "GET /how-to-use",
   "GET /novamira-setup",
   "GET /providers",
   "GET /settings",

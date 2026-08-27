@@ -49,6 +49,7 @@ import {
   type WarmSitesView,
 } from "./deploy-paths.js";
 import { renderDiagnosticsPage } from "./diagnostics.js";
+import { renderHowToUsePage } from "./how-to-use.js";
 import { renderProvidersPage } from "./providers.js";
 import { renderSettingsPage } from "./settings.js";
 import { renderSetupPage, type SetupView } from "./setup.js";
@@ -98,6 +99,8 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
       });
     case "sites":
       return renderSitesPage(model.view, model.signals.cliSites.open);
+    case "how-to-use":
+      return renderHowToUsePage();
     case "deploy-paths":
       return renderDeployPathsPage(model.view, model.notice, model.deployPaths);
     case "deploy-path-new":
