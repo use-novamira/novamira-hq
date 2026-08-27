@@ -76,7 +76,7 @@ const PILLS: Readonly<
   >
 > = {
   connected: { text: "Connected", modifier: "ok" },
-  reconnect_required: { text: "Reconnect required", modifier: "warn" },
+  reconnect_required: { text: "Reconnect", modifier: "warn" },
   unreachable: { text: "Unreachable", modifier: "warn" },
   unknown: { text: "Unknown", modifier: false },
 };
@@ -266,7 +266,7 @@ export function renderConnectForm(
     open && "open",
   )}${ds.classes({ open: signal("cliSites.open") })}${ds.onSubmit(
     submit,
-  )}><div class="panel-head"><div><h2>Add a site by URL</h2><p>Your browser will open so you can authorize the connection. The connection will be saved on your computer.</p></div></div><div class="form-grid"><label><span>Site URL</span><input type="url"${ds.bind(
+  )}><div class="panel-head"><div><h2>Connect a site by URL</h2><p>Your browser will open so you can authorize the connection. The connection will be saved on your computer.</p></div></div><div class="form-grid"><label><span>Site URL</span><input type="url"${ds.bind(
     "cliSites.url",
   )} placeholder="https://example.com" required${disabled}></label><label><span>Custom name <small>(optional)</small></span><input type="text"${ds.bind(
     "cliSites.name",

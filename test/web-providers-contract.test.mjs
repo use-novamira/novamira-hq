@@ -142,6 +142,9 @@ async function fixture(options = {}) {
     now: () => NOW,
     randomToken: () => TOKEN,
     integration: {
+      // `/` asks the site CLI's listing once before showing first-run
+      // onboarding; this suite runs no site CLI and configures no site.
+      listProfiles: async () => ({ profiles: [] }),
       connectionStates: async () => {
         throw new Error("the providers page renders no connection state");
       },
@@ -274,7 +277,7 @@ test("1: only an empty root shows onboarding; Providers remains a section", asyn
   const { server } = await fixture();
   const markup = await page(server, "/");
   assert.ok(markup.includes('class="page onboarding"'));
-  assert.equal(markup.split('class="onboard-card"').length - 1, 2);
+  assert.equal((markup.match(/class="onboard-card[ "]/g) ?? []).length, 2);
   assert.ok(markup.includes("Welcome to Novamira HQ"));
   assert.ok(markup.includes("Your site. Your AI."));
   assert.ok(markup.includes("Nothing in between."));

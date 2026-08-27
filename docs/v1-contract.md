@@ -958,7 +958,9 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 | `/_dashboard/updates/check` | GET | yes |
 | `/_dashboard/updates/install` | POST | yes |
 
-`/` renders the providers page. An unknown path is `404` with a `not_found`
+`/` renders first-run onboarding when neither the hosting-profile list nor the
+site CLI's site list holds anything to show, and opens Sites otherwise. An
+unknown path is `404` with a `not_found`
 failure envelope; a known path with the wrong method is `405` with an `Allow`
 header and a `usage_error` envelope; a request body over 256 KiB is `413`.
 
@@ -1104,7 +1106,7 @@ uncatalogued selector is a compile error, not a runtime miss.
 
 ### Pages
 
-Seven page paths render one document each: an app shell carrying the root signal
+Nine page paths render one document each: an app shell carrying the root signal
 object, a nav, a `#main` body and a `#toast`. Every mutating control on them
 posts to a `/_dashboard/*` route and receives SSE patches; no page submits a
 form to itself and no page reloads.

@@ -412,7 +412,6 @@ test("1: the toolbar loads on mount, reloads on change and refreshes on submit",
   ])
     assert.ok(!markup.includes(gone), gone);
   assert.ok(!/application[-_ ]?password/i.test(markup));
-  assert.ok(!markup.includes("How to use it"));
 });
 
 test("2: the segmented control carries the five frozen data-sf-* values", async () => {

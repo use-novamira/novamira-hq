@@ -144,7 +144,7 @@ const NO_DOMAIN_TITLE =
  */
 export function renderSitesPage(view: ConfigView, cliFormOpen = false): Html {
   if (cliFormOpen) {
-    return html`<section class="page"><header class="page-head"><div><h1>New site</h1><p>Add a site directly using its URL.</p></div><a class="button secondary"${hrefAttr(
+    return html`<section class="page"><header class="page-head"><div><h1>New site</h1><p>Connect a site directly using its URL.</p></div><a class="button secondary"${hrefAttr(
       url("/sites"),
     )}>Back to Sites</a></header>${renderConnectForm(
       true,
@@ -368,7 +368,8 @@ function renderEnvironment(
  *
  * - `connected` — `pill ok` "Connected", and nothing to do.
  * - `reconnect_required` — one yellow Reconnect action on the matched profile;
- *   a warning pill only when the integration returned no profile to act on.
+ *   a warning pill labelled "Reconnect" only when the integration returned no
+ *   profile to act on.
  * - `not_configured` — `pill` "Not connected", Connect, then the Setup CTA.
  * - `unavailable` — `pill` "Unknown" titled with the hint, Connect **disabled**
  *   with the same title, and the Setup CTA, which does not depend on knowing
@@ -407,7 +408,7 @@ function renderStateCell(
     case "reconnect_required": {
       const profiles = renderProfileLink(connection, view);
       return profiles === false
-        ? html`<span class="pill warn">Reconnect required</span>`
+        ? html`<span class="pill warn">Reconnect</span>`
         : profiles;
     }
     case "not_configured":

@@ -285,7 +285,7 @@ function renderOnboarding(model: ProvidersPageModel): Html {
   );
   return html`<section class="page onboarding"><header class="page-head"><div><span class="eyebrow">Welcome to Novamira HQ</span><h1>Your site. Your AI.<br>Nothing in between.</h1><p class="lede">Manage your hosting environments and prepare sites for Novamira. Choose how you want to start.</p></div></header>${renderProviderFlash(
     model.notice,
-  )}<div class="onboard-cards"><button class="onboard-card" type="button"${ds.on(
+  )}<div class="onboard-cards"><button class="onboard-card feat" type="button"${ds.on(
     "click",
     openForm,
   )}><span class="kicker">Hosting account</span><h2>Connect a hosting provider</h2><p>Discover sites and environments from an existing account with a provider supported by Novamira HQ.</p><span class="button primary">Connect a hosting provider</span></button><a class="onboard-card"${hrefAttr(

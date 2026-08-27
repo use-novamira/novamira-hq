@@ -1156,6 +1156,10 @@ dd {
   font: inherit;
 }
 
+.onboard-card.feat {
+  border-color: var(--border-strong);
+}
+
 .onboard-card:hover {
   border-color: var(--border-strong);
 }

@@ -1077,7 +1077,7 @@ test("29: every routed page carries main, nav and toast", async () => {
   // rows; 7-2 added `updates-card` to `/settings`. Extend the `ids` column,
   // never the assertion.
   const pages = [
-    { path: "/", ids: ["main", "nav", "toast", "provider-flash"] },
+    { path: "/", ids: ["main", "nav", "toast"] },
     { path: "/providers", ids: ["main", "nav", "toast", "provider-flash"] },
     {
       path: "/sites",
