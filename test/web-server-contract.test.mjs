@@ -401,7 +401,7 @@ test("How to use it explains the complete handoff and links to both entry paths"
       "Configure a different AI agent",
       "installer already configures the agent you select",
       "installed HQ directly with npm",
-      'npx skills add &quot;$(npm root --global)/@novamira/hq&quot; --skill novamira-hq --global',
+      "npx skills add &quot;$(npm root --global)/@novamira/hq&quot; --skill novamira-hq --global",
       "Sites already connected on this computer do not need to be connected again.",
     ])
       assert.ok(markup.includes(want), want);

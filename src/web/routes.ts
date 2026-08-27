@@ -379,8 +379,11 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
       let providerOnboarding = false;
       if (request.path === "/") {
         if (view.profiles.length === 0) {
-          const inventory = await context.sites.refreshInventory([]);
-          providerOnboarding = inventory.profiles.profiles.length === 0;
+          // The site CLI's own list, asked directly rather than through the
+          // sites service: the question is "has this operator configured
+          // anything at all", and a warm hosting inventory cannot answer it.
+          const listing = await context.integration.listProfiles();
+          providerOnboarding = listing.profiles.length === 0;
         }
         if (!providerOnboarding) renderedPage = "sites";
       }

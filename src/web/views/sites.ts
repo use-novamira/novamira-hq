@@ -268,11 +268,12 @@ function renderCliOnly(
   if (profiles.length === 0) return false;
   return html`<section class="provider-sites cli-sites"><div class="group-head"><div><h2>Sites added by URL</h2><p>Added directly instead of discovered through a hosting provider.</p></div><span class="pill">${String(
     profiles.length,
-  )} sites</span></div><div class="site-grid cli-site-grid">${profiles.map((profile) =>
-    renderSiteProfileRow(siteProfileRowView(profile), {
-      profile: view.profile,
-      includeEnvs: view.includeEnvs,
-    }),
+  )} sites</span></div><div class="site-grid cli-site-grid">${profiles.map(
+    (profile) =>
+      renderSiteProfileRow(siteProfileRowView(profile), {
+        profile: view.profile,
+        includeEnvs: view.includeEnvs,
+      }),
   )}</div></section>`;
 }
 

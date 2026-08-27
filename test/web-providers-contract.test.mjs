@@ -282,7 +282,7 @@ test("1: only an empty root shows onboarding; Providers remains a section", asyn
   assert.ok(markup.includes("Add a site by URL"));
   assert.ok(markup.includes('href="/sites?new=cli"'));
   assert.ok(markup.includes('id="provider-flash"'));
-  assert.ok(!markup.includes('nav-link active'));
+  assert.ok(!markup.includes("nav-link active"));
   // The old credential-holding site form remains deleted.
   for (const gone of ["Connect a single site", "site-name", "siteForm"])
     assert.ok(!markup.includes(gone), gone);
@@ -290,7 +290,7 @@ test("1: only an empty root shows onboarding; Providers remains a section", asyn
 
   const providers = await page(server, "/providers");
   assert.ok(providers.includes("<h1>Hosting Providers</h1>"));
-  assert.ok(providers.includes('nav-link active'));
+  assert.ok(providers.includes("nav-link active"));
   assert.ok(!providers.includes('class="page onboarding"'));
 
   const listing = {
@@ -314,7 +314,10 @@ test("1: only an empty root shows onboarding; Providers remains a section", asyn
     overrides: {
       integration: {
         connectionStates: async () => snapshot,
-        siteInventory: async () => ({ connections: snapshot, profiles: listing }),
+        siteInventory: async () => ({
+          connections: snapshot,
+          profiles: listing,
+        }),
         listProfiles: async () => listing,
         connect: async () => ({ kind: "connected" }),
         logoutProfile: async () => ({ kind: "done" }),
