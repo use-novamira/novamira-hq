@@ -64,9 +64,8 @@ async function serve(): Promise<void> {
  * logout, a crash — can never reach a handler that would stop the server. The
  * server therefore watches the one thing the operating system closes for it
  * unconditionally: its stdin, a pipe the window holds and never writes. EOF
- * means the window is dead, and the server raises against itself the signal
- * the `dashboard` command already stops on, so the listener closes the same
- * way it closes on Ctrl-C.
+ * means the window is dead, and `stopServer` below ends this process the way
+ * the `dashboard` command already ends.
  */
 function watchParent(): void {
   void (async () => {
@@ -80,8 +79,27 @@ function watchParent(): void {
       }
       if (read === null) break;
     }
-    Deno.kill(Deno.pid, "SIGTERM");
+    stopServer();
   })();
+}
+
+/**
+ * Stop this process the way the `dashboard` command already stops.
+ *
+ * On POSIX that is `SIGTERM`, one of the two signals the command installs a
+ * handler for, so the listener closes exactly as it closes on Ctrl-C. Windows
+ * has no signal a process can usefully raise against itself, and Node delivers
+ * no `SIGTERM` to a handler there whatever tries to send one; if `Deno.kill`
+ * refuses it, exiting is the honest fallback. Either way the window is already
+ * gone, so there is nobody left for a graceful close to be graceful towards,
+ * and the operating system closes the loopback listener with the process.
+ */
+function stopServer(): void {
+  try {
+    Deno.kill(Deno.pid, "SIGTERM");
+  } catch {
+    Deno.exit(0);
+  }
 }
 
 /** The window role: spawn the server, wait for its URL, show it, reap it. */

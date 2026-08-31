@@ -221,9 +221,11 @@ jobs:
           - os: ubuntu-latest
             asset: novamira-hq-desktop-linux-x86_64
             binary: novamira-hq-desktop
+            archive: novamira-hq-desktop-linux-x86_64.tar.gz
           - os: windows-latest
             asset: novamira-hq-desktop-windows-x86_64.exe
             binary: novamira-hq-desktop.exe
+            archive: ""
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -242,14 +244,29 @@ jobs:
           deno-version: v2.x
       - run: npm config set ignore-scripts true
       - run: bun install --frozen-lockfile --ignore-scripts
-      - run: bun run desktop:build
+      - run: bun run build
+      # Linux additionally gets the tarball: an ELF executable cannot carry an
+      # icon, so the freedesktop entry and the hicolor icons travel beside it.
+      - if: runner.os == 'Linux'
+        run: node scripts/desktop-build.mjs --package
+      - if: runner.os != 'Linux'
+        run: node scripts/desktop-build.mjs
+      # Before the rename, while the executable is still where the build wrote
+      # it. The embedded `dist/` is what a compile can silently get wrong.
+      - name: Smoke-test the compiled server role
+        run: node scripts/desktop-smoke.mjs
       - shell: bash
         run: mv "dist-desktop/${{ matrix.binary }}" "dist-desktop/${{ matrix.asset }}"
       - shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ env.RELEASE_TAG }}
-        run: gh release upload "$RELEASE_TAG" "dist-desktop/${{ matrix.asset }}" --clobber
+          ARCHIVE: ${{ matrix.archive }}
+        run: |
+          assets="dist-desktop/${{ matrix.asset }}"
+          if [ -n "$ARCHIVE" ]; then assets="$assets dist-desktop/$ARCHIVE"; fi
+          # shellcheck disable=SC2086
+          gh release upload "$RELEASE_TAG" $assets --clobber
 
   # The same compile, plus Apple's three steps: Developer ID signature,
   # notarization, stapled ticket. It publishes two assets — the bare executable
@@ -314,21 +331,7 @@ jobs:
       # The server role only: headless, loopback, no window, no WebKit, and no
       # registry read.
       - name: Smoke-test the signed server role
-        env:
-          NOVAMIRA_HQ_UPDATE_CHECK: "0"
-        run: |
-          export NOVAMIRA_HQ_HOME="$(mktemp -d)"
-          "./dist-desktop/$ASSET" --serve > envelope.json &
-          server=$!
-          for _ in $(seq 1 60); do
-            [ -s envelope.json ] && break
-            sleep 1
-          done
-          cat envelope.json
-          url="$(node -e 'const e=JSON.parse(require("fs").readFileSync("envelope.json","utf8"));if(!e.ok)process.exit(1);process.stdout.write(e.data.url)')"
-          curl -fsS -o /dev/null "$url/assets/app.css"
-          kill "$server"
-          wait "$server"
+        run: node scripts/desktop-smoke.mjs "dist-desktop/$ASSET"
       - name: Verify the published signature
         if: steps.sign.outputs.signed == 'true'
         run: |

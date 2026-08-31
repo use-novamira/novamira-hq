@@ -244,13 +244,44 @@ the window stops that server and only that server; if the window dies any
 other way the server notices and stops itself. Everything about the CLI
 holds: loopback only, the per-process mutation token, the `NOVAMIRA_HQ_*`
 storage namespace, and the site CLI found on `PATH` or through
-`NOVAMIRA_HQ_SITE_CLI`. Every release attaches a compiled executable per
-platform to its GitHub release.
+`NOVAMIRA_HQ_SITE_CLI`.
 
 Linux needs `libwebkit2gtk-4.1` installed; macOS and Windows use the system
 web view. The first launch downloads the small native webview library into
 Deno's cache. During development `deno task --cwd desktop dev` runs the window
 from the checkout after `bun run build`.
+
+### Release assets
+
+Every release attaches a compiled executable per platform. All three carry the
+same application icon, derived at build time from the one committed
+1024x1024 master — `deno compile --icon` embeds it on Windows,
+`scripts/macos-sign.sh` builds the `.icns` for the macOS bundle, and Linux, where
+an executable cannot hold an icon at all, gets a tarball that carries it beside
+the binary.
+
+| Asset                                     | What it is                                                         |
+| ----------------------------------------- | ------------------------------------------------------------------ |
+| `novamira-hq-desktop-macos-arm64.app.zip` | `Novamira HQ.app`, signed, notarized and stapled. Double-click it. |
+| `novamira-hq-desktop-macos-arm64`         | the same executable, bare, for a script.                           |
+| `novamira-hq-desktop-windows-x86_64.exe`  | the window, with its icon. Unsigned, so SmartScreen asks once.     |
+| `novamira-hq-desktop-linux-x86_64.tar.gz` | the executable, its freedesktop entry and its hicolor icons.       |
+| `novamira-hq-desktop-linux-x86_64`        | the same executable, bare, for a script.                           |
+
+On Linux, the tarball installs for the current user with three commands, and
+`INSTALL.txt` inside it repeats them:
+
+```sh
+tar xzf novamira-hq-desktop-linux-x86_64.tar.gz
+cd novamira-hq-desktop-linux-x86_64
+install -Dm755 novamira-hq-desktop ~/.local/bin/novamira-hq-desktop
+cp -r icons/hicolor ~/.local/share/icons/
+install -Dm644 ai.novamira.hq.desktop.desktop \
+  ~/.local/share/applications/ai.novamira.hq.desktop.desktop
+```
+
+That entry is separate from the one `install.sh` writes: this one opens the
+native window, and the installer's opens the dashboard in a browser.
 
 ## Provision a site
 
@@ -435,7 +466,9 @@ bun run check              # lint, format check, and the contract tests
 bun run pack:inspect       # what the published tarball contains
 bun run package:acceptance # pack it, install it, and run the installed CLI
 bun run desktop:check      # deno fmt, lint and type-check the desktop shell
-bun run desktop:build      # compile the desktop executable into dist-desktop/
+bun run desktop:build      # generate the icons, compile into dist-desktop/
+node scripts/desktop-build.mjs --package   # ...and the Linux release tarball
+node scripts/desktop-smoke.mjs             # run the compiled --serve role
 ```
 
 Live provider API calls are explicitly gated and never run in CI. See

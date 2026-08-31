@@ -112,11 +112,38 @@ test("macOS signing secrets are reachable from the signing job alone", () => {
   // Both macOS assets, and the signed executable proved to still run.
   assert.match(signing[0], /novamira-hq-desktop-macos-arm64/);
   assert.match(signing[0], /\$ASSET\.app\.zip/);
-  assert.match(signing[0], /--serve/);
+  assert.match(
+    signing[0],
+    /node scripts\/desktop-smoke\.mjs "dist-desktop\/\$ASSET"/,
+  );
   assert.match(signing[0], /xcrun stapler validate/);
   // The unsigned matrix must not have grown a macOS leg back.
   const unsigned = jobs.find((job) => job.startsWith("desktop:"));
   assert.ok(!unsigned.includes("macos-latest"), "macOS signs in its own job");
+});
+
+test("Linux and Windows desktop assets carry their icons and are proved to run", () => {
+  const jobs = workflow.split(/\n  (?=[a-z-]+:\n)/);
+  const desktop = jobs.find((job) => job.startsWith("desktop:"));
+
+  // Both executables, and Linux's tarball beside its bare one.
+  assert.match(desktop, /asset: novamira-hq-desktop-linux-x86_64\n/);
+  assert.match(desktop, /asset: novamira-hq-desktop-windows-x86_64\.exe\n/);
+  assert.match(desktop, /archive: novamira-hq-desktop-linux-x86_64\.tar\.gz/);
+  assert.match(desktop, /if \[ -n "\$ARCHIVE" \]/);
+
+  // The Windows icon is embedded by the compile; the Linux one travels in the
+  // archive, which is the whole reason `--package` exists.
+  assert.match(desktop, /node scripts\/desktop-build\.mjs --package/);
+  assert.match(desktop, /runner\.os == 'Linux'/);
+
+  // Every compiled executable this release publishes is run before it is
+  // uploaded, on the platform that compiled it.
+  assert.match(desktop, /node scripts\/desktop-smoke\.mjs/);
+  assert.ok(
+    desktop.indexOf("desktop-smoke.mjs") < desktop.indexOf("gh release upload"),
+    "the smoke test must run before the upload",
+  );
 });
 
 test("the macOS signer hardens, notarizes and leaves no credential behind", () => {

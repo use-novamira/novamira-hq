@@ -61,21 +61,7 @@ jobs:
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
         run: bash scripts/macos-sign.sh "dist-desktop/$ASSET"
       - name: Smoke-test the signed server role
-        env:
-          NOVAMIRA_HQ_UPDATE_CHECK: "0"
-        run: |
-          export NOVAMIRA_HQ_HOME="$(mktemp -d)"
-          "./dist-desktop/$ASSET" --serve > envelope.json &
-          server=$!
-          for _ in $(seq 1 60); do
-            [ -s envelope.json ] && break
-            sleep 1
-          done
-          cat envelope.json
-          url="$(node -e 'const e=JSON.parse(require("fs").readFileSync("envelope.json","utf8"));if(!e.ok)process.exit(1);process.stdout.write(e.data.url)')"
-          curl -fsS -o /dev/null "$url/assets/app.css"
-          kill "$server"
-          wait "$server"
+        run: node scripts/desktop-smoke.mjs "dist-desktop/$ASSET"
       - name: Report what Apple and Gatekeeper say
         run: |
           codesign --display --verbose=4 "dist-desktop/$ASSET"

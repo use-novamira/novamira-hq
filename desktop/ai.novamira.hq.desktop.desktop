@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Novamira HQ
+GenericName=Hosting dashboard
+Comment=Open the Novamira HQ dashboard in its own window
+Exec=novamira-hq-desktop
+Icon=novamira-hq
+Terminal=false
+StartupNotify=true
+StartupWMClass=novamira-hq-desktop
+Categories=Development;WebDevelopment;
+Keywords=Novamira;WordPress;hosting;dashboard;

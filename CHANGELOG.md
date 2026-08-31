@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+### Added
+
+- The desktop application ships with its icon on all three platforms. A new
+  `scripts/desktop-icons.mjs` derives a Windows `.ico` and the freedesktop
+  hicolor PNGs from `scripts/macos/icon.png`, the same committed master the
+  macOS bundle already used, converting Display P3 to sRGB and resampling in
+  linear light with no build-time image dependency.
+- `novamira-hq-desktop-linux-x86_64.tar.gz`: a new release asset carrying the
+  Linux executable, its freedesktop entry, its icons and an `INSTALL.txt`,
+  because an ELF executable cannot hold an icon. The bare executable is still
+  published beside it.
+- `scripts/desktop-build.mjs` compiles the shell with the host's icon —
+  `deno compile --icon` refuses on any target but Windows — and `--package`
+  assembles the Linux archive reproducibly.
+- The Windows desktop build is exercised on every push: `package.yml`'s desktop
+  matrix gained `windows-latest`, and `deno compile` failing on a malformed
+  `.ico` is what checks the generator.
+
+### Fixed
+
+- The desktop server role now stops deterministically on Windows when its window
+  dies. `Deno.kill(Deno.pid, "SIGTERM")` cannot be delivered there, so the stdin
+  watcher exits instead of throwing out of an unawaited promise.
+- The compiled executable's smoke test is `scripts/desktop-smoke.mjs`, which
+  holds the server's stdin open. The three shell copies it replaces backgrounded
+  the server, which handed it `/dev/null` — EOF, the one thing that means "the
+  window is gone" — so it could stop before the first request.
+
 ## 1.0.0-rc1 - 2026-08-13
 
 ### Added

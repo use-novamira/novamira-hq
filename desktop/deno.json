@@ -7,7 +7,8 @@
   },
   "tasks": {
     "dev": "deno run --allow-env --allow-read --allow-write --allow-net --allow-run --allow-ffi --allow-sys main.ts",
-    "compile": "deno compile --allow-env --allow-read --allow-write --allow-net --allow-run --allow-ffi --allow-sys --include ../dist --include ../skills --output ../dist-desktop/novamira-hq-desktop main.ts"
+    "compile": "deno compile --allow-env --allow-read --allow-write --allow-net --allow-run --allow-ffi --allow-sys --include ../dist --include ../skills --output ../dist-desktop/novamira-hq-desktop main.ts",
+    "compile:windows": "deno compile --allow-env --allow-read --allow-write --allow-net --allow-run --allow-ffi --allow-sys --include ../dist --include ../skills --icon ../dist-desktop/icons/novamira-hq.ico --output ../dist-desktop/novamira-hq-desktop main.ts"
   },
   "lint": {
     "rules": {

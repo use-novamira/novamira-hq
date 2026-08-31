@@ -69,6 +69,37 @@ package acceptance, and GitHub release creation continue. A different integrity
 fails closed. Serialization and the dist-tag monotonicity check prevent an older
 run from moving `latest` or `next` backward.
 
+## Desktop Assets
+
+The `desktop` job compiles the Deno shell on `ubuntu-latest` and
+`windows-latest`, runs the compiled executable's `--serve` role before it is
+uploaded, and attaches it to the release the job above created. macOS is a
+separate job, below, because it is the only one that signs.
+
+All three carry the same icon, derived at build time by
+`scripts/desktop-icons.mjs` from `scripts/macos/icon.png`, the one committed
+1024x1024 master. Nothing derived is committed, so no size can drift from it:
+
+- **Windows** — `deno compile --icon` embeds a seven-entry `.ico`. The flag is
+  Windows-only, which is why `desktop/deno.json` has a second `compile:windows`
+  task and `scripts/desktop-build.mjs` chooses between the two. `deno compile`
+  parses the icon and fails on a malformed one, so the Windows leg of
+  `package.yml`'s desktop matrix is the automated check on the generator.
+- **Linux** — an ELF executable cannot hold an icon, so
+  `scripts/desktop-build.mjs --package` writes
+  `novamira-hq-desktop-linux-x86_64.tar.gz`: the executable, the freedesktop
+  entry `ai.novamira.hq.desktop.desktop`, the hicolor icons its `Icon` key
+  resolves, and an `INSTALL.txt` with the three commands. The archive is built
+  reproducibly, so re-running the job cannot publish a different tarball than
+  the one it replaces. The bare executable is still published beside it.
+- **macOS** — `scripts/macos-sign.sh` builds the `.icns` with `sips` and
+  `iconutil` and puts it in the bundle it signs, as it always has.
+
+The Windows executable is **not** signed: SmartScreen shows its unrecognized-app
+prompt the first time someone runs it, and they have to choose "More info" then
+"Run anyway". Authenticode needs an OV or EV certificate this project does not
+hold; it is listed under Accepted Risks below.
+
 ## macOS Desktop Signing
 
 The `desktop-macos` job compiles the Deno shell, then runs
@@ -152,5 +183,12 @@ get the stapled bundle. The bare executable loses its mode the same way, so
 - The macOS desktop app is signed and notarized for arm64 only, and its first
   launch downloads the webview dylib, so it needs the network once even though
   its notarization ticket is stapled.
+- The Windows desktop executable is unsigned, so SmartScreen warns on first run.
+- One architecture per platform ships: arm64 on macOS, x86_64 on Linux and
+  Windows.
+- The Linux desktop archive is installed by hand from three documented commands;
+  there is no Linux desktop installer, and no AppImage or distribution package.
+- The desktop icons are verified structurally — sizes, encodings and headers —
+  never visually; nothing in CI looks at a taskbar.
 - A release whose `macos-signing` secrets are missing still publishes; the
   unsigned macOS asset is flagged by a workflow warning, not by a failure.
