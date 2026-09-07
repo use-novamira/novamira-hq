@@ -9,6 +9,7 @@ export const MCP_CAPABILITIES = [
   "maintenance",
   "provisioning",
   "deploy",
+  "recovery",
 ] as const;
 
 export type McpCapability = (typeof MCP_CAPABILITIES)[number];

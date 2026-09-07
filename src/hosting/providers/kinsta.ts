@@ -91,6 +91,7 @@ const KINSTA_CAPABILITIES: readonly string[] = [
   "backups.list",
   "backups.downloadable",
   "backups.create",
+  "backups.restore",
   "cache.clear",
   "php.restart",
   "php.set-version",
@@ -449,6 +450,14 @@ class KinstaClient implements ProviderClient {
           "backups.create",
           "POST",
           `/sites/environments/${segment(request.envId)}/manual-backups`,
+          request.body,
+        );
+
+      case "restore-backup":
+        return this.#send(
+          "backups.restore",
+          "POST",
+          `/sites/environments/${segment(request.targetEnvId)}/backups/restore`,
           request.body,
         );
 

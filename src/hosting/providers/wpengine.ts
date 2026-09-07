@@ -274,6 +274,15 @@ class WpEngineClient implements ProviderClient {
           `/installs/${escapePathSegment(request.envId)}/backups`,
           backupBody(request.body),
         );
+      case "restore-backup": {
+        const { backupId, body } = restoreBody(request.body);
+        return this.#sendAction(
+          "backups.restore",
+          "POST",
+          `/installs/${escapePathSegment(request.targetEnvId)}/backups/${escapePathSegment(backupId)}/restore`,
+          body,
+        );
+      }
       case "clear-cache": {
         const { installId, body } = cacheBody(request.cache, request.body);
         return this.#sendAction(
@@ -422,6 +431,11 @@ function capabilities(): ProviderCapability[] {
       "backups.create",
       true,
       `uses POST /installs/{install_id}/backups; ${NOTE_NATIVE_JSON}`,
+    ],
+    [
+      "backups.restore",
+      true,
+      "uses POST /installs/{install_id}/backups/{backup_id}/restore",
     ],
     ["cache.clear", true, "uses POST /installs/{install_id}/purge_cache"],
     ["php.restart", false, NOTE_UNSUPPORTED],
@@ -637,6 +651,24 @@ function domainIdFromBody(body: ActionBody): string {
   throw usageError(
     "WP Engine needs a domain_id or id to change the primary domain.",
   );
+}
+
+function restoreBody(body: ActionBody): {
+  readonly backupId: string;
+  readonly body: JsonRecord;
+} {
+  const payload = objectBody(body);
+  for (const key of ["backup_id", "id"]) {
+    const text = key in payload ? scalarText(payload[key]) : "";
+    if (text === "") continue;
+    return {
+      backupId: text,
+      body: Object.fromEntries(
+        Object.entries(payload).filter(([name]) => name !== key),
+      ),
+    };
+  }
+  throw usageError("WP Engine needs a backup_id or id to restore a backup.");
 }
 
 function usageError(message: string): CliError {

@@ -486,7 +486,11 @@ test("the capabilities read needs no network call", async () => {
   await withKinsta([], SCOPED, async ({ client, requests }) => {
     const capabilities = await client.read({ kind: "capabilities" });
     assert.equal(requests.length, 0);
-    assert.equal(capabilities.length, 44);
+    assert.equal(capabilities.length, 45);
+    assert.equal(
+      capabilities.some((capability) => capability.name === "backups.restore"),
+      true,
+    );
     assert.deepEqual(capabilities[0], {
       name: "providers.validate",
       supported: true,
@@ -625,6 +629,12 @@ test("action requests map to the documented Kinsta endpoints", async () => {
       "POST /sites/environments/env-1/manual-backups",
       "backups.create",
       '{"tag":"pre-deploy"}',
+    ],
+    [
+      { kind: "restore-backup", targetEnvId: "env-2", body: { backup_id: 7 } },
+      "POST /sites/environments/env-2/backups/restore",
+      "backups.restore",
+      '{"backup_id":7}',
     ],
     [
       { kind: "update-plugin", envId: "env-1", body: { name: "akismet" } },

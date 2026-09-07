@@ -267,6 +267,7 @@ export const createInstaWpClient: ProviderClientFactory = (
         return runWpCli(request.envId, request.body);
       case "create-environment":
       case "push-environment":
+      case "restore-backup":
       case "clear-cache":
       case "restart-php":
       case "set-php-version":

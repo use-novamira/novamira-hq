@@ -252,7 +252,7 @@ test("the group registers exactly the Go command tree", async () => {
     );
 
     const tree = {
-      backups: ["list", "downloadable", "create"],
+      backups: ["list", "downloadable", "create", "restore"],
       cache: ["clear"],
       php: ["restart", "set-version"],
       redirects: ["list", "apply"],
@@ -288,6 +288,12 @@ test("every subcommand exposes exactly its Go flags", async () => {
       "backups list": ["--env"],
       "backups downloadable": ["--env"],
       "backups create": ["--env", "--from-json", "--tag"],
+      "backups restore": [
+        "--env",
+        "--backup-id",
+        "--all-content",
+        "--notified-user-id",
+      ],
       "cache clear": [
         "--from-json",
         "--env",
@@ -564,6 +570,75 @@ test("denied-ips set sends an empty list when no --ip was given", async () => {
       environment_id: "env-1",
       ip_list: [],
     });
+  });
+});
+
+test("backup restore requires explicit overwrite approval and creates a safety backup", async () => {
+  await isolated(async (root) => {
+    const state = await harness(root, {
+      read: (request) =>
+        request.kind === "capabilities"
+          ? [
+              { name: "backups.list", supported: true },
+              { name: "backups.create", supported: true },
+              { name: "backups.restore", supported: true },
+            ]
+          : { backups: [{ id: 42 }] },
+      action: (request) => ({
+        provider: "kinsta",
+        action: request.kind,
+        status: 200,
+        raw: null,
+      }),
+    });
+    const argv = [
+      "hosting",
+      "backups",
+      "restore",
+      "--env",
+      "env-1",
+      "--backup-id",
+      "42",
+      "--all-content",
+      "--notified-user-id",
+      "user-7",
+      "--profile",
+      PROFILE,
+      "--json",
+    ];
+
+    const unconfirmed = await run(state, argv);
+    assert.equal(unconfirmed.code, 6);
+    assert.equal(
+      JSON.parse(unconfirmed.stdout).error.code,
+      "confirmation_required",
+    );
+    assert.deepEqual(unconfirmed.requests, []);
+
+    const restored = await run(state, [...argv, "--yes"]);
+    assert.equal(restored.code, 0, `${restored.stderr}\n${restored.stdout}`);
+    assert.deepEqual(restored.requests, [
+      { kind: "capabilities" },
+      { kind: "backups", envId: "env-1" },
+      {
+        kind: "create-backup",
+        envId: "env-1",
+        body: { tag: "novamira-hq pre-restore safety backup" },
+      },
+      {
+        kind: "restore-backup",
+        targetEnvId: "env-1",
+        body: { backup_id: 42, notified_user_id: "user-7" },
+      },
+    ]);
+
+    const implicitScope = await run(state, [
+      ...argv.filter((value) => value !== "--all-content"),
+      "--yes",
+    ]);
+    assert.equal(implicitScope.code, 2);
+    assert.equal(JSON.parse(implicitScope.stdout).error.code, "usage_error");
+    assert.deepEqual(implicitScope.requests, []);
   });
 });
 

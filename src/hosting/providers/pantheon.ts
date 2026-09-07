@@ -137,6 +137,7 @@ const CAPABILITIES: readonly ProviderCapability[] = providerCapabilities([
   ["backups.list", true, NOTE_ENV],
   ["backups.downloadable", true, NOTE_ENV],
   ["backups.create", true, NOTE_ENV],
+  ["backups.restore", true, NOTE_ENV],
   ["cache.clear", true, NOTE_ENV],
   ["php.restart", false, NOTE_NOT_MAPPED],
   ["php.set-version", false, NOTE_NOT_MAPPED],
@@ -526,6 +527,16 @@ export const createPantheonClient: ProviderClientFactory = (
           ref.siteId,
         );
       }
+      case "restore-backup": {
+        const restore = restoreBackupBody(request.targetEnvId, request.body);
+        return sendAction(
+          "backups.restore",
+          "POST",
+          `/v0/sites/${segment(restore.siteId)}/environments/${segment(restore.envId)}/backups/${segment(restore.backupId)}/restore`,
+          restore.body,
+          restore.siteId,
+        );
+      }
       case "clear-cache": {
         // `cache` is not mapped: Pantheon has one cache-clear endpoint, and the
         // environment always comes from the body because there is no env id on
@@ -786,6 +797,21 @@ function backupCreateBody(
   // Pantheon rejects the neutral `tag` field.
   Reflect.deleteProperty(map, "tag");
   return map;
+}
+
+function restoreBackupBody(
+  targetEnvId: string,
+  body: unknown,
+): PantheonEnvironmentRef & { readonly backupId: string } {
+  const ref = environmentRef(targetEnvId, body);
+  const backupId = takeString(ref.body, ["backup_id", "id"]) ?? "";
+  if (backupId === "" || backupId === NIL) {
+    throw new CliError("usage_error", "Pantheon requires backup_id or id.", {
+      details: { provider: PROVIDER },
+    });
+  }
+  if (!Object.hasOwn(ref.body, "element")) ref.body.element = "all";
+  return { ...ref, backupId };
 }
 
 /** Go's `pantheonCacheBody`. */

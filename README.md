@@ -6,9 +6,10 @@ Novamira.
 It manages hosting-provider profiles and provider API credentials, operates
 provider resources — sites, environments, backups, domains, caches, DNS, plugins
 and themes — and provisions the Novamira plugin so a site becomes ready for an
-agent to use. Site and environment deletion, site reset, backup deletion or
-restoration, domain deletion, DNS writes, and SSH/SFTP credential management are
-deliberately outside HQ's surface and provider adapters.
+agent to use. Site and environment deletion, site reset, backup deletion, domain
+deletion, DNS writes, and SSH/SFTP credential management are deliberately
+outside HQ's surface and provider adapters. Backup restoration is available only
+through a guarded recovery workflow that first creates a new safety backup.
 
 HQ stops there. It never holds a WordPress site token, never calls a WordPress
 REST route on a configured site's behalf, and never proxies an Ability. Once a
@@ -159,6 +160,8 @@ novamira-hq mcp
 novamira-hq --profile kinsta hosting providers validate
 novamira-hq --profile kinsta hosting sites list --include-envs
 novamira-hq --profile kinsta hosting backups create --env <env-id> --tag nightly
+novamira-hq --profile kinsta --yes hosting backups restore --env <env-id> \
+  --backup-id <backup-id> --all-content --notified-user-id <kinsta-user-id>
 novamira-hq --profile kinsta hosting wp plugins install --env <env-id> \
   --source novamira-latest
 ```
@@ -347,8 +350,8 @@ update check. Configure the package directly through `npx`:
 
 MCP exposes a deliberately smaller, typed operational surface rather than a
 generic CLI bridge. The default `standard` preset includes provider reads,
-backup creation, and Novamira provisioning; environment push requires the
-separate `deploy` capability:
+backup creation, and Novamira provisioning; environment push and backup restore
+require the separate `deploy` and `recovery` capabilities:
 
 ```sh
 npx -y @novamira/hq mcp --access read
@@ -358,11 +361,11 @@ npx -y @novamira/hq mcp --access all
 
 `--allow` is repeatable and, when present, replaces the preset. `--deny` is
 repeatable and removes capabilities from it. Capabilities are `profiles-read`,
-`hosting-read`, `maintenance`, `provisioning`, and `deploy`. Typed tools cover
+`hosting-read`, `maintenance`, `provisioning`, `deploy`, and `recovery`. Typed tools cover
 profile and hosting inventory, provider validation, operation status, backup
-creation, Novamira setup, and environment push. There is no arbitrary argv tool,
-no configuration mutation, no self-update, no provider WP-CLI passthrough, no
-domain or DNS mutation, and no SSH/SFTP tool.
+creation and guarded restoration, Novamira setup, and environment push. There is
+no arbitrary argv tool, no configuration mutation, no self-update, no provider
+WP-CLI passthrough, no domain or DNS mutation, and no SSH/SFTP tool.
 
 Environment push is two-step: `hosting_environment_push_plan` requires an
 explicit database, all-files, or file-list scope and returns a five-minute,
@@ -373,6 +376,12 @@ resolve from the HQ profile's configured environment, file, or credential store
 reference. The safe granular push contract is currently available on Kinsta;
 Rocket.net's all-or-nothing publish and Cloudways' provider-native sync remain
 unexposed. The MCP server retains HQ's WordPress-site boundary rule.
+
+Backup restore is also two-step. `hosting_backup_restore_plan` requires an
+explicit target environment, a backup ID from that environment's catalog, and
+`allContent: true`. `hosting_backup_restore_apply` consumes its five-minute
+one-use confirmation and creates and waits for a fresh safety backup before
+restoring. The `recovery` capability is not included in the default preset.
 
 ## Agent skills
 

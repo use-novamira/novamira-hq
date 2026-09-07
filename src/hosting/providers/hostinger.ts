@@ -438,6 +438,7 @@ class HostingerClient implements ProviderClient {
       }
       // Deliberately unmapped, mirroring Go's `default` arm.
       case "push-environment":
+      case "restore-backup":
       case "clear-cache":
       case "restart-php":
       case "set-php-version":

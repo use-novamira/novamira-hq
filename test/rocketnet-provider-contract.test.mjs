@@ -778,7 +778,8 @@ test("rocketnet reports its capability list without a request", async () => {
     assert.equal(byName.get("dns.domains.list").supported, false);
     assert.equal(byName.get("envs.push").supported, false);
     assert.match(byName.get("envs.push").notes, /all-or-nothing/);
-    assert.equal(capabilities.length, 44);
+    assert.equal(byName.get("backups.restore").supported, true);
+    assert.equal(capabilities.length, 45);
     assert.equal(server.logins, 0);
   });
 });
@@ -869,6 +870,26 @@ test("rocketnet renames a backup tag to a label", async () => {
       });
       assert.equal(result.action, "backups.create");
       assert.equal(result.operationId, "t-9");
+    },
+  );
+});
+
+test("rocketnet restores only through the selected target site", async () => {
+  await withRocketNet(
+    [
+      {
+        expected: "POST /v1/sites/123/backup/b-9/restore",
+        body: '{"success":true,"result":{"task_id":"t-1"}}',
+      },
+    ],
+    async (client) => {
+      const result = await client.action({
+        kind: "restore-backup",
+        targetEnvId: "123",
+        body: { backup_id: "b-9" },
+      });
+      assert.equal(result.action, "backups.restore");
+      assert.equal(result.operationId, "t-1");
     },
   );
 });

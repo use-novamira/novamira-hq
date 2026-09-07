@@ -168,6 +168,12 @@ const COMMAND_SURFACE = {
   "hosting backups list": ["--env"],
   "hosting backups downloadable": ["--env"],
   "hosting backups create": ["--env", "--from-json", "--tag"],
+  "hosting backups restore": [
+    "--env",
+    "--backup-id",
+    "--all-content",
+    "--notified-user-id",
+  ],
   "hosting cache clear": [
     "--from-json",
     "--env",

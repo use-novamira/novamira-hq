@@ -342,8 +342,9 @@ test("pantheon reports its capability list without any network call", async () =
     const capabilities = await client.read({ kind: "capabilities" });
 
     assert.ok(Array.isArray(capabilities));
-    assert.equal(capabilities.length, 34);
+    assert.equal(capabilities.length, 35);
     const byName = new Map(capabilities.map((entry) => [entry.name, entry]));
+    assert.equal(byName.get("backups.restore").supported, true);
 
     assert.deepEqual(byName.get("providers.validate"), {
       name: "providers.validate",
@@ -593,6 +594,30 @@ test("pantheon create-backup defaults element and keep_for and drops tag", async
       "POST /v0/sites/site-1/environments/live/backups",
     );
     assert.deepEqual(server.calls[1].json, { element: "all", keep_for: 30 });
+    assertNoUnexpected(server);
+  });
+});
+
+test("pantheon restore backup puts the verified backup id in the path", async () => {
+  const routes = [
+    AUTHORIZE_ROUTE,
+    { body: JSON.stringify({ id: "workflow-2" }) },
+  ];
+
+  await withPantheon(routes, async (client, server) => {
+    const result = await client.action({
+      kind: "restore-backup",
+      targetEnvId: "site-1:live",
+      body: { backup_id: "backup-1" },
+    });
+
+    assert.equal(result.operationId, "site-1:workflow-2");
+    assert.equal(result.action, "backups.restore");
+    assert.equal(
+      server.calls[1].line,
+      "POST /v0/sites/site-1/environments/live/backups/backup-1/restore",
+    );
+    assert.deepEqual(server.calls[1].json, { element: "all" });
     assertNoUnexpected(server);
   });
 });

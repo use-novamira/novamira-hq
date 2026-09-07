@@ -9,6 +9,12 @@ import type { ConfigStore } from "../config/profiles.js";
 import { asCliError, CliError } from "../errors.js";
 import { applyHqCapabilityPolicy } from "../hosting/capabilities.js";
 import {
+  executeBackupRestore,
+  prepareBackupRestore,
+  type BackupRestorePlan,
+  type BackupRestoreSelection,
+} from "../hosting/backup-restore.js";
+import {
   executeEnvironmentPush,
   prepareEnvironmentPush,
   type EnvironmentPushPlan,
@@ -30,6 +36,8 @@ const SUPPORTED_PROTOCOL_VERSIONS = [
 ] as const;
 const PUSH_PLAN_TTL_MS = 5 * 60 * 1000;
 const MAX_PUSH_PLANS = 64;
+const RESTORE_PLAN_TTL_MS = 5 * 60 * 1000;
+const MAX_RESTORE_PLANS = 64;
 
 type RequestId = string | number;
 
@@ -58,8 +66,15 @@ interface StoredPushPlan {
   readonly expiresAt: number;
 }
 
+interface StoredRestorePlan {
+  readonly client: ProviderClient;
+  readonly plan: BackupRestorePlan;
+  readonly expiresAt: number;
+}
+
 interface McpServerState {
   readonly pushPlans: Map<string, StoredPushPlan>;
+  readonly restorePlans: Map<string, StoredRestorePlan>;
 }
 
 export interface McpServerDependencies {
@@ -74,6 +89,8 @@ export interface McpServerDependencies {
   }>;
   /** Test seam; production uses a cryptographically random UUID. */
   readonly createPushConfirmationId?: () => string;
+  /** Test seam; production uses a cryptographically random UUID. */
+  readonly createRestoreConfirmationId?: () => string;
   /** Test seam; production uses the wall clock. */
   readonly now?: () => number;
 }
@@ -142,6 +159,19 @@ const PUSH_PROPERTIES = {
     default: false,
     description: "Run URL search/replace; requires database=true.",
   },
+} as const;
+
+const RESTORE_PROPERTIES = {
+  profile: PROFILE_PROPERTY,
+  targetEnvironmentId: nonEmptyString("Environment that will be overwritten."),
+  backupId: nonEmptyString("Backup id from that environment's catalog."),
+  allContent: {
+    type: "boolean",
+    description: "Must be true to acknowledge a complete content overwrite.",
+  },
+  notifiedUserId: nonEmptyString(
+    "Kinsta user id to notify; required only for Kinsta.",
+  ),
 } as const;
 
 const TOOL_DEFINITIONS: readonly (McpTool & {
@@ -277,6 +307,34 @@ const TOOL_DEFINITIONS: readonly (McpTool & {
     annotations: annotations(false, true),
     capability: "deploy",
   },
+  {
+    name: "hosting_backup_restore_plan",
+    description:
+      "Verify a backup in its target environment and issue a short-lived one-use recovery confirmation ID. No mutation is performed.",
+    inputSchema: objectSchema(RESTORE_PROPERTIES, [
+      "profile",
+      "targetEnvironmentId",
+      "backupId",
+      "allContent",
+    ]),
+    annotations: annotations(true, false),
+    capability: "recovery",
+  },
+  {
+    name: "hosting_backup_restore_apply",
+    description:
+      "Apply a one-use restore plan. HQ first creates and awaits a fresh safety backup of the target environment.",
+    inputSchema: objectSchema(
+      {
+        confirmationId: nonEmptyString(
+          "One-use ID returned by hosting_backup_restore_plan.",
+        ),
+      },
+      ["confirmationId"],
+    ),
+    annotations: annotations(false, true),
+    capability: "recovery",
+  },
 ];
 
 const TOOL_BY_NAME = new Map(TOOL_DEFINITIONS.map((tool) => [tool.name, tool]));
@@ -390,6 +448,20 @@ function pushSelection(
   };
 }
 
+function restoreSelection(
+  argumentsValue: Record<string, unknown>,
+): BackupRestoreSelection {
+  const notifiedUserId = argumentsValue.notifiedUserId;
+  return {
+    targetEnvironmentId: requiredString(argumentsValue, "targetEnvironmentId"),
+    backupId: requiredString(argumentsValue, "backupId"),
+    allContent: optionalBoolean(argumentsValue, "allContent", false),
+    ...(notifiedUserId === undefined
+      ? {}
+      : { notifiedUserId: requiredString(argumentsValue, "notifiedUserId") }),
+  };
+}
+
 function toolResult(value: unknown): Readonly<Record<string, unknown>> {
   const safe = redact(value);
   return { content: [{ type: "text", text: JSON.stringify(safe) }] };
@@ -492,6 +564,21 @@ async function callTool(
       );
     }
 
+    if (name === "hosting_backup_restore_apply") {
+      const confirmationId = requiredString(argumentsValue, "confirmationId");
+      const stored = state.restorePlans.get(confirmationId);
+      state.restorePlans.delete(confirmationId);
+      if (
+        stored === undefined ||
+        stored.expiresAt <= (dependencies.now?.() ?? Date.now())
+      )
+        throw new CliError(
+          "not_found",
+          "The backup restore plan is missing, expired, or already used.",
+        );
+      return toolResult(await executeBackupRestore(stored.client, stored.plan));
+    }
+
     const profile = requiredString(argumentsValue, "profile");
     const client = await dependencies.hosting.clientFromProfile(profile);
     switch (name) {
@@ -568,6 +655,34 @@ async function callTool(
           plan,
         });
       }
+      case "hosting_backup_restore_plan": {
+        const plan = await prepareBackupRestore(
+          client,
+          restoreSelection(argumentsValue),
+        );
+        const confirmationId =
+          dependencies.createRestoreConfirmationId?.() ?? randomUUID();
+        const now = dependencies.now?.() ?? Date.now();
+        const expiresAt = now + RESTORE_PLAN_TTL_MS;
+        for (const [id, stored] of state.restorePlans)
+          if (stored.expiresAt <= now) state.restorePlans.delete(id);
+        if (state.restorePlans.size >= MAX_RESTORE_PLANS)
+          throw new CliError(
+            "conflict",
+            "Too many pending backup restore plans; apply one or wait for expiry.",
+          );
+        if (state.restorePlans.has(confirmationId))
+          throw new CliError(
+            "conflict",
+            "Could not allocate a unique backup restore confirmation ID.",
+          );
+        state.restorePlans.set(confirmationId, { client, plan, expiresAt });
+        return toolResult({
+          confirmationId,
+          expiresAt: new Date(expiresAt).toISOString(),
+          plan,
+        });
+      }
       default:
         throw new CliError("usage_error", `Unknown MCP tool: ${name}.`);
     }
@@ -581,7 +696,10 @@ export async function runMcpServer(
   streams: McpStreams = { input: process.stdin, output: process.stdout },
 ): Promise<void> {
   const lines = createInterface({ input: streams.input, crlfDelay: Infinity });
-  const state: McpServerState = { pushPlans: new Map() };
+  const state: McpServerState = {
+    pushPlans: new Map(),
+    restorePlans: new Map(),
+  };
   let initialized = false;
   let ready = false;
   let queue = Promise.resolve();

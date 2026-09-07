@@ -130,6 +130,11 @@ const CAPABILITIES: readonly ProviderCapabilityInput[] = (() => {
     ],
     ["backups.create", true, "uses POST /v1/sites/{site_id}/backup"],
     [
+      "backups.restore",
+      true,
+      "uses POST /v1/sites/{site_id}/backup/{backup_id}/restore",
+    ],
+    [
       "cache.clear",
       true,
       "uses POST /v1/sites/{site_id}/cache/purge_everything or /cache/purge",
@@ -494,6 +499,15 @@ export const createRocketNetClient: ProviderClientFactory = (context) => {
             `/v1/sites/${escapePath(request.envId)}/backup`,
             backupCreateBody(request.body),
           );
+        case "restore-backup": {
+          const restore = restoreBackupBody(request.targetEnvId, request.body);
+          return sendAction(
+            "backups.restore",
+            "POST",
+            `/v1/sites/${escapePath(restore.siteId)}/backup/${escapePath(restore.backupId)}/restore`,
+            restore.body,
+          );
+        }
         case "update-plugin":
           return sendAction(
             "wp.plugins.update",
@@ -961,6 +975,38 @@ function backupCreateBody(body: ActionBody): Record<string, unknown> {
     );
   }
   return record;
+}
+
+function restoreBackupBody(
+  targetEnvId: string,
+  body: ActionBody,
+): {
+  readonly siteId: string;
+  readonly backupId: string;
+  readonly body: Record<string, unknown>;
+} {
+  const record = objectBody(body);
+  const siteId = targetEnvId;
+  let backupId = "";
+  for (const key of ["backup_id", "id"]) {
+    if (!(key in record)) continue;
+    backupId = formatValue(record[key]);
+    Reflect.deleteProperty(record, key);
+    break;
+  }
+  if (siteId === "" || siteId === "<nil>")
+    throw new CliError(
+      "usage_error",
+      `${LABEL} requires a target environment for backups.restore.`,
+      { details: { provider: PROVIDER, action: "restore-backup" } },
+    );
+  if (backupId === "" || backupId === "<nil>")
+    throw new CliError(
+      "usage_error",
+      `${LABEL} requires "backup_id" for backups.restore.`,
+      { details: { provider: PROVIDER, action: "restore-backup" } },
+    );
+  return { siteId, backupId, body: record };
 }
 
 function wpCliBody(body: ActionBody): Record<string, unknown> {

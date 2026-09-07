@@ -45,6 +45,7 @@ export const HQ_PUBLIC_CAPABILITIES: ReadonlySet<string> = new Set([
   "backups.list",
   "backups.downloadable",
   "backups.create",
+  "backups.restore",
   "cache.clear",
   "php.restart",
   "php.set-version",

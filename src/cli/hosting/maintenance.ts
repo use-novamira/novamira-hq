@@ -44,6 +44,10 @@ import { Command, type OptionValues } from "commander";
 
 import type { CommandDependencies } from "../commands.js";
 import { CliError } from "../../errors.js";
+import {
+  executeBackupRestore,
+  prepareBackupRestore,
+} from "../../hosting/backup-restore.js";
 import { CACHE_KINDS, type CacheKind } from "../../hosting/types.js";
 import {
   addFromJsonOption,
@@ -78,6 +82,14 @@ interface BackupsCreateValues {
   readonly fromJson?: string;
   /** Present only when `--tag` was given, including as an empty string. */
   readonly tag?: string;
+}
+
+/** `backups restore`: intentionally typed, with no raw JSON escape hatch. */
+interface BackupsRestoreValues {
+  readonly env?: string;
+  readonly backupId?: string;
+  readonly allContent: boolean;
+  readonly notifiedUserId?: string;
 }
 
 /** `cache clear`. `kind` always has a value: `--kind` defaults to `site`. */
@@ -146,6 +158,10 @@ export interface MaintenanceHandlers {
     values: BackupsCreateValues,
     options: HostingOptions,
   ): Promise<void>;
+  backupsRestore(
+    values: BackupsRestoreValues,
+    options: HostingOptions,
+  ): Promise<void>;
   cacheClear(values: CacheClearValues, options: HostingOptions): Promise<void>;
   phpRestart(values: EnvValues, options: HostingOptions): Promise<void>;
   phpSetVersion(
@@ -211,6 +227,32 @@ export function createMaintenanceHandlers(
         const body = await backupCreatePayload(values, io);
         return renderAction(
           await client.action({ kind: "create-backup", envId, body }),
+        );
+      }),
+
+    backupsRestore: (values, options) =>
+      runHostingCommand(dependencies, options, async ({ client }) => {
+        if (!options.yes)
+          throw new CliError(
+            "confirmation_required",
+            "Backup restore overwrites hosting data; pass --yes to continue.",
+            { details: { flag: "--yes" } },
+          );
+        const plan = await prepareBackupRestore(client, {
+          targetEnvironmentId: requireRequestId(values.env, "--env"),
+          backupId: requireRequestId(values.backupId, "--backup-id"),
+          allContent: values.allContent,
+          ...(values.notifiedUserId === undefined
+            ? {}
+            : { notifiedUserId: values.notifiedUserId }),
+        });
+        return renderRaw(
+          await executeBackupRestore(client, plan, {
+            intervalSeconds: 5,
+            timeoutSeconds: options.timeoutExplicit
+              ? Math.max(1, Math.ceil(options.timeout / 1000))
+              : 300,
+          }),
         );
       }),
 
@@ -361,6 +403,28 @@ function registerBackupsCommands(
     .option("--tag <tag>", "label stored with the backup")
     .action(async (...values: unknown[]) =>
       handlers.backupsCreate(optionValues(values), optionsFor(values)),
+    );
+
+  const restore = backups
+    .command("restore")
+    .description("restore a complete backup after creating a safety backup");
+  addEnvOption(restore);
+  restore
+    .option("--backup-id <id>", "backup id from this environment's catalog")
+    .option(
+      "--all-content",
+      "explicitly acknowledge overwriting all environment content",
+      false,
+    )
+    .option(
+      "--notified-user-id <id>",
+      "Kinsta user id to notify about the restore",
+    )
+    .action(async (...values: unknown[]) =>
+      handlers.backupsRestore(
+        optionValues(values) as unknown as BackupsRestoreValues,
+        optionsFor(values),
+      ),
     );
 }
 

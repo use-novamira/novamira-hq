@@ -432,6 +432,7 @@ export const createPressableClient: ProviderClientFactory = (
         );
       case "create-environment":
       case "push-environment":
+      case "restore-backup":
       case "restart-php":
       case "set-php-version":
       case "change-primary-domain":

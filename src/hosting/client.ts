@@ -281,6 +281,17 @@ export interface ActionCreateBackupRequest {
   readonly body?: ActionBody;
 }
 
+/**
+ * The low-level provider request used only by the guarded backup-restore
+ * workflow. Callers must go through `prepareBackupRestore` and
+ * `executeBackupRestore`; CLI and MCP never dispatch this variant directly.
+ */
+export interface ActionRestoreBackupRequest {
+  readonly kind: "restore-backup";
+  readonly targetEnvId: string;
+  readonly body?: ActionBody;
+}
+
 export interface ActionUpdatePluginRequest {
   readonly kind: "update-plugin";
   readonly envId: string;
@@ -333,6 +344,7 @@ export type ActionRequest =
   | ActionAddDomainRequest
   | ActionChangePrimaryDomainRequest
   | ActionCreateBackupRequest
+  | ActionRestoreBackupRequest
   | ActionUpdatePluginRequest
   | ActionBulkUpdatePluginsRequest
   | ActionUpdateThemeRequest
@@ -351,6 +363,7 @@ export const ACTION_REQUEST_KINDS = [
   "add-domain",
   "change-primary-domain",
   "create-backup",
+  "restore-backup",
   "update-plugin",
   "bulk-update-plugins",
   "update-theme",

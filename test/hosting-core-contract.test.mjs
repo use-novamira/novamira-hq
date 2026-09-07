@@ -81,6 +81,7 @@ const EXPECTED_ACTION_KINDS = [
   "add-domain",
   "change-primary-domain",
   "create-backup",
+  "restore-backup",
   "update-plugin",
   "bulk-update-plugins",
   "update-theme",
@@ -149,6 +150,7 @@ function dispatchAction(request) {
     case "add-domain":
     case "change-primary-domain":
     case "create-backup":
+    case "restore-backup":
     case "update-plugin":
     case "bulk-update-plugins":
     case "update-theme":

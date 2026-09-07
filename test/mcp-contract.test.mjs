@@ -32,9 +32,12 @@ async function session(lines, overrides = {}) {
     }),
     read: async (value) => {
       calls.push(value);
+      if (value.kind === "backups") return { backups: [{ id: 42 }] };
       return [
         { name: "envs.push", supported: true },
+        { name: "backups.list", supported: true },
         { name: "backups.create", supported: true },
+        { name: "backups.restore", supported: true },
         { name: "provider.internal-operation", supported: true },
       ];
     },
@@ -80,7 +83,11 @@ async function session(lines, overrides = {}) {
     action: async (value) => {
       calls.push(value);
       return actionResult(
-        value.kind === "create-backup" ? "backups.create" : "envs.push",
+        value.kind === "create-backup"
+          ? "backups.create"
+          : value.kind === "restore-backup"
+            ? "backups.restore"
+            : "envs.push",
       );
     },
     ...overrides.client,
@@ -120,6 +127,11 @@ async function session(lines, overrides = {}) {
       ...(overrides.createPushConfirmationId === undefined
         ? {}
         : { createPushConfirmationId: overrides.createPushConfirmationId }),
+      ...(overrides.createRestoreConfirmationId === undefined
+        ? {}
+        : {
+            createRestoreConfirmationId: overrides.createRestoreConfirmationId,
+          }),
       ...(overrides.now === undefined ? {} : { now: overrides.now }),
     },
     {
@@ -217,12 +229,86 @@ test("read access exposes only profile and provider reads", async () => {
 test("--allow replaces the preset and --deny removes one capability", () => {
   assert.deepEqual(
     [...parseMcpAccess(["--access", "all", "--deny", "deploy"]).capabilities],
-    ["profiles-read", "hosting-read", "maintenance", "provisioning"],
+    [
+      "profiles-read",
+      "hosting-read",
+      "maintenance",
+      "provisioning",
+      "recovery",
+    ],
   );
   assert.deepEqual(
     [...parseMcpAccess(["--allow", "deploy"]).capabilities],
     ["deploy"],
   );
+});
+
+test("recovery is non-default and restores through a one-use guarded plan", async () => {
+  const standard = await session([
+    initialize,
+    initialized,
+    request(2, "tools/list", {}),
+  ]);
+  assert.equal(
+    standard.messages[1].result.tools.some((tool) =>
+      tool.name.startsWith("hosting_backup_restore_"),
+    ),
+    false,
+  );
+
+  const { messages, calls } = await session(
+    [
+      initialize,
+      initialized,
+      request(2, "tools/call", {
+        name: "hosting_backup_restore_plan",
+        arguments: {
+          profile: "production",
+          targetEnvironmentId: "env-target",
+          backupId: "42",
+          allContent: true,
+          notifiedUserId: "user-7",
+        },
+      }),
+      request(3, "tools/call", {
+        name: "hosting_backup_restore_apply",
+        arguments: { confirmationId: "restore-confirmation-id" },
+      }),
+      request(4, "tools/call", {
+        name: "hosting_backup_restore_apply",
+        arguments: { confirmationId: "restore-confirmation-id" },
+      }),
+    ],
+    {
+      access: parseMcpAccess(["--allow", "recovery"]),
+      createRestoreConfirmationId: () => "restore-confirmation-id",
+    },
+  );
+  const planned = JSON.parse(messages[1].result.content[0].text);
+  assert.equal(planned.confirmationId, "restore-confirmation-id");
+  assert.equal(planned.plan.scope, "all-content");
+  assert.equal(planned.plan.safetyBackup, "required");
+  assert.equal(messages[2].result.isError, undefined);
+  assert.equal(messages[3].result.isError, true);
+  assert.equal(
+    JSON.parse(messages[3].result.content[0].text).code,
+    "not_found",
+  );
+  assert.deepEqual(calls, [
+    "production",
+    { kind: "capabilities" },
+    { kind: "backups", envId: "env-target" },
+    {
+      kind: "create-backup",
+      envId: "env-target",
+      body: { tag: "novamira-hq pre-restore safety backup" },
+    },
+    {
+      kind: "restore-backup",
+      targetEnvId: "env-target",
+      body: { backup_id: 42, notified_user_id: "user-7" },
+    },
+  ]);
 });
 
 test("MCP reads hide credentials and operations outside HQ's surface", async () => {

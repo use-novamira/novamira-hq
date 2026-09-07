@@ -182,7 +182,7 @@ test("5: neither bundle crosses the hosting safety boundary", async () => {
 
   assert.ok(
     hosting.content.includes(
-      "HQ deliberately implements no site deletion/reset, environment deletion, backup deletion or restoration, domain deletion, DNS record writes, or SSH/SFTP access management.",
+      "HQ deliberately implements no site deletion/reset, environment deletion, backup deletion, domain deletion, DNS record writes, or SSH/SFTP access management.",
     ),
   );
 });

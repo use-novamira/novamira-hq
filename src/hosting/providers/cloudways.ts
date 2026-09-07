@@ -409,6 +409,7 @@ class CloudwaysClient implements ProviderClient {
       }
       // Deliberate provider gaps.
       case "push-environment":
+      case "restore-backup":
       case "set-php-version":
       case "update-plugin":
       case "bulk-update-plugins":

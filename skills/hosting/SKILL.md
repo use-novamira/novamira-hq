@@ -25,7 +25,7 @@ novamira-hq --json --profile <hosting-profile> hosting envs list --site <site_id
 novamira-hq --json --profile <hosting-profile> hosting ops get <operation_id>
 ```
 
-HQ deliberately implements no site deletion/reset, environment deletion, backup deletion or restoration, domain deletion, DNS record writes, or SSH/SFTP access management. These operations are absent from the provider-neutral contract and provider adapters; capability output is governed by a positive public allowlist.
+HQ deliberately implements no site deletion/reset, environment deletion, backup deletion, domain deletion, DNS record writes, or SSH/SFTP access management. Backup restore is the sole recovery exception: it verifies the backup in the target environment, creates a fresh safety backup, and requires explicit destructive approval. Capability output is governed by a positive public allowlist.
 
 InstaWP exposes each site as one synthetic environment. Credential validation, site list/get, site creation from scratch or template, task polling, and WP-CLI command execution are available. Saved command IDs are still accepted for provider-native workflows.
 
@@ -78,6 +78,7 @@ Environment push has no implicit scope. Select `--db`, `--all-files`, or one or 
 
 ```bash
 novamira-hq --json --profile <hosting-profile> hosting backups create --env <env_id> --tag before-maintenance
+novamira-hq --json --profile <hosting-profile> --yes hosting backups restore --env <env_id> --backup-id <backup_id> --all-content
 novamira-hq --json --profile <hosting-profile> hosting cache clear --kind site --env <env_id>
 novamira-hq --json --profile <hosting-profile> hosting php restart --env <env_id>
 novamira-hq --json --profile <hosting-profile> hosting php set-version --env <env_id> --php-version 8.3
@@ -86,6 +87,13 @@ novamira-hq --json --profile <hosting-profile> hosting wp plugins update-all --e
 novamira-hq --json --profile <hosting-profile> hosting wp-cli run --env <env_id> --command "wp core version"
 novamira-hq --json --profile <hosting-profile> hosting wp-cli run --env <instawp_site_id> --from-json command.json
 ```
+
+Backup restore accepts no `--from-json` payload. Always take the backup id from
+`backups list` for the same environment, then pass both `--all-content` and the
+global `--yes`. Kinsta also requires `--notified-user-id <kinsta_user_id>`. HQ
+checks that the provider supports listing, creating, and restoring backups,
+verifies the id in the target catalog, and creates and waits for a new safety
+backup before it restores anything.
 
 `hosting wp plugins install` uses provider WP-CLI support, installs and activates by default, runs a DB-backed WP-CLI preflight by default, validates remote zip URLs by default, and waits for async provider operations by default. Use `--source novamira-latest` to install the current Novamira plugin release without depending on a release asset filename. It works on providers with arbitrary `wp-cli.run`, including InstaWP:
 

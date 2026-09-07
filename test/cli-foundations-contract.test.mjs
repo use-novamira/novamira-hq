@@ -1105,6 +1105,7 @@ test("HQ publishes only explicitly allowed capabilities", () => {
   ]);
   assert.deepEqual(value, [{ name: "sites.list", supported: true }]);
   assert.equal(HQ_PUBLIC_CAPABILITIES.has("sites.list"), true);
+  assert.equal(HQ_PUBLIC_CAPABILITIES.has("backups.restore"), true);
   assert.equal(isHqPublicCapability("sites.list"), true);
   assert.equal(isHqPublicCapability("provider.internal-operation"), false);
 });

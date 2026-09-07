@@ -412,11 +412,11 @@ advertises only the `tools` capability. It performs no background update check.
 
 The MCP launch policy defaults to `--access standard`. `--access read` selects
 `profiles-read` and `hosting-read`; `standard` adds `maintenance` and
-`provisioning`; `all` additionally selects `deploy`. Repeated
+`provisioning`; `all` additionally selects `deploy` and `recovery`. Repeated
 `--allow <capability>` replaces the preset with an explicit allowlist, and
 repeated `--deny <capability>` removes entries afterward. The frozen capability
-names are `profiles-read`, `hosting-read`, `maintenance`, `provisioning`, and
-`deploy`.
+names are `profiles-read`, `hosting-read`, `maintenance`, `provisioning`,
+`deploy`, and `recovery`.
 
 The typed read tools are `hosting_profiles_list`, `hosting_provider_validate`,
 `hosting_capabilities_get`, `hosting_sites_list`, `hosting_site_get`,
@@ -424,7 +424,9 @@ The typed read tools are `hosting_profiles_list`, `hosting_provider_validate`,
 are `hosting_backup_create` and `hosting_novamira_setup`. The `deploy`
 capability adds `hosting_environment_push_plan` and
 `hosting_environment_push_apply`; it is intentionally absent from the default
-preset. Every tool carries MCP read-only and destructive annotations.
+preset. The likewise non-default `recovery` capability adds
+`hosting_backup_restore_plan` and `hosting_backup_restore_apply`. Every tool
+carries MCP read-only and destructive annotations.
 
 There is no generic CLI/argv bridge. MCP cannot mutate HQ configuration,
 self-update, invoke arbitrary provider WP-CLI, manage domains or DNS, or manage
@@ -442,6 +444,15 @@ confirmation ID expiring after five minutes. Apply consumes that ID before any
 provider request, so it is one-use even after failure; it creates a backup of the
 target and waits for its successful completion when the provider returns an
 operation ID, then performs and likewise awaits the push.
+
+Backup restore is another two-call transaction. Plan requires the target
+environment, a non-empty backup id, and an explicit `allContent: true`; Kinsta
+also requires its provider notification user id. It requires advertised backup
+list/create/restore support, reads the target's backup catalog, and refuses an id
+not present there. Apply consumes the five-minute, session-local confirmation
+before any provider request, creates and awaits a fresh target safety backup,
+then starts and awaits the restore. Restore accepts no provider-native JSON and
+never deletes a backup.
 
 Expected command, hosting, policy and argument failures are MCP tool results with
 `isError: true`; malformed protocol requests remain JSON-RPC errors. All returned
@@ -561,7 +572,7 @@ envelope.
 | `envs` | `list`, `get <env_id>`, `create`, `create-plain`, `clone`, `push` |
 | `domains` | `list`, `add`, `verify <site_domain_id>`, `primary` |
 | `dns` | `domains list`, `records list` |
-| `backups` | `list`, `downloadable`, `create` |
+| `backups` | `list`, `downloadable`, `create`, `restore` |
 | `cache` | `clear` |
 | `php` | `restart`, `set-version` |
 | `redirects` | `list`, `apply` |
@@ -601,6 +612,14 @@ Kinsta is the only provider currently advertising this safe granular contract;
 Rocket.net's all-or-nothing staging publish and Cloudways' provider-native sync
 are not implemented by their HQ adapters.
 
+`hosting backups restore` has no `--from-json` form. It requires `--env`,
+`--backup-id`, `--all-content`, and the global `--yes`; Kinsta additionally
+requires `--notified-user-id`. Before mutation it verifies list/create/restore
+support and finds the id in that environment's catalog. It then creates and
+waits for a fresh safety backup, restores all content, and waits for the restore
+when the provider exposes an operation id. The guarded workflow is advertised
+by Kinsta, Pantheon, Rocket.net, and WP Engine.
+
 Read commands render the provider response unchanged under `data`; action
 commands render the provider's action result; `hosting providers capabilities`
 applies HQ's capability visibility policy before rendering.
@@ -608,7 +627,7 @@ applies HQ's capability visibility policy before rendering.
 ### Not in the v1 command surface
 
 - HQ never implements site deletion or reset, environment deletion, backup
-  deletion or restoration, domain deletion, DNS record creation/update/deletion,
+  deletion, domain deletion, DNS record creation/update/deletion,
   or SSH/SFTP access management. Provider capability output is a positive
   allowlist, so provider-native and unknown operations remain private by
   default. These exclusions apply to CLI, dashboard, MCP, the provider-neutral
