@@ -1,0 +1,142 @@
+// SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+// Compile the Deno desktop shell for this host, with the platform's icon.
+//
+// `deno compile --icon` is Windows-only — it refuses outright on any other
+// target — so the compile is two tasks rather than one, and choosing between
+// them is a decision about the host, which a `package.json` script cannot make
+// portably. That is the whole reason this file exists; everything else it does
+// is assembling what a compiled executable cannot carry inside itself.
+//
+// macOS needs nothing here: `scripts/macos-sign.sh` builds the `.icns` from the
+// same master and puts it in the bundle it signs.
+//
+// Linux cannot embed an icon in an executable at all, so `--package` writes the
+// tarball that carries the three files a desktop entry needs beside it. It is
+// opt-in because gzipping an 80 MB executable is not something an edit-compile
+// loop should pay for.
+
+import { spawnSync } from "node:child_process";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { arch, argv, exit, platform, stderr, stdout } from "node:process";
+import { fileURLToPath, URL } from "node:url";
+
+import { generateIcons, HICOLOR_SIZES, ICON_NAME } from "./desktop-icons.mjs";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const outDir = join(root, "dist-desktop");
+const iconDir = join(outDir, "icons");
+const entry = "ai.novamira.hq.desktop.desktop";
+
+/** The release's asset naming, which the workflow's matrix repeats. */
+const ARCHITECTURES = { x64: "x86_64", arm64: "aarch64" };
+
+function run(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    stdio: "inherit",
+    cwd: root,
+    ...options,
+  });
+  if (result.error !== undefined) {
+    fail(`could not run ${command}: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    fail(`${command} ${args.join(" ")} exited with ${result.status}`);
+  }
+}
+
+function fail(message) {
+  stderr.write(`desktop-build: ${message}\n`);
+  exit(1);
+}
+
+const icons = await generateIcons({
+  master: join(root, "scripts", "macos", "icon.png"),
+  outDir: iconDir,
+});
+stdout.write(`Generated ${icons.length} desktop icons in ${iconDir}\n`);
+
+run("deno", [
+  "task",
+  "--cwd",
+  join(root, "desktop"),
+  platform === "win32" ? "compile:windows" : "compile",
+]);
+
+const binary =
+  platform === "win32" ? "novamira-hq-desktop.exe" : "novamira-hq-desktop";
+
+if (argv.includes("--package")) {
+  if (platform !== "linux") {
+    fail("--package assembles the Linux desktop archive and needs Linux");
+  }
+  await packageLinux();
+}
+
+stdout.write(`Compiled ${join(outDir, binary)}\n`);
+
+/**
+ * The Linux release archive: the executable, the freedesktop entry that names
+ * it, and the hicolor icons that entry's `Icon=novamira-hq` resolves against.
+ * `docs/releasing.md` and the README carry the four commands that install them.
+ */
+async function packageLinux() {
+  const architecture = ARCHITECTURES[arch] ?? arch;
+  const name = `novamira-hq-desktop-linux-${architecture}`;
+  const stage = join(outDir, "stage");
+  const tree = join(stage, name);
+
+  await rm(stage, { recursive: true, force: true });
+  await mkdir(tree, { recursive: true });
+  await cp(join(outDir, binary), join(tree, binary));
+  await cp(join(root, "desktop", entry), join(tree, entry));
+  await cp(join(iconDir, "hicolor"), join(tree, "icons", "hicolor"), {
+    recursive: true,
+  });
+  await writeFile(join(tree, "INSTALL.txt"), installNotes(name), "utf8");
+
+  // Reproducible: the same commit produces the same archive, so a re-run of a
+  // release job cannot publish a different tarball than the one it replaces.
+  run("tar", [
+    "--sort=name",
+    "--owner=0",
+    "--group=0",
+    "--numeric-owner",
+    "--mtime=@0",
+    "-czf",
+    join(outDir, `${name}.tar.gz`),
+    "-C",
+    stage,
+    name,
+  ]);
+  await rm(stage, { recursive: true, force: true });
+  stdout.write(`Packaged ${join(outDir, `${name}.tar.gz`)}\n`);
+}
+
+function installNotes(name) {
+  return [
+    "Novamira HQ desktop application",
+    "",
+    "Install for the current user:",
+    "",
+    `  install -Dm755 ${binary} ~/.local/bin/${binary}`,
+    "  cp -r icons/hicolor ~/.local/share/icons/",
+    `  install -Dm644 ${entry} ~/.local/share/applications/${entry}`,
+    "",
+    "Then log out and back in, or run:",
+    "",
+    "  update-desktop-database ~/.local/share/applications",
+    "  gtk-update-icon-cache ~/.local/share/icons/hicolor",
+    "",
+    "The window needs libwebkit2gtk-4.1 installed, and downloads the small",
+    "native webview library into Deno's cache the first time it runs.",
+    "",
+    `Icons are installed at ${HICOLOR_SIZES.join(", ")} pixels under the name`,
+    `"${ICON_NAME}", which is what the desktop entry's Icon key resolves.`,
+    "",
+    `Archive: ${name}`,
+    "",
+  ].join("\n");
+}

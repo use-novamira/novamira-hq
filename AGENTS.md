@@ -284,7 +284,9 @@ calls just to test.
 package:acceptance` runs it, and all three packaging jobs plus the release job
   do too.
 - `desktop/` is the Deno desktop shell: `main.ts` and `deno.json`, plus
-  `hq.d.ts`, the one-line type of the one HQ export it calls. It is **not** in
+  `hq.d.ts`, the one-line type of the one HQ export it calls, and
+  `ai.novamira.hq.desktop.desktop`, the freedesktop entry the Linux release
+  archive carries. It is **not** in
   `package.json`'s `files`, it is ignored by ESLint and Prettier (`deno fmt`,
   `deno lint` and `deno check` own it, through `bun run desktop:check`), and
   `bun run desktop:build` compiles it with `dist/` and `skills/` embedded into
@@ -309,6 +311,23 @@ package:acceptance` runs it, and all three packaging jobs plus the release job
   **Verify macOS signing** that proves the path without publishing anything. The
   Apple secrets reach them through the `macos-signing` environment and live
   nowhere else.
+- The desktop application's three platform builds differ only in how the icon
+  gets there, and all three derive it from that same committed master.
+  `scripts/desktop-icons.mjs` is a leaf — `node:zlib` and `node:buffer`, no
+  build-time image dependency — that decodes the master, converts Display P3 to
+  sRGB, resamples in linear light and writes a Windows `.ico` and the hicolor
+  PNGs into `dist-desktop/icons/`. Nothing derived is committed, so no size can
+  drift. `deno compile --icon` refuses on any target but Windows, which is why
+  `deno.json` carries a second `compile:windows` task and why
+  `scripts/desktop-build.mjs` — not a `package.json` script — decides which one
+  to run; that script also assembles the Linux tarball under `--package`,
+  reproducibly, because an ELF executable cannot hold an icon and the entry and
+  the icons must travel beside it. `scripts/desktop-smoke.mjs` is the one smoke
+  test of a compiled executable, used by all four jobs that build one: it holds
+  the server's stdin open, because closing it is how the window's death reaches
+  the server and a backgrounded shell copy would hand it `/dev/null`. Do not
+  reintroduce that shell copy, and do not add a signing step for Windows without
+  a certificate scoped the way the Apple secrets are.
 - Nothing is left deferred. `routes.ts`'s `DEFERRED_ROUTES` is **empty**, the
   `patches.ts` catalog is closed, and every page, route and fragment the contract
   names is shipped. The mechanism stays for a future phase to declare intent

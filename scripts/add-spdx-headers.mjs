@@ -8,6 +8,7 @@ import { stdout } from "node:process";
 
 const headers = {
   ".cjs": "//",
+  ".desktop": "#",
   ".js": "//",
   ".mjs": "//",
   ".ps1": "#",

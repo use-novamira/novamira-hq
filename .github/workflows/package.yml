@@ -68,17 +68,23 @@ jobs:
       - run: bun run pack:inspect
       - run: bun run package:acceptance
 
-  # The Deno desktop shell: format, lint and type-check `desktop/`, compile it
-  # with `dist/` embedded, and drive the compiled executable in its `--serve`
-  # role — the dashboard server, headless, on a loopback port. No window is
-  # opened, so the runner needs no display and no WebKitGTK. Offline like the
-  # rest: NOVAMIRA_HQ_UPDATE_CHECK=0, no provider credential.
+  # The Deno desktop shell on all three target systems: format, lint and
+  # type-check `desktop/`, compile it with `dist/` embedded, and drive the
+  # compiled executable in its `--serve` role — the dashboard server, headless,
+  # on a loopback port. No window is opened, so the runner needs no display and
+  # no WebKitGTK. Offline like the rest: no registry read, no provider
+  # credential.
+  #
+  # Windows is here for the icon as much as for the compile: `deno compile
+  # --icon` parses the `.ico` and fails the build on a malformed one, which is
+  # the only automated check `scripts/desktop-icons.mjs` can have short of
+  # looking at a taskbar.
   desktop:
     name: desktop / ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -93,21 +99,11 @@ jobs:
           deno-version: v2.x
       - run: npm config set ignore-scripts true
       - run: bun install --frozen-lockfile --ignore-scripts
-      - run: bun run desktop:check
+      # `deno fmt --check` reads the working tree, and the Windows runner's git
+      # rewrites line endings on checkout; the formatting question is answered
+      # identically by the other two.
+      - if: runner.os != 'Windows'
+        run: bun run desktop:check
       - run: bun run desktop:build
       - name: Smoke-test the compiled server role
-        env:
-          NOVAMIRA_HQ_UPDATE_CHECK: "0"
-        run: |
-          export NOVAMIRA_HQ_HOME="$(mktemp -d)"
-          ./dist-desktop/novamira-hq-desktop --serve > envelope.json &
-          server=$!
-          for _ in $(seq 1 60); do
-            [ -s envelope.json ] && break
-            sleep 1
-          done
-          cat envelope.json
-          url="$(node -e 'const e=JSON.parse(require("fs").readFileSync("envelope.json","utf8"));if(!e.ok)process.exit(1);process.stdout.write(e.data.url)')"
-          curl -fsS -o /dev/null "$url/assets/app.css"
-          kill "$server"
-          wait "$server"
+        run: node scripts/desktop-smoke.mjs
