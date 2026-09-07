@@ -506,108 +506,118 @@ class ProviderHttpClient implements HttpClient {
   private async attempt<T>(context: AttemptContext): Promise<HttpResponse<T>> {
     const startedAt = Date.now();
     // One absolute deadline for the whole attempt, redirect hops included.
-    // A fresh `AbortSignal.timeout(timeoutMs)` per hop would let a chain run
-    // for `MAX_REDIRECTS + 1` times the configured timeout. `context.timeoutMs`
-    // is already clamped to what is left of the total budget by `request`.
+    // The explicit timer deliberately keeps Node alive until the deadline;
+    // `AbortSignal.timeout()` uses an unref'ed timer, which can leave a pending
+    // request promise after the event loop has otherwise become idle.
+    // `context.timeoutMs` is already clamped to what is left of the total
+    // budget by `request`.
     const attemptDeadline = startedAt + context.timeoutMs;
+    const timeoutController = new AbortController();
+    const timeoutHandle = setTimeout(() => {
+      timeoutController.abort();
+    }, context.timeoutMs);
+    const signal =
+      context.signal === undefined
+        ? timeoutController.signal
+        : AbortSignal.any([timeoutController.signal, context.signal]);
     let hop = context;
 
-    for (let redirects = 0; ; redirects += 1) {
-      const remainingMs = attemptDeadline - Date.now();
-      if (remainingMs <= 0) throw this.attemptTimeout(hop);
-      const timeoutSignal = AbortSignal.timeout(remainingMs);
-      const signal =
-        hop.signal === undefined
-          ? timeoutSignal
-          : AbortSignal.any([timeoutSignal, hop.signal]);
+    try {
+      for (let redirects = 0; ; redirects += 1) {
+        if (Date.now() >= attemptDeadline) throw this.attemptTimeout(hop);
 
-      this.diagnostic(
-        {
-          phase: "request",
-          method: hop.method,
-          origin: hop.url.origin,
-          path: hop.url.pathname,
-          attempt: hop.attempt,
-        },
-        hop.secrets,
-      );
-
-      let response: Response;
-      try {
-        response = await this.fetchImplementation(hop.url, {
-          method: hop.method,
-          headers: { ...hop.headers },
-          ...(hop.body.payload === undefined ? {} : { body: hop.body.payload }),
-          redirect: "manual",
-          signal,
-        });
-      } catch (cause) {
-        throw this.transportError(cause, hop, timeoutSignal);
-      }
-
-      this.diagnostic(
-        {
-          phase: "response",
-          method: hop.method,
-          origin: hop.url.origin,
-          path: hop.url.pathname,
-          attempt: hop.attempt,
-          status: response.status,
-          durationMs: Date.now() - startedAt,
-        },
-        hop.secrets,
-      );
-
-      if (REDIRECT_STATUSES.has(response.status)) {
-        await cancelBody(response);
-        const location = response.headers.get("location");
-        if (location === null || redirects >= MAX_REDIRECTS)
-          throw new CliError(
-            "provider_error",
-            `The ${this.providerLabel} API returned an unusable redirect.`,
-            { details: this.errorDetails(hop, hop.url, response.status) },
-          );
-        const target = strictHttpUrl(new URL(location, hop.url));
-        if (target.origin !== hop.url.origin)
-          throw new CliError(
-            "provider_error",
-            `The ${this.providerLabel} API attempted a cross-origin redirect.`,
-            { details: this.errorDetails(hop, hop.url, response.status) },
-          );
-        hop = redirectedRequest(hop, response.status, target);
-        continue;
-      }
-
-      const text = await this.readBody(response, hop);
-      const accepted =
-        (response.status >= 200 && response.status < 300) ||
-        hop.acceptStatuses.has(response.status);
-      if (!accepted) throw this.responseError(hop, hop.url, response, text);
-
-      let data: unknown;
-      try {
-        data = text.trim() === "" ? null : (JSON.parse(text) as unknown);
-      } catch (cause) {
-        throw new CliError(
-          "provider_error",
-          `The ${this.providerLabel} API returned a response that is not valid JSON.`,
+        this.diagnostic(
           {
-            retryable: response.status >= 500,
-            cause,
-            details: this.errorDetails(hop, hop.url, response.status),
+            phase: "request",
+            method: hop.method,
+            origin: hop.url.origin,
+            path: hop.url.pathname,
+            attempt: hop.attempt,
           },
+          hop.secrets,
         );
-      }
-      registerSensitiveValues(data, hop.secrets);
 
-      return {
-        status: response.status,
-        headers: response.headers,
-        url: hop.url.toString(),
-        data: data as T,
-        text,
-        attempts: hop.attempt,
-      };
+        let response: Response;
+        try {
+          response = await this.fetchImplementation(hop.url, {
+            method: hop.method,
+            headers: { ...hop.headers },
+            ...(hop.body.payload === undefined
+              ? {}
+              : { body: hop.body.payload }),
+            redirect: "manual",
+            signal,
+          });
+        } catch (cause) {
+          throw this.transportError(cause, hop, timeoutController.signal);
+        }
+
+        this.diagnostic(
+          {
+            phase: "response",
+            method: hop.method,
+            origin: hop.url.origin,
+            path: hop.url.pathname,
+            attempt: hop.attempt,
+            status: response.status,
+            durationMs: Date.now() - startedAt,
+          },
+          hop.secrets,
+        );
+
+        if (REDIRECT_STATUSES.has(response.status)) {
+          await cancelBody(response);
+          const location = response.headers.get("location");
+          if (location === null || redirects >= MAX_REDIRECTS)
+            throw new CliError(
+              "provider_error",
+              `The ${this.providerLabel} API returned an unusable redirect.`,
+              { details: this.errorDetails(hop, hop.url, response.status) },
+            );
+          const target = strictHttpUrl(new URL(location, hop.url));
+          if (target.origin !== hop.url.origin)
+            throw new CliError(
+              "provider_error",
+              `The ${this.providerLabel} API attempted a cross-origin redirect.`,
+              { details: this.errorDetails(hop, hop.url, response.status) },
+            );
+          hop = redirectedRequest(hop, response.status, target);
+          continue;
+        }
+
+        const text = await this.readBody(response, hop);
+        const accepted =
+          (response.status >= 200 && response.status < 300) ||
+          hop.acceptStatuses.has(response.status);
+        if (!accepted) throw this.responseError(hop, hop.url, response, text);
+
+        let data: unknown;
+        try {
+          data = text.trim() === "" ? null : (JSON.parse(text) as unknown);
+        } catch (cause) {
+          throw new CliError(
+            "provider_error",
+            `The ${this.providerLabel} API returned a response that is not valid JSON.`,
+            {
+              retryable: response.status >= 500,
+              cause,
+              details: this.errorDetails(hop, hop.url, response.status),
+            },
+          );
+        }
+        registerSensitiveValues(data, hop.secrets);
+
+        return {
+          status: response.status,
+          headers: response.headers,
+          url: hop.url.toString(),
+          data: data as T,
+          text,
+          attempts: hop.attempt,
+        };
+      }
+    } finally {
+      clearTimeout(timeoutHandle);
     }
   }
 

@@ -102,12 +102,6 @@ const COMMAND_SURFACE = {
   ],
   "hosting sites create-plain": ["--from-json", "--display-name", "--region"],
   "hosting sites clone": ["--from-json", "--display-name", "--source-env"],
-  "hosting sites reset": [
-    "--from-json",
-    "--admin-password-env",
-    "--admin-password-stdin",
-    "--admin-password-file",
-  ],
   "hosting envs list": ["--site"],
   "hosting envs get": ["--site"],
   "hosting envs create": [
@@ -143,16 +137,13 @@ const COMMAND_SURFACE = {
   ],
   "hosting envs push": [
     "--site",
-    "--from-json",
     "--source-env",
     "--target-env",
-    "--no-db",
-    "--no-files",
-    "--no-search-replace",
+    "--db",
+    "--all-files",
+    "--search-replace",
     "--file",
   ],
-  "hosting envs delete": [],
-
   "hosting domains list": ["--env"],
   "hosting domains add": [
     "--env",
@@ -164,7 +155,6 @@ const COMMAND_SURFACE = {
     "--custom-ssl-cert-file",
     "--from-json",
   ],
-  "hosting domains delete": ["--env", "--domain-id", "--from-json"],
   "hosting domains verify": [],
   "hosting domains primary": [
     "--env",
@@ -174,40 +164,10 @@ const COMMAND_SURFACE = {
   ],
   "hosting dns domains list": ["--company"],
   "hosting dns records list": ["--domain"],
-  "hosting dns records create": [
-    "--domain",
-    "--record-type",
-    "--name",
-    "--ttl",
-    "--value",
-    "--from-json",
-  ],
-  "hosting dns records update": [
-    "--domain",
-    "--record-type",
-    "--name",
-    "--ttl",
-    "--add-value",
-    "--remove-value",
-    "--from-json",
-  ],
-  "hosting dns records delete": [
-    "--domain",
-    "--record-type",
-    "--name",
-    "--from-json",
-  ],
 
   "hosting backups list": ["--env"],
   "hosting backups downloadable": ["--env"],
   "hosting backups create": ["--env", "--from-json", "--tag"],
-  "hosting backups restore": [
-    "--target-env",
-    "--from-json",
-    "--backup-id",
-    "--notified-user-id",
-  ],
-  "hosting backups delete": [],
   "hosting cache clear": [
     "--from-json",
     "--env",
@@ -313,33 +273,6 @@ const COMMAND_SURFACE = {
     "--interval-seconds",
     "--timeout-seconds",
   ],
-
-  "hosting access ssh status": ["--env"],
-  "hosting access ssh set-status": ["--env", "--enabled", "--no-enabled"],
-  "hosting access ssh allowlist": ["--env"],
-  "hosting access ssh set-allowlist": ["--env", "--from-json", "--ip"],
-  "hosting access ssh config": ["--env", "--site"],
-  "hosting access ssh generate-password": ["--env"],
-  "hosting access ssh password": ["--env", "--secret-out"],
-  "hosting access ssh set-password-status": [
-    "--env",
-    "--enabled",
-    "--no-enabled",
-  ],
-  "hosting access ssh change-expiration": ["--env", "--interval"],
-  "hosting access sftp list": ["--env"],
-  "hosting access sftp toggle": ["--env", "--enabled", "--no-enabled"],
-  "hosting access sftp add": [
-    "--env",
-    "--from-json",
-    "--username",
-    "--password-env",
-    "--password-stdin",
-    "--password-file",
-    "--root-directory",
-    "--permission",
-  ],
-  "hosting access sftp remove": [],
 };
 
 /** Build the real program over a handler double that records every call. */
@@ -589,8 +522,12 @@ test("the boundary rule holds across the assembled tree", () => {
           `${path} ${option.long}`,
         );
 
-  // Site deletion stays unregistered so `providers capabilities` does not lie.
-  assert.equal(leafCommands(program).has("hosting sites delete"), false);
+  assert.equal(
+    [...leafCommands(program).keys()].some((path) =>
+      path.startsWith("hosting access "),
+    ),
+    false,
+  );
 });
 
 /* -------------------------------------------------------------------------- */
@@ -606,8 +543,7 @@ test("--help works at the program, group, subgroup and leaf levels", async () =>
     ["hosting", "wp"],
     ["hosting", "wp", "plugins"],
     ["hosting", "wp", "plugins", "install"],
-    ["hosting", "dns", "records", "create"],
-    ["hosting", "access", "ssh", "set-status"],
+    ["hosting", "dns", "records", "list"],
   ];
   for (const path of cases) {
     const result = await run([...path, "--help"]);
@@ -670,10 +606,6 @@ test("global options are inherited by subcommands at every depth", async () => {
     {
       argv: ["hosting", "dns", "records", "list", "--domain", "d1"],
       handler: "dnsRecordsList",
-    },
-    {
-      argv: ["hosting", "access", "ssh", "status", "--env", "env-1"],
-      handler: "sshStatus",
     },
     {
       argv: ["hosting", "backups", "list", "--env", "env-1"],
@@ -752,10 +684,7 @@ test("optionsFor resolves the innermost command, not the program", () => {
   // nested group's own options would be lost behind the program's.
   const program = createProgram("test", {});
   const leaves = leafCommands(program);
-  for (const path of [
-    "hosting wp plugins install",
-    "hosting dns records create",
-  ])
+  for (const path of ["hosting wp plugins install", "hosting dns records list"])
     assert.ok(leaves.get(path).parent.parent.parent instanceof Command, path);
 });
 
@@ -909,10 +838,6 @@ test("each hosting group dispatches its own provider request", async () => {
     {
       argv: ["hosting", "wp", "plugins", "list", "--env", "env-1"],
       kind: "plugins",
-    },
-    {
-      argv: ["hosting", "access", "ssh", "status", "--env", "env-1"],
-      kind: "ssh-status",
     },
   ];
   await isolated(async (root) => {

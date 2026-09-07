@@ -108,12 +108,6 @@ const CAPABILITY_ENTRIES: readonly ProviderCapabilityInput[] = [
     `uses POST /app/clone or /app/cloneToOtherServer; ${NATIVE_FIELDS_NOTE}`,
   ],
   [
-    "sites.delete",
-    true,
-    "uses DELETE /app/{app_id}; pass server_id in site id as server_id:app_id or provider-native JSON where available",
-  ],
-  ["sites.reset", false, NOT_MAPPED_NOTE],
-  [
     "envs.create",
     true,
     `uses POST /staging/app/cloneApp; ${NATIVE_FIELDS_NOTE}`,
@@ -124,16 +118,14 @@ const CAPABILITY_ENTRIES: readonly ProviderCapabilityInput[] = [
     true,
     `uses POST /staging/app/cloneApp; ${NATIVE_FIELDS_NOTE}`,
   ],
-  ["envs.push", true, `uses POST /sync/app; ${NATIVE_FIELDS_NOTE}`],
-  ["envs.delete", false, NOT_MAPPED_NOTE],
+  [
+    "envs.push",
+    false,
+    "Cloudways provider-native sync fields do not implement HQ's granular push contract",
+  ],
   ["domains.list", false, NOT_MAPPED_NOTE],
   [
     "domains.add",
-    true,
-    "uses POST /app/manage/aliases; sends complete aliases list",
-  ],
-  [
-    "domains.delete",
     true,
     "uses POST /app/manage/aliases; sends complete aliases list",
   ],
@@ -143,12 +135,6 @@ const CAPABILITY_ENTRIES: readonly ProviderCapabilityInput[] = [
     "backups.create",
     true,
     "uses POST /server/manage/backup for server-level backup or /app/manage/backup when app_id is supplied",
-  ],
-  ["backups.restore", true, "uses POST /app/manage/restore"],
-  [
-    "backups.delete",
-    false,
-    "Cloudways requires provider-specific backup identifiers that are not mapped in Novamira",
   ],
   ["cache.clear", true, "uses POST /service/varnish with action=purge"],
   [
@@ -172,12 +158,6 @@ const CAPABILITY_ENTRIES: readonly ProviderCapabilityInput[] = [
     false,
     "Cloudways monitor detail is not reliably mapped in Novamira",
   ],
-  [
-    "access.ssh",
-    true,
-    "uses Cloudways SSH permission and app credential endpoints",
-  ],
-  ["access.sftp", true, "uses GET /app/creds"],
 ];
 
 const CAPABILITIES: readonly ProviderCapability[] =
@@ -306,30 +286,6 @@ class CloudwaysClient implements ProviderClient {
         const regions = await this.#readJson("/regions", []);
         return regions;
       }
-      case "ssh-status": {
-        const permissions = await this.#readJson(
-          "/app/getAppSshPerms",
-          envQuery(request.envId),
-        );
-        return permissions;
-      }
-      case "ssh-config": {
-        // Go's `cloudwaysReadEnvID` prefers EnvID and falls back to SiteID.
-        const reference = request.envId !== "" ? request.envId : request.siteId;
-        const credentials = await this.#readJson(
-          "/app/creds",
-          envQuery(reference),
-        );
-        return credentials;
-      }
-      case "ssh-password":
-      case "sftp-accounts": {
-        const credentials = await this.#readJson(
-          "/app/creds",
-          envQuery(request.envId),
-        );
-        return credentials;
-      }
       case "analytics-usage": {
         if (request.siteId === "") {
           throw new CliError(
@@ -376,7 +332,6 @@ class CloudwaysClient implements ProviderClient {
       case "themes":
       case "company-plugins":
       case "company-themes":
-      case "ssh-allowlist":
       case "file-list":
         throw unsupportedReadRequest(PROVIDER, request);
       default:
@@ -399,21 +354,6 @@ class CloudwaysClient implements ProviderClient {
           request.mode === "plain" ? "sites.create-plain" : "sites.create";
         return this.#sendAction(action, "POST", "/app", request.body);
       }
-      case "delete-site": {
-        let [serverId, appRef] = splitRef(request.siteId);
-        if (appRef === "") {
-          appRef = serverId;
-          serverId = "";
-        }
-        const body: Record<string, unknown> = { appId: appRef };
-        if (serverId !== "") body.server_id = serverId;
-        return this.#sendAction(
-          "sites.delete",
-          "DELETE",
-          `/app/${encodeURIComponent(appRef)}`,
-          body,
-        );
-      }
       case "create-environment":
         // Go maps every mode onto the staging clone endpoint; the capability
         // list marks `envs.create-plain` unsupported rather than branching.
@@ -423,8 +363,6 @@ class CloudwaysClient implements ProviderClient {
           "/staging/app/cloneApp",
           request.body,
         );
-      case "push-environment":
-        return this.#sendAction("envs.push", "POST", "/sync/app", request.body);
       case "clear-cache":
         // Cloudways has one cache layer, so `request.cache` does not branch.
         return this.#sendAction(
@@ -444,13 +382,6 @@ class CloudwaysClient implements ProviderClient {
       case "add-domain":
         return this.#sendAction(
           "domains.add",
-          "POST",
-          "/app/manage/aliases",
-          domainBody(request.envId, request.body),
-        );
-      case "delete-domains":
-        return this.#sendAction(
-          "domains.delete",
           "POST",
           "/app/manage/aliases",
           domainBody(request.envId, request.body),
@@ -476,49 +407,9 @@ class CloudwaysClient implements ProviderClient {
             : "/app/manage/backup";
         return this.#sendAction("backups.create", "POST", path, body);
       }
-      case "restore-backup":
-        return this.#sendAction(
-          "backups.restore",
-          "POST",
-          "/app/manage/restore",
-          serviceBody(request.targetEnvId, request.body),
-        );
-      case "set-ssh-status": {
-        const body = serviceBody(request.envId, request.body);
-        if (stringFromMap(body, "update_perms_action") === "") {
-          const enabled = boolFromMap(body, "is_enabled", "enabled");
-          if (enabled !== undefined) {
-            body.update_perms_action = enabled ? "enable" : "disable";
-          }
-        }
-        return this.#sendAction(
-          "access.ssh",
-          "POST",
-          "/app/updateAppSshPerms",
-          body,
-        );
-      }
-      case "add-sftp-account":
-        return this.#sendAction(
-          "access.sftp.add",
-          "POST",
-          "/app/creds",
-          serviceBody(request.envId, request.body),
-        );
-      case "remove-sftp-account":
-        return this.#sendAction(
-          "access.sftp.remove",
-          "DELETE",
-          `/app/creds/${encodeURIComponent(request.sftpAccountId)}`,
-          undefined,
-        );
-      // Deliberate gaps, including `delete-backup`, which Go refuses because
-      // Cloudways identifies a backup by provider-specific fields HQ does not
-      // model.
-      case "reset-site":
-      case "delete-environment":
+      // Deliberate provider gaps.
+      case "push-environment":
       case "set-php-version":
-      case "delete-backup":
       case "update-plugin":
       case "bulk-update-plugins":
       case "update-theme":
@@ -526,14 +417,6 @@ class CloudwaysClient implements ProviderClient {
       case "run-wp-cli":
       case "set-denied-ips":
       case "apply-redirects":
-      case "dns-record-create":
-      case "dns-record-update":
-      case "dns-record-delete":
-      case "set-ssh-password-status":
-      case "generate-ssh-password":
-      case "set-ssh-allowlist":
-      case "change-ssh-password-expiration":
-      case "toggle-sftp-accounts":
         throw unsupportedActionRequest(PROVIDER, request);
       default:
         return assertNever(request);
@@ -806,38 +689,6 @@ function stringFromMap(
     if (typeof value === "number") return numberText(Math.trunc(value));
   }
   return "";
-}
-
-/** Go's `boolFromBody`; `undefined` is Go's `ok == false`. */
-function boolFromMap(
-  map: Readonly<Record<string, unknown>>,
-  ...keys: readonly string[]
-): boolean | undefined {
-  for (const key of keys) {
-    if (!Object.hasOwn(map, key)) continue;
-    const value = map[key];
-    if (typeof value === "boolean") return value;
-    if (typeof value === "number") return value !== 0;
-    if (typeof value === "string") {
-      switch (value.toLowerCase()) {
-        case "1":
-        case "true":
-        case "yes":
-        case "enable":
-        case "enabled":
-          return true;
-        case "0":
-        case "false":
-        case "no":
-        case "disable":
-        case "disabled":
-          return false;
-        default:
-          break;
-      }
-    }
-  }
-  return undefined;
 }
 
 /** Go's `cloudwaysSplitRef`: split on the first colon only. */

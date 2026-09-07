@@ -243,25 +243,41 @@ async function actionSupport(kind, request) {
   }
 }
 
-test("DEPLOY_PUSH_PROVIDERS is exactly the clients that implement push-environment", async () => {
+test("DEPLOY_PUSH_PROVIDERS is exactly the clients advertising safe envs.push", async () => {
   for (const kind of PROVIDER_KINDS) {
-    const { supported } = await actionSupport(kind, {
-      kind: "push-environment",
-      siteId: "site-1",
-      envId: "env-1",
-      body: {},
-    });
+    const state = await isolatedStore();
+    let supported;
+    try {
+      await state.store.upsertHostingProfile(kind, {
+        provider: kind,
+        credential: envCredential(defaultCredentialEnv(kind)),
+        companyId: IDENTITY,
+      });
+      const factory = createHostingClientFactory({
+        store: state.store,
+        registry: PROVIDER_REGISTRY,
+        env: Object.fromEntries(
+          PROVIDER_KINDS.map((provider) => [
+            defaultCredentialEnv(provider),
+            PLACEHOLDER,
+          ]),
+        ),
+      });
+      const client = await factory.clientFromProfile(kind);
+      const capabilities = await client.read({ kind: "capabilities" });
+      supported = capabilities.some(
+        (entry) => entry.name === "envs.push" && entry.supported,
+      );
+    } finally {
+      await rm(state.root, { recursive: true, force: true });
+    }
     assert.equal(
       DEPLOY_PUSH_PROVIDERS.has(kind),
       supported,
-      `${kind}: the set and the client disagree about push-environment`,
+      `${kind}: the set and the advertised granular capability disagree`,
     );
   }
-  assert.deepEqual([...DEPLOY_PUSH_PROVIDERS].sort(), [
-    "cloudways",
-    "kinsta",
-    "rocketnet",
-  ]);
+  assert.deepEqual([...DEPLOY_PUSH_PROVIDERS], ["kinsta"]);
 });
 
 test("NOVAMIRA_SETUP_PROVIDERS is run-wp-cli AND observable results", async () => {

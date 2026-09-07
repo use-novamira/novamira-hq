@@ -25,7 +25,7 @@ novamira-hq --json --profile <hosting-profile> hosting envs list --site <site_id
 novamira-hq --json --profile <hosting-profile> hosting ops get <operation_id>
 ```
 
-`hosting sites delete` does not exist. HQ reports the `sites.delete` capability as unsupported for every provider, whatever the provider's own capability list says.
+HQ deliberately implements no site deletion/reset, environment deletion, backup deletion or restoration, domain deletion, DNS record writes, or SSH/SFTP access management. These operations are absent from the provider-neutral contract and provider adapters; capability output is governed by a positive public allowlist.
 
 InstaWP exposes each site as one synthetic environment. Credential validation, site list/get, site creation from scratch or template, task polling, and WP-CLI command execution are available. Saved command IDs are still accepted for provider-native workflows.
 
@@ -33,11 +33,11 @@ Pantheon exposes sites with their `dev`/`test`/`live` environments. Authenticati
 
 Pressable exposes sites with one environment each. Authentication is an OAuth client credential pair: the client secret is the profile credential (`PRESSABLE_CLIENT_SECRET`) and the client id is read from `PRESSABLE_CLIENT_ID`.
 
-WP Engine exposes sites as site containers and installs as environments. The WP Engine API user ID is stored in the profile `company_id` field or read from `WPE_API_USER_ID` with `WPENGINE_USERNAME` as a fallback; the API password should be read from `WPE_API_PASSWORD` with `WPENGINE_PASSWORD` as a fallback. For create/restore workflows prefer `--from-json` with WP Engine-native payload fields, especially UUID backup IDs.
+WP Engine exposes sites as site containers and installs as environments. The WP Engine API user ID is stored in the profile `company_id` field or read from `WPE_API_USER_ID` with `WPENGINE_USERNAME` as a fallback; the API password should be read from `WPE_API_PASSWORD` with `WPENGINE_PASSWORD` as a fallback. For provider-native create workflows prefer `--from-json` with WP Engine-native payload fields.
 
-Rocket.net exposes each site as one synthetic environment. The Rocket.net username is stored in the profile `company_id` field or read from `ROCKETNET_USERNAME`; the password should be read from `ROCKETNET_PASSWORD`. For clone, backup restore, CDN purge, and WP-CLI workflows prefer `--from-json` with Rocket.net-native payload fields when the generic flags do not cover the provider request.
+Rocket.net exposes each site as one synthetic environment. The Rocket.net username is stored in the profile `company_id` field or read from `ROCKETNET_USERNAME`; the password should be read from `ROCKETNET_PASSWORD`. For clone, CDN purge, and WP-CLI workflows prefer `--from-json` with Rocket.net-native payload fields when the generic flags do not cover the provider request.
 
-Hostinger exposes websites as sites. Use `HOSTINGER_API_TOKEN` for authentication; the profile `company_id` can store the hosting account username for endpoints that require one. Hostinger website environments use `username:domain` when both values are needed. Prefer `--from-json` for Hostinger-native website, WordPress installation, and DNS zone payloads.
+Hostinger exposes websites as sites. Use `HOSTINGER_API_TOKEN` for authentication; the profile `company_id` can store the hosting account username for endpoints that require one. Hostinger website environments use `username:domain` when both values are needed. Prefer `--from-json` for Hostinger-native website and WordPress installation payloads.
 
 Cloudways exposes applications as sites with one synthetic environment per application. Use `CLOUDWAYS_API_KEY` for the API key and store the account email in `company_id` or `CLOUDWAYS_EMAIL`. Cloudways environment IDs use `server_id:app_id` when both values are needed. Prefer `--from-json` with Cloudways-native form field names for create, clone, domains, backups, cache, and service operations.
 
@@ -68,17 +68,19 @@ novamira-hq --json --profile <hosting-profile> hosting sites create --template-s
 novamira-hq --json --profile <hosting-profile> hosting sites create-plain --display-name "Plain site" --region us-central1
 novamira-hq --json --profile <hosting-profile> hosting envs create --site <site_id> --from-json env.json
 novamira-hq --json --profile <hosting-profile> hosting envs clone --site <site_id> --display-name staging --source-env <env_id>
-novamira-hq --json --profile <hosting-profile> hosting envs push --site <site_id> --source-env <env_id> --target-env <env_id>
+novamira-hq --json --profile <hosting-profile> hosting envs push --site <site_id> --source-env <source_env_id> --target-env <target_env_id> --db
+novamira-hq --json --profile <hosting-profile> hosting envs push --site <site_id> --source-env <source_env_id> --target-env <target_env_id> --file wp-content/uploads
 ```
+
+Environment push has no implicit scope. Select `--db`, `--all-files`, or one or more `--file` paths; `--all-files` and `--file` are mutually exclusive, and `--search-replace` requires `--db`. HQ verifies both environments and provider support, then creates and waits for a safety backup of the target before it starts the push. `--from-json` is intentionally unavailable for this command. The safe granular contract is currently advertised only by Kinsta; Rocket.net's all-or-nothing publish and Cloudways' provider-native sync are not exposed as HQ push operations.
 
 ## Maintenance
 
 ```bash
 novamira-hq --json --profile <hosting-profile> hosting backups create --env <env_id> --tag before-maintenance
-novamira-hq --json --profile <hosting-profile> hosting backups restore --target-env <env_id> --backup-id <id> --notified-user-id <user_id>
 novamira-hq --json --profile <hosting-profile> hosting cache clear --kind site --env <env_id>
 novamira-hq --json --profile <hosting-profile> hosting php restart --env <env_id>
-novamira-hq --json --profile <hosting-profile> hosting php set-version --env <env_id> --version 8.3
+novamira-hq --json --profile <hosting-profile> hosting php set-version --env <env_id> --php-version 8.3
 novamira-hq --json --profile <hosting-profile> hosting wp plugins install --env <env_id> --source novamira-latest
 novamira-hq --json --profile <hosting-profile> hosting wp plugins update-all --env <env_id>
 novamira-hq --json --profile <hosting-profile> hosting wp-cli run --env <env_id> --command "wp core version"
@@ -113,7 +115,7 @@ novamira auth login https://example.com
 
 ## Complex payloads
 
-Complex actions accept `--from-json <path>` or `--from-json -` for standard input. Prefer `--from-json` for redirects, DNS record changes, and provider-specific payloads. For InstaWP command execution, `wp_command`, `command`, `commands`, and saved `command_id` payloads are accepted.
+Complex actions accept `--from-json <path>` or `--from-json -` for standard input where the command grammar advertises it. Prefer it for redirects and provider-specific payloads. Environment push is the exception: it accepts only the explicit granular flags above. For InstaWP command execution, `wp_command`, `command`, `commands`, and saved `command_id` payloads are accepted.
 
 ## Configuration
 
@@ -142,12 +144,4 @@ novamira-hq --json doctor
 
 ## Secret handling
 
-Do not put provider credentials, WordPress admin passwords, SFTP passwords, SSL private keys, or other secrets in command argv when an env/stdin/file option exists.
-
-Use password input flags such as `--admin-password-env`, `--admin-password-stdin`, `--password-env`, or `--password-stdin`. Secret-returning commands write to an explicit local sink, for example:
-
-```bash
-novamira-hq --json --profile <hosting-profile> hosting access ssh password --env <env_id> --secret-out ./sftp-password.txt
-```
-
-Normal output, JSON output, errors, tests, and docs must not contain full secrets.
+Do not put provider credentials, WordPress admin passwords, SSL private keys, or other secrets in command argv when an env/stdin/file option exists. Use admin-password input flags such as `--admin-password-env` or `--admin-password-stdin`. HQ has no command that returns, generates, rotates, or exports an SSH/SFTP credential. Normal output, JSON output, errors, tests, and docs must not contain full secrets.

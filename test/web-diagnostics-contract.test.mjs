@@ -57,7 +57,11 @@ const PROFILES = {
 
 const CAPABILITIES = [
   { name: "sites.list", supported: true },
-  { name: "sites.delete", supported: true, notes: "uses DELETE /sites/{id}" },
+  {
+    name: "provider.internal-operation",
+    supported: true,
+    notes: "provider-native only",
+  },
   { name: "wp-cli.run", supported: false, notes: "<not> supported" },
 ];
 
@@ -381,7 +385,7 @@ test("6: no profile, and __all__, refuse without touching a provider", async () 
   assert.deepEqual(reads, []);
 });
 
-test("7: a selected profile renders the document with sites.delete unsupported", async () => {
+test("7: a selected profile omits operations outside HQ's surface", async () => {
   const { server, reads } = await fixture();
 
   // The posted signal wins over `?profile=`, which is Go's precedence.
@@ -400,8 +404,7 @@ test("7: a selected profile renders the document with sites.delete unsupported",
     recorder.find("toast").markup.includes("Capabilities loaded for dev."),
   );
 
-  // `hosting sites delete` is not registered in either surface, so the
-  // dashboard must not report the provider's raw `supported: true`.
+  // The dashboard applies the same visibility policy as CLI and MCP.
   const decoded = panel
     .replaceAll("&quot;", '"')
     .replaceAll("&lt;", "<")
@@ -410,12 +413,10 @@ test("7: a selected profile renders the document with sites.delete unsupported",
   const document = JSON.parse(
     decoded.slice(decoded.indexOf("["), decoded.lastIndexOf("]") + 1),
   );
-  const remove = document.find((entry) => entry.name === "sites.delete");
-  assert.deepEqual(remove, {
-    name: "sites.delete",
-    supported: false,
-    notes: "site deletion is not exposed by Novamira HQ",
-  });
+  assert.equal(
+    document.some((entry) => entry.name === "provider.internal-operation"),
+    false,
+  );
 
   // A provider note containing markup is text, not markup.
   assert.ok(!panel.includes("<not>"));

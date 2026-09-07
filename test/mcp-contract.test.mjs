@@ -4,11 +4,7 @@
 import assert from "node:assert/strict";
 import { Readable } from "node:stream";
 import test from "node:test";
-import {
-  capabilityForCliArgv,
-  parseMcpAccess,
-  runMcpServer,
-} from "../dist/mcp/index.js";
+import { parseMcpAccess, runMcpServer } from "../dist/mcp/index.js";
 
 function request(id, method, params) {
   return JSON.stringify({
@@ -17,6 +13,10 @@ function request(id, method, params) {
     method,
     ...(params === undefined ? {} : { params }),
   });
+}
+
+function actionResult(action) {
+  return { provider: "kinsta", action, status: 200, raw: null };
 }
 
 async function session(lines, overrides = {}) {
@@ -32,7 +32,11 @@ async function session(lines, overrides = {}) {
     }),
     read: async (value) => {
       calls.push(value);
-      return [{ name: "sites.list", supported: true }];
+      return [
+        { name: "envs.push", supported: true },
+        { name: "backups.create", supported: true },
+        { name: "provider.internal-operation", supported: true },
+      ];
     },
     listSites: async (value) => {
       calls.push(value);
@@ -46,15 +50,25 @@ async function session(lines, overrides = {}) {
       displayName: "Site",
       status: "live",
     }),
-    listEnvironments: async (siteId) => [
-      {
-        id: "env-1",
-        name: siteId,
-        displayName: "Live",
-        isBlocked: false,
-        isPremium: false,
-      },
-    ],
+    listEnvironments: async (siteId) => {
+      calls.push({ listEnvironments: siteId });
+      return [
+        {
+          id: "env-source",
+          name: "source",
+          displayName: "Source",
+          isBlocked: false,
+          isPremium: false,
+        },
+        {
+          id: "env-target",
+          name: "target",
+          displayName: "Target",
+          isBlocked: false,
+          isPremium: false,
+        },
+      ];
+    },
     operationStatus: async (operationId) => ({
       provider: "kinsta",
       operationId,
@@ -63,8 +77,11 @@ async function session(lines, overrides = {}) {
       failed: false,
       raw: null,
     }),
-    action: async () => {
-      throw new Error("MCP exposes no generic mutation tool");
+    action: async (value) => {
+      calls.push(value);
+      return actionResult(
+        value.kind === "create-backup" ? "backups.create" : "envs.push",
+      );
     },
     ...overrides.client,
   };
@@ -95,11 +112,15 @@ async function session(lines, overrides = {}) {
         return (
           overrides.executeCli?.(argv) ?? {
             exitCode: 0,
-            stdout: '{"ok":true}\n',
+            stdout: '{"ok":true,"data":{"handoff":"novamira auth login"}}\n',
             stderr: "",
           }
         );
       },
+      ...(overrides.createPushConfirmationId === undefined
+        ? {}
+        : { createPushConfirmationId: overrides.createPushConfirmationId }),
+      ...(overrides.now === undefined ? {} : { now: overrides.now }),
     },
     {
       input: Readable.from(`${lines.join("\n")}\n`),
@@ -127,7 +148,7 @@ const initialized = JSON.stringify({
   method: "notifications/initialized",
 });
 
-test("MCP negotiates lifecycle and exposes a read-only hosting surface", async () => {
+test("MCP negotiates lifecycle and exposes the standard typed surface", async () => {
   const { messages } = await session([
     initialize,
     initialized,
@@ -139,55 +160,37 @@ test("MCP negotiates lifecycle and exposes a read-only hosting surface", async (
     name: "novamira-hq",
     version: "1.2.3",
   });
-  const names = messages[1].result.tools.map((tool) => tool.name);
-  assert.deepEqual(names, [
-    "hosting_profiles_list",
-    "hosting_provider_validate",
-    "hosting_capabilities_get",
-    "hosting_sites_list",
-    "hosting_site_get",
-    "hosting_environments_list",
-    "hosting_operation_get",
-    "novamira_hq_cli",
-  ]);
+  const tools = messages[1].result.tools;
+  assert.deepEqual(
+    tools.map((tool) => tool.name),
+    [
+      "hosting_profiles_list",
+      "hosting_provider_validate",
+      "hosting_capabilities_get",
+      "hosting_sites_list",
+      "hosting_site_get",
+      "hosting_environments_list",
+      "hosting_operation_get",
+      "hosting_backup_create",
+      "hosting_novamira_setup",
+    ],
+  );
   assert.ok(
-    messages[1].result.tools.every(
-      (tool) => tool.inputSchema.additionalProperties === false,
-    ),
+    tools.every((tool) => tool.inputSchema.additionalProperties === false),
+  );
+  assert.ok(tools.every((tool) => tool.annotations.openWorldHint === true));
+  assert.equal(
+    tools.some((tool) => tool.name === "novamira_hq_cli"),
+    false,
   );
 });
 
-test("MCP tools call services directly and never reveal profile credentials", async () => {
-  const { messages, calls } = await session([
-    initialize,
-    initialized,
-    request(2, "tools/call", { name: "hosting_profiles_list", arguments: {} }),
-    request(3, "tools/call", {
-      name: "hosting_sites_list",
-      arguments: { profile: "production", includeEnvironments: true },
-    }),
-  ]);
-  const profiles = JSON.parse(messages[1].result.content[0].text);
-  assert.deepEqual(profiles, [
-    { name: "production", provider: "kinsta", companyId: "company-1" },
-  ]);
-  assert.ok(!messages[1].result.content[0].text.includes("KINSTA_API_KEY"));
-  assert.deepEqual(calls, ["production", { includeEnvironments: true }]);
-  assert.equal(messages[2].result.isError, undefined);
-});
-
-test("MCP access flags default to all and filter the advertised surface", async () => {
-  assert.deepEqual([...parseMcpAccess([]).capabilities].sort(), [
-    "config",
-    "dashboard",
-    "doctor",
-    "hosting-read",
-    "hosting-write",
-    "provisioning",
-    "skills",
-    "update",
-  ]);
-  const policy = parseMcpAccess(["--access", "read", "--deny", "doctor"]);
+test("read access exposes only profile and provider reads", async () => {
+  assert.deepEqual(
+    [...parseMcpAccess([]).capabilities],
+    ["profiles-read", "hosting-read", "maintenance", "provisioning"],
+  );
+  const policy = parseMcpAccess(["--access", "read"]);
   const { messages } = await session(
     [initialize, initialized, request(2, "tools/list", {})],
     { access: policy },
@@ -202,75 +205,212 @@ test("MCP access flags default to all and filter the advertised surface", async 
       "hosting_site_get",
       "hosting_environments_list",
       "hosting_operation_get",
-      "novamira_hq_cli",
     ],
   );
-  assert.equal(policy.capabilities.has("hosting-write"), false);
+  assert.ok(
+    messages[1].result.tools.every(
+      (tool) => tool.annotations.readOnlyHint === true,
+    ),
+  );
 });
 
-test("the CLI bridge enforces launch capabilities and returns captured output", async () => {
-  assert.equal(
-    capabilityForCliArgv(["--profile", "prod", "hosting", "sites", "list"]),
-    "hosting-read",
+test("--allow replaces the preset and --deny removes one capability", () => {
+  assert.deepEqual(
+    [...parseMcpAccess(["--access", "all", "--deny", "deploy"]).capabilities],
+    ["profiles-read", "hosting-read", "maintenance", "provisioning"],
   );
-  assert.equal(
-    capabilityForCliArgv(["hosting", "envs", "delete", "--env", "env-1"]),
-    "hosting-write",
+  assert.deepEqual(
+    [...parseMcpAccess(["--allow", "deploy"]).capabilities],
+    ["deploy"],
   );
-  assert.equal(
-    capabilityForCliArgv(["hosting", "novamira", "setup", "--env", "env-1"]),
-    "provisioning",
-  );
+});
 
-  const access = parseMcpAccess(["--allow", "hosting-read"]);
+test("MCP reads hide credentials and operations outside HQ's surface", async () => {
+  const { messages } = await session([
+    initialize,
+    initialized,
+    request(2, "tools/call", { name: "hosting_profiles_list", arguments: {} }),
+    request(3, "tools/call", {
+      name: "hosting_capabilities_get",
+      arguments: { profile: "production" },
+    }),
+  ]);
+  const profiles = JSON.parse(messages[1].result.content[0].text);
+  assert.deepEqual(profiles, [
+    { name: "production", provider: "kinsta", companyId: "company-1" },
+  ]);
+  assert.ok(!messages[1].result.content[0].text.includes("KINSTA_API_KEY"));
+  const capabilities = JSON.parse(messages[2].result.content[0].text);
+  assert.equal(
+    capabilities.some((item) => item.name === "provider.internal-operation"),
+    false,
+  );
+});
+
+test("maintenance and provisioning are fixed typed mutations", async () => {
+  const { messages, calls } = await session([
+    initialize,
+    initialized,
+    request(2, "tools/call", {
+      name: "hosting_backup_create",
+      arguments: {
+        profile: "production",
+        environmentId: "env-target",
+        tag: "before upgrade",
+      },
+    }),
+    request(3, "tools/call", {
+      name: "hosting_novamira_setup",
+      arguments: {
+        profile: "production",
+        environmentId: "env-target",
+        url: "https://example.test",
+        enableAiAbilities: false,
+      },
+    }),
+  ]);
+  assert.deepEqual(calls, [
+    "production",
+    {
+      kind: "create-backup",
+      envId: "env-target",
+      body: { tag: "before upgrade" },
+    },
+    [
+      "--profile",
+      "production",
+      "--json",
+      "--quiet",
+      "hosting",
+      "novamira",
+      "setup",
+      "--env",
+      "env-target",
+      "--url",
+      "https://example.test",
+      "--no-ai-abilities",
+    ],
+  ]);
+  assert.equal(messages[1].result.isError, undefined);
+  assert.equal(messages[2].result.isError, undefined);
+});
+
+test("deploy uses a one-use plan and backs up the target before push", async () => {
+  const access = parseMcpAccess(["--allow", "deploy"]);
+  const { messages, calls } = await session(
+    [
+      initialize,
+      initialized,
+      request(2, "tools/call", {
+        name: "hosting_environment_push_plan",
+        arguments: {
+          profile: "production",
+          siteId: "site-1",
+          sourceEnvironmentId: "env-source",
+          targetEnvironmentId: "env-target",
+          database: true,
+          files: ["wp-content/uploads/a.jpg"],
+          searchReplace: true,
+        },
+      }),
+      request(3, "tools/call", {
+        name: "hosting_environment_push_apply",
+        arguments: { confirmationId: "fixed-confirmation-id" },
+      }),
+      request(4, "tools/call", {
+        name: "hosting_environment_push_apply",
+        arguments: { confirmationId: "fixed-confirmation-id" },
+      }),
+    ],
+    { access, createPushConfirmationId: () => "fixed-confirmation-id" },
+  );
+  const planned = JSON.parse(messages[1].result.content[0].text);
+  assert.equal(planned.confirmationId, "fixed-confirmation-id");
+  assert.equal(planned.plan.safetyBackup, "required");
+  assert.equal(messages[2].result.isError, undefined);
+  assert.equal(messages[3].result.isError, true);
+  assert.equal(
+    JSON.parse(messages[3].result.content[0].text).code,
+    "not_found",
+  );
+  assert.deepEqual(calls, [
+    "production",
+    { kind: "capabilities" },
+    { listEnvironments: "site-1" },
+    {
+      kind: "create-backup",
+      envId: "env-target",
+      body: { tag: "novamira-hq pre-push safety backup" },
+    },
+    {
+      kind: "push-environment",
+      siteId: "site-1",
+      body: {
+        source_env_id: "env-source",
+        target_env_id: "env-target",
+        push_db: true,
+        push_files: true,
+        run_search_and_replace: true,
+        push_files_option: "SPECIFIC_FILES",
+        file_list: ["wp-content/uploads/a.jpg"],
+      },
+    },
+  ]);
+});
+
+test("deploy rejects an empty implicit scope before any mutation", async () => {
+  const { messages, calls } = await session(
+    [
+      initialize,
+      initialized,
+      request(2, "tools/call", {
+        name: "hosting_environment_push_plan",
+        arguments: {
+          profile: "production",
+          siteId: "site-1",
+          sourceEnvironmentId: "env-source",
+          targetEnvironmentId: "env-target",
+        },
+      }),
+    ],
+    { access: parseMcpAccess(["--allow", "deploy"]) },
+  );
+  assert.equal(messages[1].result.isError, true);
+  assert.equal(
+    JSON.parse(messages[1].result.content[0].text).code,
+    "usage_error",
+  );
+  assert.deepEqual(calls, ["production"]);
+});
+
+test("generic and non-authorized tools are not callable even by name", async () => {
   const { messages, calls } = await session(
     [
       initialize,
       initialized,
       request(2, "tools/call", {
         name: "novamira_hq_cli",
-        arguments: {
-          argv: ["--profile", "prod", "hosting", "sites", "list", "--json"],
-        },
+        arguments: { argv: ["hosting", "backups", "delete", "42"] },
       }),
       request(3, "tools/call", {
-        name: "novamira_hq_cli",
-        arguments: {
-          argv: ["hosting", "envs", "delete", "--env", "env-1"],
-        },
+        name: "hosting_backup_create",
+        arguments: { profile: "production", environmentId: "env-target" },
       }),
     ],
-    { access },
+    { access: parseMcpAccess(["--access", "read"]) },
   );
-  assert.deepEqual(calls, [
-    ["--profile", "prod", "hosting", "sites", "list", "--json"],
-  ]);
-  const success = JSON.parse(messages[1].result.content[0].text);
-  assert.equal(success.capability, "hosting-read");
-  assert.equal(success.exitCode, 0);
-  assert.equal(messages[2].result.isError, true);
-  assert.equal(
-    JSON.parse(messages[2].result.content[0].text).code,
-    "confirmation_required",
-  );
+  assert.deepEqual(messages[1].error, {
+    code: -32602,
+    message: "Unknown tool",
+  });
+  assert.deepEqual(messages[2].error, {
+    code: -32602,
+    message: "Unknown tool",
+  });
+  assert.deepEqual(calls, []);
 });
 
-test("the CLI bridge refuses stdin consumers because stdin belongs to MCP", async () => {
-  const { messages } = await session([
-    initialize,
-    initialized,
-    request(2, "tools/call", {
-      name: "novamira_hq_cli",
-      arguments: {
-        argv: ["hosting", "wp-cli", "run", "--command-stdin"],
-      },
-    }),
-  ]);
-  assert.equal(messages[1].result.isError, true);
-  assert.match(messages[1].result.content[0].text, /cannot read/);
-});
-
-test("MCP preserves stdout framing and returns expected tool failures as results", async () => {
+test("MCP preserves framing and expected argument failures are tool results", async () => {
   const { messages } = await session([
     "not json",
     request(9, "ping"),

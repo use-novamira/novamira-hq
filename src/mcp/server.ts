@@ -1,15 +1,24 @@
 // SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
 import type { HostingProfileEntry } from "../config/profiles.js";
 import type { ConfigStore } from "../config/profiles.js";
-import type { HostingClientFactory } from "../hosting/factory.js";
 import { asCliError, CliError } from "../errors.js";
+import { applyHqCapabilityPolicy } from "../hosting/capabilities.js";
+import {
+  executeEnvironmentPush,
+  prepareEnvironmentPush,
+  type EnvironmentPushPlan,
+  type EnvironmentPushSelection,
+} from "../hosting/environment-push.js";
+import type { HostingClientFactory } from "../hosting/factory.js";
+import type { ProviderClient } from "../hosting/client.js";
 import { redact, redactText } from "../output/redact.js";
 import {
-  requireCliAccess,
+  requireMcpAccess,
   type McpAccessPolicy,
   type McpCapability,
 } from "./access.js";
@@ -19,6 +28,8 @@ const SUPPORTED_PROTOCOL_VERSIONS = [
   "2025-06-18",
   "2025-03-26",
 ] as const;
+const PUSH_PLAN_TTL_MS = 5 * 60 * 1000;
+const MAX_PUSH_PLANS = 64;
 
 type RequestId = string | number;
 
@@ -33,6 +44,22 @@ interface McpTool {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: Readonly<Record<string, unknown>>;
+  readonly annotations: {
+    readonly readOnlyHint: boolean;
+    readonly destructiveHint: boolean;
+    readonly idempotentHint: boolean;
+    readonly openWorldHint: boolean;
+  };
+}
+
+interface StoredPushPlan {
+  readonly client: ProviderClient;
+  readonly plan: EnvironmentPushPlan;
+  readonly expiresAt: number;
+}
+
+interface McpServerState {
+  readonly pushPlans: Map<string, StoredPushPlan>;
 }
 
 export interface McpServerDependencies {
@@ -45,6 +72,10 @@ export interface McpServerDependencies {
     readonly stdout: string;
     readonly stderr: string;
   }>;
+  /** Test seam; production uses a cryptographically random UUID. */
+  readonly createPushConfirmationId?: () => string;
+  /** Test seam; production uses the wall clock. */
+  readonly now?: () => number;
 }
 
 export interface McpStreams {
@@ -58,87 +89,17 @@ const PROFILE_PROPERTY = {
   description: "Configured Novamira HQ hosting profile name.",
 } as const;
 
-const READ_TOOLS: readonly McpTool[] = [
-  {
-    name: "hosting_profiles_list",
-    description: "List configured hosting profiles without credential values.",
-    inputSchema: { type: "object", additionalProperties: false },
-  },
-  {
-    name: "hosting_provider_validate",
-    description: "Validate a configured hosting profile with its provider.",
-    inputSchema: objectSchema({ profile: PROFILE_PROPERTY }, ["profile"]),
-  },
-  {
-    name: "hosting_capabilities_get",
-    description: "Get capabilities supported by a hosting provider profile.",
-    inputSchema: objectSchema({ profile: PROFILE_PROPERTY }, ["profile"]),
-  },
-  {
-    name: "hosting_sites_list",
-    description: "List hosting sites through a configured provider profile.",
-    inputSchema: objectSchema(
-      {
-        profile: PROFILE_PROPERTY,
-        includeEnvironments: { type: "boolean", default: false },
-      },
-      ["profile"],
-    ),
-  },
-  {
-    name: "hosting_site_get",
-    description: "Get one hosting site by provider resource ID.",
-    inputSchema: objectSchema(
-      { profile: PROFILE_PROPERTY, siteId: nonEmptyString("Hosting site ID.") },
-      ["profile", "siteId"],
-    ),
-  },
-  {
-    name: "hosting_environments_list",
-    description: "List environments belonging to one hosting site.",
-    inputSchema: objectSchema(
-      { profile: PROFILE_PROPERTY, siteId: nonEmptyString("Hosting site ID.") },
-      ["profile", "siteId"],
-    ),
-  },
-  {
-    name: "hosting_operation_get",
-    description: "Get the current status of a provider operation.",
-    inputSchema: objectSchema(
-      {
-        profile: PROFILE_PROPERTY,
-        operationId: nonEmptyString("Provider operation ID."),
-      },
-      ["profile", "operationId"],
-    ),
-  },
-];
-
-const CLI_TOOL: McpTool = {
-  name: "novamira_hq_cli",
-  description:
-    "Run a Novamira HQ command permitted by the MCP server launch flags. Pass argv without the executable name. This can mutate or delete hosting resources when the corresponding capability is enabled.",
-  inputSchema: objectSchema(
-    {
-      argv: {
-        type: "array",
-        minItems: 1,
-        items: { type: "string" },
-        description:
-          'Arguments after novamira-hq, for example ["--profile", "prod", "hosting", "sites", "list"].',
-      },
-    },
-    ["argv"],
-  ),
-};
-
-function toolsFor(access: McpAccessPolicy): readonly McpTool[] {
-  const tools: McpTool[] = [];
-  if (access.capabilities.has("config")) tools.push(...READ_TOOLS.slice(0, 1));
-  if (access.capabilities.has("hosting-read"))
-    tools.push(...READ_TOOLS.slice(1));
-  if (access.capabilities.size > 0) tools.push(CLI_TOOL);
-  return tools;
+function annotations(
+  readOnlyHint: boolean,
+  destructiveHint: boolean,
+  idempotentHint = false,
+): McpTool["annotations"] {
+  return {
+    readOnlyHint,
+    destructiveHint,
+    idempotentHint,
+    openWorldHint: true,
+  };
 }
 
 function objectSchema(
@@ -152,6 +113,183 @@ function nonEmptyString(
   description: string,
 ): Readonly<Record<string, unknown>> {
   return { type: "string", minLength: 1, description };
+}
+
+const PUSH_PROPERTIES = {
+  profile: PROFILE_PROPERTY,
+  siteId: nonEmptyString("Hosting site ID containing both environments."),
+  sourceEnvironmentId: nonEmptyString("Source environment ID."),
+  targetEnvironmentId: nonEmptyString("Target environment ID."),
+  database: {
+    type: "boolean",
+    default: false,
+    description: "Push the database. Never enabled implicitly.",
+  },
+  allFiles: {
+    type: "boolean",
+    default: false,
+    description: "Push every file. Mutually exclusive with files.",
+  },
+  files: {
+    type: "array",
+    default: [],
+    uniqueItems: true,
+    items: { type: "string", minLength: 1 },
+    description: "Explicit file paths to push instead of every file.",
+  },
+  searchReplace: {
+    type: "boolean",
+    default: false,
+    description: "Run URL search/replace; requires database=true.",
+  },
+} as const;
+
+const TOOL_DEFINITIONS: readonly (McpTool & {
+  readonly capability: McpCapability;
+})[] = [
+  {
+    name: "hosting_profiles_list",
+    description: "List configured hosting profiles without credential values.",
+    inputSchema: { type: "object", additionalProperties: false },
+    annotations: annotations(true, false, true),
+    capability: "profiles-read",
+  },
+  {
+    name: "hosting_provider_validate",
+    description: "Validate a configured hosting profile with its provider.",
+    inputSchema: objectSchema({ profile: PROFILE_PROPERTY }, ["profile"]),
+    annotations: annotations(true, false),
+    capability: "hosting-read",
+  },
+  {
+    name: "hosting_capabilities_get",
+    description:
+      "Get the provider capabilities after Novamira HQ safety policy is applied.",
+    inputSchema: objectSchema({ profile: PROFILE_PROPERTY }, ["profile"]),
+    annotations: annotations(true, false, true),
+    capability: "hosting-read",
+  },
+  {
+    name: "hosting_sites_list",
+    description: "List hosting sites through a configured provider profile.",
+    inputSchema: objectSchema(
+      {
+        profile: PROFILE_PROPERTY,
+        includeEnvironments: { type: "boolean", default: false },
+      },
+      ["profile"],
+    ),
+    annotations: annotations(true, false),
+    capability: "hosting-read",
+  },
+  {
+    name: "hosting_site_get",
+    description: "Get one hosting site by provider resource ID.",
+    inputSchema: objectSchema(
+      { profile: PROFILE_PROPERTY, siteId: nonEmptyString("Hosting site ID.") },
+      ["profile", "siteId"],
+    ),
+    annotations: annotations(true, false),
+    capability: "hosting-read",
+  },
+  {
+    name: "hosting_environments_list",
+    description: "List environments belonging to one hosting site.",
+    inputSchema: objectSchema(
+      { profile: PROFILE_PROPERTY, siteId: nonEmptyString("Hosting site ID.") },
+      ["profile", "siteId"],
+    ),
+    annotations: annotations(true, false),
+    capability: "hosting-read",
+  },
+  {
+    name: "hosting_operation_get",
+    description: "Get the current status of a provider operation.",
+    inputSchema: objectSchema(
+      {
+        profile: PROFILE_PROPERTY,
+        operationId: nonEmptyString("Provider operation ID."),
+      },
+      ["profile", "operationId"],
+    ),
+    annotations: annotations(true, false),
+    capability: "hosting-read",
+  },
+  {
+    name: "hosting_backup_create",
+    description: "Create a backup of one hosting environment.",
+    inputSchema: objectSchema(
+      {
+        profile: PROFILE_PROPERTY,
+        environmentId: nonEmptyString("Hosting environment ID."),
+        tag: nonEmptyString("Optional provider backup label."),
+      },
+      ["profile", "environmentId"],
+    ),
+    annotations: annotations(false, false),
+    capability: "maintenance",
+  },
+  {
+    name: "hosting_novamira_setup",
+    description:
+      "Provision the Novamira plugin on one environment and return the site CLI handoff.",
+    inputSchema: objectSchema(
+      {
+        profile: PROFILE_PROPERTY,
+        environmentId: nonEmptyString("Hosting environment ID."),
+        url: nonEmptyString("Optional WordPress site URL override."),
+        enableAiAbilities: {
+          type: "boolean",
+          default: true,
+          description: "Enable Novamira AI abilities during provisioning.",
+        },
+      },
+      ["profile", "environmentId"],
+    ),
+    annotations: annotations(false, false),
+    capability: "provisioning",
+  },
+  {
+    name: "hosting_environment_push_plan",
+    description:
+      "Validate an explicit environment-push scope and issue a short-lived one-use confirmation ID. No mutation is performed.",
+    inputSchema: objectSchema(PUSH_PROPERTIES, [
+      "profile",
+      "siteId",
+      "sourceEnvironmentId",
+      "targetEnvironmentId",
+    ]),
+    annotations: annotations(true, false),
+    capability: "deploy",
+  },
+  {
+    name: "hosting_environment_push_apply",
+    description:
+      "Apply a one-use push plan. HQ first creates and awaits a safety backup of the target environment.",
+    inputSchema: objectSchema(
+      {
+        confirmationId: nonEmptyString(
+          "One-use ID returned by hosting_environment_push_plan.",
+        ),
+      },
+      ["confirmationId"],
+    ),
+    annotations: annotations(false, true),
+    capability: "deploy",
+  },
+];
+
+const TOOL_BY_NAME = new Map(TOOL_DEFINITIONS.map((tool) => [tool.name, tool]));
+
+function toolsFor(access: McpAccessPolicy): readonly McpTool[] {
+  return TOOL_DEFINITIONS.filter((tool) =>
+    access.capabilities.has(tool.capability),
+  ).map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    annotations: tool.annotations,
+  }));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -206,7 +344,50 @@ function requiredString(
       "usage_error",
       `Tool argument ${name} must be a non-empty string.`,
     );
+  return value.trim();
+}
+
+function optionalBoolean(
+  argumentsValue: Record<string, unknown>,
+  name: string,
+  defaultValue: boolean,
+): boolean {
+  const value = argumentsValue[name];
+  if (value === undefined) return defaultValue;
+  if (typeof value !== "boolean")
+    throw new CliError(
+      "usage_error",
+      `Tool argument ${name} must be a boolean.`,
+    );
   return value;
+}
+
+function optionalStringArray(
+  argumentsValue: Record<string, unknown>,
+  name: string,
+): readonly string[] {
+  const value = argumentsValue[name];
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string"))
+    throw new CliError(
+      "usage_error",
+      `Tool argument ${name} must be an array of strings.`,
+    );
+  return value;
+}
+
+function pushSelection(
+  argumentsValue: Record<string, unknown>,
+): EnvironmentPushSelection {
+  return {
+    siteId: requiredString(argumentsValue, "siteId"),
+    sourceEnvironmentId: requiredString(argumentsValue, "sourceEnvironmentId"),
+    targetEnvironmentId: requiredString(argumentsValue, "targetEnvironmentId"),
+    database: optionalBoolean(argumentsValue, "database", false),
+    allFiles: optionalBoolean(argumentsValue, "allFiles", false),
+    files: optionalStringArray(argumentsValue, "files"),
+    searchReplace: optionalBoolean(argumentsValue, "searchReplace", false),
+  };
 }
 
 function toolResult(value: unknown): Readonly<Record<string, unknown>> {
@@ -231,59 +412,85 @@ function toolError(error: unknown): Readonly<Record<string, unknown>> {
   };
 }
 
-function cliArgv(argumentsValue: Record<string, unknown>): string[] {
-  const value = argumentsValue.argv;
-  if (
-    !Array.isArray(value) ||
-    value.length === 0 ||
-    !value.every((item): item is string => typeof item === "string")
-  )
-    throw new CliError(
-      "usage_error",
-      "Tool argument argv must be a non-empty array of strings.",
-    );
-  if (value.some((argument) => argument === "mcp"))
-    throw new CliError("usage_error", "The MCP command cannot invoke itself.");
-  if (
-    value.some(
-      (argument, index) =>
-        argument === "--credential-stdin" ||
-        argument === "--admin-password-stdin" ||
-        argument === "--password-stdin" ||
-        argument === "--command-stdin" ||
-        (argument === "--from-json" && value[index + 1] === "-"),
-    )
-  )
-    throw new CliError(
-      "usage_error",
-      "MCP command execution cannot read secrets, payloads, or commands from stdin.",
-    );
-  return value;
+function parseCliOutput(result: {
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+}): unknown {
+  const stdout = result.stdout.trim();
+  if (stdout !== "") {
+    try {
+      return JSON.parse(stdout) as unknown;
+    } catch {
+      // A malformed envelope is returned as redacted diagnostics below.
+    }
+  }
+  return result;
+}
+
+async function setupNovamira(
+  dependencies: McpServerDependencies,
+  argumentsValue: Record<string, unknown>,
+): Promise<Readonly<Record<string, unknown>>> {
+  const profile = requiredString(argumentsValue, "profile");
+  const environmentId = requiredString(argumentsValue, "environmentId");
+  const argv = [
+    "--profile",
+    profile,
+    "--json",
+    "--quiet",
+    "hosting",
+    "novamira",
+    "setup",
+    "--env",
+    environmentId,
+  ];
+  if (argumentsValue.url !== undefined)
+    argv.push("--url", requiredString(argumentsValue, "url"));
+  if (!optionalBoolean(argumentsValue, "enableAiAbilities", true))
+    argv.push("--no-ai-abilities");
+  const result = await dependencies.executeCli(argv);
+  return {
+    ...toolResult(parseCliOutput(result)),
+    ...(result.exitCode === 0 ? {} : { isError: true }),
+  };
 }
 
 async function callTool(
   dependencies: McpServerDependencies,
+  state: McpServerState,
   name: string,
   argumentsValue: Record<string, unknown>,
 ): Promise<Readonly<Record<string, unknown>>> {
   try {
-    if (name === "novamira_hq_cli") {
-      const argv = cliArgv(argumentsValue);
-      const capability: McpCapability = requireCliAccess(
-        dependencies.access,
-        argv,
-      );
-      const result = await dependencies.executeCli(argv);
-      const safe = redact({ capability, ...result });
-      return {
-        content: [{ type: "text", text: JSON.stringify(safe) }],
-        ...(result.exitCode === 0 ? {} : { isError: true }),
-      };
-    }
+    const definition = TOOL_BY_NAME.get(name);
+    if (definition === undefined)
+      throw new CliError("usage_error", `Unknown MCP tool: ${name}.`);
+    requireMcpAccess(dependencies.access, definition.capability);
+
     if (name === "hosting_profiles_list")
       return toolResult(
         (await dependencies.store.listHostingProfiles()).map(profileSummary),
       );
+    if (name === "hosting_novamira_setup")
+      return await setupNovamira(dependencies, argumentsValue);
+
+    if (name === "hosting_environment_push_apply") {
+      const confirmationId = requiredString(argumentsValue, "confirmationId");
+      const stored = state.pushPlans.get(confirmationId);
+      state.pushPlans.delete(confirmationId);
+      if (
+        stored === undefined ||
+        stored.expiresAt <= (dependencies.now?.() ?? Date.now())
+      )
+        throw new CliError(
+          "not_found",
+          "The environment push plan is missing, expired, or already used.",
+        );
+      return toolResult(
+        await executeEnvironmentPush(stored.client, stored.plan),
+      );
+    }
 
     const profile = requiredString(argumentsValue, "profile");
     const client = await dependencies.hosting.clientFromProfile(profile);
@@ -291,23 +498,19 @@ async function callTool(
       case "hosting_provider_validate":
         return toolResult(await client.validate());
       case "hosting_capabilities_get":
-        return toolResult(await client.read({ kind: "capabilities" }));
-      case "hosting_sites_list": {
-        const includeEnvironments = argumentsValue.includeEnvironments;
-        if (
-          includeEnvironments !== undefined &&
-          typeof includeEnvironments !== "boolean"
-        )
-          throw new CliError(
-            "usage_error",
-            "Tool argument includeEnvironments must be a boolean.",
-          );
+        return toolResult(
+          applyHqCapabilityPolicy(await client.read({ kind: "capabilities" })),
+        );
+      case "hosting_sites_list":
         return toolResult(
           await client.listSites({
-            includeEnvironments: includeEnvironments === true,
+            includeEnvironments: optionalBoolean(
+              argumentsValue,
+              "includeEnvironments",
+              false,
+            ),
           }),
         );
-      }
       case "hosting_site_get":
         return toolResult(
           await client.getSite(requiredString(argumentsValue, "siteId")),
@@ -324,6 +527,47 @@ async function callTool(
             requiredString(argumentsValue, "operationId"),
           ),
         );
+      case "hosting_backup_create": {
+        const tag = argumentsValue.tag;
+        return toolResult(
+          await client.action({
+            kind: "create-backup",
+            envId: requiredString(argumentsValue, "environmentId"),
+            body:
+              tag === undefined
+                ? {}
+                : { tag: requiredString(argumentsValue, "tag") },
+          }),
+        );
+      }
+      case "hosting_environment_push_plan": {
+        const plan = await prepareEnvironmentPush(
+          client,
+          pushSelection(argumentsValue),
+        );
+        const confirmationId =
+          dependencies.createPushConfirmationId?.() ?? randomUUID();
+        const now = dependencies.now?.() ?? Date.now();
+        const expiresAt = now + PUSH_PLAN_TTL_MS;
+        for (const [id, stored] of state.pushPlans)
+          if (stored.expiresAt <= now) state.pushPlans.delete(id);
+        if (state.pushPlans.size >= MAX_PUSH_PLANS)
+          throw new CliError(
+            "conflict",
+            "Too many pending environment push plans; apply one or wait for expiry.",
+          );
+        if (state.pushPlans.has(confirmationId))
+          throw new CliError(
+            "conflict",
+            "Could not allocate a unique environment push confirmation ID.",
+          );
+        state.pushPlans.set(confirmationId, { client, plan, expiresAt });
+        return toolResult({
+          confirmationId,
+          expiresAt: new Date(expiresAt).toISOString(),
+          plan,
+        });
+      }
       default:
         throw new CliError("usage_error", `Unknown MCP tool: ${name}.`);
     }
@@ -337,6 +581,7 @@ export async function runMcpServer(
   streams: McpStreams = { input: process.stdin, output: process.stdout },
 ): Promise<void> {
   const lines = createInterface({ input: streams.input, crlfDelay: Infinity });
+  const state: McpServerState = { pushPlans: new Map() };
   let initialized = false;
   let ready = false;
   let queue = Promise.resolve();
@@ -428,13 +673,18 @@ export async function runMcpServer(
         return;
       }
       const toolName = request.params.name;
+      const definition = TOOL_BY_NAME.get(toolName);
       if (
-        !toolsFor(dependencies.access).some((tool) => tool.name === toolName)
+        definition === undefined ||
+        !dependencies.access.capabilities.has(definition.capability)
       ) {
         failure(id, -32602, "Unknown tool");
         return;
       }
-      success(id, await callTool(dependencies, toolName, argumentsValue));
+      success(
+        id,
+        await callTool(dependencies, state, toolName, argumentsValue),
+      );
       return;
     }
     failure(id, -32601, "Method not found");

@@ -212,17 +212,6 @@ export function renderValidation(
   };
 }
 
-/**
- * Go's `SecretWriteOutput`. The value written to disk is never echoed: `data`
- * carries the path and a fixed mask, exactly as the Go CLI did.
- */
-export function renderSecretWrite(path: string): RenderedResult {
-  return {
-    data: { path, value: "********" },
-    human: `wrote redacted secret to ${path}`,
-  };
-}
-
 /* -------------------------------------------------------------------------- */
 /* Capability post-processing                                                 */
 /* -------------------------------------------------------------------------- */
@@ -230,15 +219,12 @@ export function renderSecretWrite(path: string): RenderedResult {
 /**
  * Moved to `src/hosting/capabilities.ts` in Phase 7 and re-exported here.
  *
- * The rule — a provider that advertises `sites.delete` must not be reported as
- * offering it through HQ — now has two callers: `hosting providers capabilities`
- * and the dashboard's `/_dashboard/diagnostics/capabilities` route. `src/web/`
- * may not import `src/cli/`, so the rule sits below both. Every existing
- * importer, `test/cli-foundations-contract.test.mjs` included, keeps working
- * unchanged.
+ * The rule omits provider-only destructive or credential-management operations
+ * from HQ's capability document. It has three callers: CLI, dashboard, and MCP.
+ * `src/web/` may not import `src/cli/`, so the rule sits below all three.
  */
 export {
-  disableSiteDeleteCapability,
-  SITE_DELETE_CAPABILITY,
-  SITE_DELETE_DISABLED_NOTE,
+  applyHqCapabilityPolicy,
+  HQ_PUBLIC_CAPABILITIES,
+  isHqPublicCapability,
 } from "../hosting/capabilities.js";

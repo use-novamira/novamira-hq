@@ -54,7 +54,6 @@ import {
 import { runHostingCommand, type HostingOptions } from "../hosting-command.js";
 import {
   backupCreatePayload,
-  backupRestorePayload,
   buildQuery,
   cacheClearPayload,
   deniedIpsSetPayload,
@@ -79,14 +78,6 @@ interface BackupsCreateValues {
   readonly fromJson?: string;
   /** Present only when `--tag` was given, including as an empty string. */
   readonly tag?: string;
-}
-
-/** `backups restore`. */
-interface BackupsRestoreValues {
-  readonly targetEnv?: string;
-  readonly fromJson?: string;
-  readonly backupId?: number;
-  readonly notifiedUserId?: string;
 }
 
 /** `cache clear`. `kind` always has a value: `--kind` defaults to `site`. */
@@ -155,11 +146,6 @@ export interface MaintenanceHandlers {
     values: BackupsCreateValues,
     options: HostingOptions,
   ): Promise<void>;
-  backupsRestore(
-    values: BackupsRestoreValues,
-    options: HostingOptions,
-  ): Promise<void>;
-  backupsDelete(backupId: number, options: HostingOptions): Promise<void>;
   cacheClear(values: CacheClearValues, options: HostingOptions): Promise<void>;
   phpRestart(values: EnvValues, options: HostingOptions): Promise<void>;
   phpSetVersion(
@@ -227,20 +213,6 @@ export function createMaintenanceHandlers(
           await client.action({ kind: "create-backup", envId, body }),
         );
       }),
-
-    backupsRestore: (values, options) =>
-      runHostingCommand(dependencies, options, async ({ client, io }) => {
-        const targetEnvId = requireRequestId(values.targetEnv, "--target-env");
-        const body = await backupRestorePayload(values, io);
-        return renderAction(
-          await client.action({ kind: "restore-backup", targetEnvId, body }),
-        );
-      }),
-
-    backupsDelete: (backupId, options) =>
-      runHostingCommand(dependencies, options, async ({ client }) =>
-        renderAction(await client.action({ kind: "delete-backup", backupId })),
-      ),
 
     cacheClear: (values, options) =>
       runHostingCommand(dependencies, options, async ({ client, io }) =>
@@ -389,24 +361,6 @@ function registerBackupsCommands(
     .option("--tag <tag>", "label stored with the backup")
     .action(async (...values: unknown[]) =>
       handlers.backupsCreate(optionValues(values), optionsFor(values)),
-    );
-
-  const restore = backups.command("restore").description("restore a backup");
-  restore.option("--target-env <id>", "environment to restore into");
-  addFromJsonOption(restore);
-  restore
-    .option("--backup-id <id>", "backup to restore", parseUnsignedInteger)
-    .option("--notified-user-id <id>", "user notified when the restore ends")
-    .action(async (...values: unknown[]) =>
-      handlers.backupsRestore(optionValues(values), optionsFor(values)),
-    );
-
-  backups
-    .command("delete")
-    .description("delete a backup")
-    .argument("<backup_id>", "backup to delete", parseUnsignedInteger)
-    .action(async (backupId: number, ...values: unknown[]) =>
-      handlers.backupsDelete(backupId, optionsFor(values)),
     );
 }
 

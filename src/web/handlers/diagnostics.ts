@@ -34,11 +34,10 @@
  * `DashboardIntegration` uses, and for the same layering reason. `unknown` is
  * honest: this module only stringifies it.
  *
- * **The capabilities route forces `sites.delete` unsupported**, exactly as
+ * **The capabilities route omits operations HQ does not expose**, exactly as
  * `hosting providers capabilities` does, through the shared rule in
- * `src/hosting/capabilities.ts`. HQ registers no delete in either surface, and a
- * dashboard that showed the provider's raw `supported: true` would contradict
- * the CLI about what HQ can do. The provider call itself goes through
+ * `src/hosting/capabilities.ts`. A dashboard that showed a provider-only
+ * operation would contradict the CLI about what HQ can do. The provider call itself goes through
  * `services/providers.ts`, not through `HostingClientFactory` directly: no
  * handler in the dashboard resolves a profile into a client, and this one is not
  * about to be the first.

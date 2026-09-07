@@ -24,20 +24,11 @@
  *
  * Three things deliberately differ from the Go source.
  *
- * 1. **`hosting sites delete` is not registered.** Go kept
- *    `newSitesDeleteCommand` around but never added it to the tree
- *    (`TestSitesDeleteCommandIsNotRegistered`), and `print.ts`'s
- *    `disableSiteDeleteCapability` reports `sites.delete` as unsupported for
- *    exactly that reason. {@link SitesHandlers.sitesDelete} is kept for the same
- *    reason Go kept the constructor — so the provider action wiring survives if
- *    the command is ever restored — but {@link registerSitesCommands} must not
- *    register it while the capability is advertised as disabled.
- * 2. **`--no-db`, `--no-files` and `--no-search-replace`** are cobra booleans in
- *    Go and commander *negated* booleans here, so commander parses them into
- *    `db`/`files`/`searchReplace` (defaulting to `true`). The grammar half
- *    inverts them back into the `noDb`/`noFiles`/`noSearchReplace` shape
- *    `environmentPushPayload` expects, so argv and the request body are both
- *    unchanged.
+ * 1. Site deletion/reset and environment deletion are deliberately absent.
+ *    They destroy a resource or its contents and are left to the provider's
+ *    own control panel.
+ * 2. Environment push has no implicit scope. The caller must select the
+ *    database, all files, or explicit file paths; search-and-replace is opt-in.
  * 3. **`sites list` does not pass a company id.** Go called
  *    `client.ListSites(profile.CompanyID, includeEnvs)`; every HQ provider
  *    client already falls back to the profile's configured company, so passing
@@ -47,6 +38,10 @@
 import type { Command } from "commander";
 
 import { CliError } from "../../errors.js";
+import {
+  executeEnvironmentPush,
+  prepareEnvironmentPush,
+} from "../../hosting/environment-push.js";
 import type { CommandDependencies } from "../commands.js";
 import {
   addFromJsonOption,
@@ -59,11 +54,9 @@ import {
   environmentClonePayload,
   environmentCreatePayload,
   environmentCreatePlainPayload,
-  environmentPushPayload,
   siteClonePayload,
   siteCreatePayload,
   siteCreatePlainPayload,
-  siteResetPayload,
   type EnvironmentCloneOptions,
   type EnvironmentCreateOptions,
   type EnvironmentCreatePlainOptions,
@@ -71,12 +64,12 @@ import {
   type SiteCloneOptions,
   type SiteCreateOptions,
   type SiteCreatePlainOptions,
-  type SiteResetOptions,
 } from "../payloads.js";
 import {
   renderAction,
   renderEnvironment,
   renderEnvironments,
+  renderRaw,
   renderSite,
   renderSites,
 } from "../print.js";
@@ -137,14 +130,6 @@ export interface EnvsPushOptions
 export interface SitesHandlers {
   sitesList(options: SitesListOptions, globals: HostingOptions): Promise<void>;
   sitesGet(siteId: string, globals: HostingOptions): Promise<void>;
-  /**
-   * `hosting sites delete` is NOT part of the command grammar — see the module
-   * comment. This method exists only so the provider action wiring survives,
-   * exactly as Go retained `newSitesDeleteCommand`. Registering it would
-   * contradict `disableSiteDeleteCapability`, which tells every provider's
-   * capability listing that HQ does not expose site deletion.
-   */
-  sitesDelete(siteId: string, globals: HostingOptions): Promise<void>;
   sitesCreate(
     options: SiteCreateOptions,
     globals: HostingOptions,
@@ -154,11 +139,6 @@ export interface SitesHandlers {
     globals: HostingOptions,
   ): Promise<void>;
   sitesClone(options: SiteCloneOptions, globals: HostingOptions): Promise<void>;
-  sitesReset(
-    siteId: string,
-    options: SiteResetOptions,
-    globals: HostingOptions,
-  ): Promise<void>;
 
   envsList(options: EnvsListOptions, globals: HostingOptions): Promise<void>;
   envsGet(
@@ -166,7 +146,6 @@ export interface SitesHandlers {
     options: EnvsGetOptions,
     globals: HostingOptions,
   ): Promise<void>;
-  envsDelete(envId: string, globals: HostingOptions): Promise<void>;
   envsCreate(
     options: EnvsCreateOptions,
     globals: HostingOptions,
@@ -205,11 +184,6 @@ export function createSitesHandlers(
         renderSite(await client.getSite(siteId)),
       ),
 
-    sitesDelete: (siteId, globals) =>
-      runHostingCommand(dependencies, globals, async ({ client }) =>
-        renderAction(await client.action({ kind: "delete-site", siteId })),
-      ),
-
     sitesCreate: (options, globals) =>
       runHostingCommand(dependencies, globals, async ({ client, io }) => {
         const body = await siteCreatePayload(options, io);
@@ -234,14 +208,6 @@ export function createSitesHandlers(
         );
       }),
 
-    sitesReset: (siteId, options, globals) =>
-      runHostingCommand(dependencies, globals, async ({ client, io }) => {
-        const body = await siteResetPayload(options, io);
-        return renderAction(
-          await client.action({ kind: "reset-site", siteId, body }),
-        );
-      }),
-
     envsList: (options, globals) =>
       runHostingCommand(dependencies, globals, async ({ client }) =>
         renderEnvironments(await client.listEnvironments(options.site ?? "")),
@@ -258,13 +224,6 @@ export function createSitesHandlers(
         if (environment === undefined) throw environmentNotFound(envId, siteId);
         return renderEnvironment(environment);
       }),
-
-    envsDelete: (envId, globals) =>
-      runHostingCommand(dependencies, globals, async ({ client }) =>
-        renderAction(
-          await client.action({ kind: "delete-environment", envId }),
-        ),
-      ),
 
     envsCreate: (options, globals) =>
       runHostingCommand(dependencies, globals, async ({ client, io }) => {
@@ -306,13 +265,22 @@ export function createSitesHandlers(
       }),
 
     envsPush: (options, globals) =>
-      runHostingCommand(dependencies, globals, async ({ client, io }) => {
-        const body = await environmentPushPayload(options, io);
-        return renderAction(
-          await client.action({
-            kind: "push-environment",
-            siteId: options.site ?? "",
-            body,
+      runHostingCommand(dependencies, globals, async ({ client }) => {
+        const plan = await prepareEnvironmentPush(client, {
+          siteId: options.site ?? "",
+          sourceEnvironmentId: options.sourceEnv ?? "",
+          targetEnvironmentId: options.targetEnv ?? "",
+          database: options.db === true,
+          allFiles: options.allFiles === true,
+          files: options.file ?? [],
+          searchReplace: options.searchReplace === true,
+        });
+        return renderRaw(
+          await executeEnvironmentPush(client, plan, {
+            intervalSeconds: 5,
+            timeoutSeconds: globals.timeoutExplicit
+              ? Math.max(1, Math.ceil(globals.timeout / 1000))
+              : 300,
           }),
         );
       }),
@@ -322,19 +290,6 @@ export function createSitesHandlers(
 /* -------------------------------------------------------------------------- */
 /* Grammar                                                                    */
 /* -------------------------------------------------------------------------- */
-
-/**
- * The `--no-*` options as commander parses them: a negated boolean stores the
- * *positive* name and defaults to `true`.
- */
-interface EnvsPushCommandOptions extends Omit<
-  EnvsPushOptions,
-  "noDb" | "noFiles" | "noSearchReplace"
-> {
-  readonly db: boolean;
-  readonly files: boolean;
-  readonly searchReplace: boolean;
-}
 
 /** The WordPress-install options `sites create` and `envs create` share. */
 function addWordPressInstallOptions(command: Command): Command {
@@ -381,9 +336,6 @@ function registerSites(
       await handlers.sitesGet(siteId, optionsFor([command]));
     });
 
-  // `sites delete` is intentionally absent; see the module comment and
-  // `disableSiteDeleteCapability`. Do not add it here.
-
   const create = sites.command("create").description("create a WordPress site");
   addFromJsonOption(create);
   create.option("--display-name <name>", "site display name");
@@ -425,18 +377,6 @@ function registerSites(
   clone.action(async (options: SiteCloneOptions, command: Command) => {
     await handlers.sitesClone(options, optionsFor([command]));
   });
-
-  const reset = sites
-    .command("reset")
-    .description("reset a site")
-    .argument("<site_id>", "provider site id");
-  addFromJsonOption(reset);
-  addSecretSourceOptions(reset, "admin-password", "the admin password");
-  reset.action(
-    async (siteId: string, options: SiteResetOptions, command: Command) => {
-      await handlers.sitesReset(siteId, options, optionsFor([command]));
-    },
-  );
 }
 
 function registerEnvs(
@@ -519,36 +459,18 @@ function registerEnvs(
     .command("push")
     .description("push an environment onto another")
     .option("--site <id>", "provider site id");
-  addFromJsonOption(push);
   push.option("--source-env <id>", "environment to push from");
   push.option("--target-env <id>", "environment to push onto");
-  push.option("--no-db", "do not push the database");
-  push.option("--no-files", "do not push files");
-  push.option("--no-search-replace", "do not run search and replace");
+  push.option("--db", "push the database", false);
+  push.option("--all-files", "push all files", false);
+  push.option("--search-replace", "run search and replace with --db", false);
   push.option(
     "--file <path>",
     "push only this path; repeatable",
     collect,
     [] as readonly string[],
   );
-  push.action(async (options: EnvsPushCommandOptions, command: Command) => {
-    const { db, files, searchReplace, ...rest } = options;
-    await handlers.envsPush(
-      {
-        ...rest,
-        noDb: !db,
-        noFiles: !files,
-        noSearchReplace: !searchReplace,
-      },
-      optionsFor([command]),
-    );
-  });
-
-  envs
-    .command("delete")
-    .description("delete an environment")
-    .argument("<env_id>", "provider environment id")
-    .action(async (envId: string, _options: unknown, command: Command) => {
-      await handlers.envsDelete(envId, optionsFor([command]));
-    });
+  push.action(async (options: EnvsPushOptions, command: Command) =>
+    handlers.envsPush(options, optionsFor([command])),
+  );
 }

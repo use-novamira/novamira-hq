@@ -76,30 +76,21 @@ const KINSTA_CAPABILITIES: readonly string[] = [
   "sites.create",
   "sites.create-plain",
   "sites.clone",
-  "sites.delete",
-  "sites.reset",
   "envs.list",
   "envs.get",
   "envs.create",
   "envs.create-plain",
   "envs.clone",
   "envs.push",
-  "envs.delete",
   "domains.list",
   "domains.add",
-  "domains.delete",
   "domains.verify",
   "domains.primary",
   "dns.domains.list",
   "dns.records.list",
-  "dns.records.create",
-  "dns.records.update",
-  "dns.records.delete",
   "backups.list",
   "backups.downloadable",
   "backups.create",
-  "backups.restore",
-  "backups.delete",
   "cache.clear",
   "php.restart",
   "php.set-version",
@@ -118,8 +109,6 @@ const KINSTA_CAPABILITIES: readonly string[] = [
   "logs.get",
   "analytics.usage",
   "analytics.env",
-  "access.ssh",
-  "access.sftp",
   "ops.get",
   "ops.wait",
 ];
@@ -316,31 +305,6 @@ class KinstaClient implements ProviderClient {
         return this.#get(`/company/${segment(companyId)}/wp-themes`);
       }
 
-      case "ssh-status":
-        return this.#get(
-          `/sites/environments/${segment(request.envId)}/ssh/get-status`,
-        );
-
-      case "ssh-allowlist":
-        return this.#get(
-          `/sites/environments/${segment(request.envId)}/ssh/get-allowed-ips`,
-        );
-
-      case "ssh-config":
-        return this.#get(
-          `/sites/${segment(request.siteId)}/environments/${segment(request.envId)}/ssh/config`,
-        );
-
-      case "ssh-password":
-        return this.#get(
-          `/sites/environments/${segment(request.envId)}/ssh/password`,
-        );
-
-      case "sftp-accounts":
-        return this.#get(
-          `/sites/environments/${segment(request.envId)}/additional-sftp-accounts`,
-        );
-
       case "analytics-usage": {
         const metric = usageMetric(request.metric);
         return this.#get(
@@ -391,21 +355,6 @@ class KinstaClient implements ProviderClient {
         }
       }
 
-      case "delete-site":
-        return this.#send(
-          "sites.delete",
-          "DELETE",
-          `/sites/${segment(request.siteId)}`,
-        );
-
-      case "reset-site":
-        return this.#send(
-          "sites.reset",
-          "POST",
-          `/sites/${segment(request.siteId)}/reset-site`,
-          request.body,
-        );
-
       case "create-environment": {
         const base = `/sites/${segment(request.siteId)}/environments`;
         switch (request.mode) {
@@ -436,13 +385,6 @@ class KinstaClient implements ProviderClient {
           "PUT",
           `/sites/${segment(request.siteId)}/environments`,
           request.body,
-        );
-
-      case "delete-environment":
-        return this.#send(
-          "envs.delete",
-          "DELETE",
-          `/sites/environments/${segment(request.envId)}`,
         );
 
       case "clear-cache":
@@ -494,14 +436,6 @@ class KinstaClient implements ProviderClient {
           request.body,
         );
 
-      case "delete-domains":
-        return this.#send(
-          "domains.delete",
-          "DELETE",
-          `/sites/environments/${segment(request.envId)}/domains`,
-          request.body,
-        );
-
       case "change-primary-domain":
         return this.#send(
           "domains.primary",
@@ -516,21 +450,6 @@ class KinstaClient implements ProviderClient {
           "POST",
           `/sites/environments/${segment(request.envId)}/manual-backups`,
           request.body,
-        );
-
-      case "restore-backup":
-        return this.#send(
-          "backups.restore",
-          "POST",
-          `/sites/environments/${segment(request.targetEnvId)}/backups/restore`,
-          request.body,
-        );
-
-      case "delete-backup":
-        return this.#send(
-          "backups.delete",
-          "DELETE",
-          `/sites/environments/backups/${wholeNumber(request.backupId, "backup id")}`,
         );
 
       case "update-plugin":
@@ -601,92 +520,6 @@ class KinstaClient implements ProviderClient {
           "POST",
           `/sites/environments/${segment(request.envId)}/redirect-rules`,
           request.body,
-        );
-
-      case "dns-record-create":
-        return this.#send(
-          "dns.records.create",
-          "POST",
-          `/domains/${segment(request.domainId)}/dns-records`,
-          request.body,
-        );
-
-      case "dns-record-update":
-        return this.#send(
-          "dns.records.update",
-          "PUT",
-          `/domains/${segment(request.domainId)}/dns-records`,
-          request.body,
-        );
-
-      case "dns-record-delete":
-        return this.#send(
-          "dns.records.delete",
-          "DELETE",
-          `/domains/${segment(request.domainId)}/dns-records`,
-          request.body,
-        );
-
-      case "set-ssh-status":
-        return this.#send(
-          "access.ssh.set-status",
-          "POST",
-          `/sites/environments/${segment(request.envId)}/ssh/set-status`,
-          request.body,
-        );
-
-      case "set-ssh-password-status":
-        return this.#send(
-          "access.ssh.set-password-status",
-          "POST",
-          `/sites/environments/${segment(request.envId)}/ssh/set-password-status`,
-          request.body,
-        );
-
-      case "generate-ssh-password":
-        return this.#send(
-          "access.ssh.generate-password",
-          "POST",
-          `/sites/environments/${segment(request.envId)}/ssh/generate-password`,
-        );
-
-      case "set-ssh-allowlist":
-        return this.#send(
-          "access.ssh.set-allowed-ips",
-          "POST",
-          `/sites/environments/${segment(request.envId)}/ssh/set-allowed-ips`,
-          request.body,
-        );
-
-      case "change-ssh-password-expiration":
-        return this.#send(
-          "access.ssh.change-expiration",
-          "POST",
-          `/sites/environments/${segment(request.envId)}/ssh/change-expiration-interval`,
-          request.body,
-        );
-
-      case "toggle-sftp-accounts":
-        return this.#send(
-          "access.sftp.toggle-accounts",
-          "PUT",
-          `/sites/environments/${segment(request.envId)}/additional-sftp-accounts/toggle-status`,
-          request.body,
-        );
-
-      case "add-sftp-account":
-        return this.#send(
-          "access.sftp.add-account",
-          "POST",
-          `/sites/environments/${segment(request.envId)}/additional-sftp-accounts`,
-          request.body,
-        );
-
-      case "remove-sftp-account":
-        return this.#send(
-          "access.sftp.remove-account",
-          "DELETE",
-          `/sites/environments/additional-sftp-accounts/${segment(request.sftpAccountId)}`,
         );
 
       default:

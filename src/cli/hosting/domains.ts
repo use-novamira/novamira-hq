@@ -37,26 +37,13 @@ import { Command } from "commander";
 
 import { CliError } from "../../errors.js";
 import type { CommandDependencies } from "../commands.js";
-import {
-  addFromJsonOption,
-  collect,
-  oneOf,
-  parseUnsignedInteger,
-} from "../flags.js";
+import { addFromJsonOption, oneOf } from "../flags.js";
 import { runHostingCommand, type HostingOptions } from "../hosting-command.js";
 import {
   DOMAIN_SETUP_TYPES,
-  dnsRecordCreatePayload,
-  dnsRecordDeletePayload,
-  dnsRecordUpdatePayload,
   domainAddPayload,
-  domainDeletePayload,
   domainPrimaryPayload,
-  type DnsRecordCreateOptions,
-  type DnsRecordDeleteOptions,
-  type DnsRecordUpdateOptions,
   type DomainAddOptions,
-  type DomainDeleteOptions,
   type DomainPrimaryOptions,
 } from "../payloads.js";
 import { renderAction, renderRaw } from "../print.js";
@@ -76,11 +63,6 @@ export interface DomainsAddInput extends DomainAddOptions {
   readonly env?: string;
 }
 
-/** `hosting domains delete`. */
-export interface DomainsDeleteInput extends DomainDeleteOptions {
-  readonly env?: string;
-}
-
 /** `hosting domains primary`. */
 export interface DomainsPrimaryInput extends DomainPrimaryOptions {
   readonly env?: string;
@@ -96,21 +78,6 @@ export interface DnsRecordsListInput {
   readonly domain?: string;
 }
 
-/** `hosting dns records create`. */
-export interface DnsRecordsCreateInput extends DnsRecordCreateOptions {
-  readonly domain?: string;
-}
-
-/** `hosting dns records update`. */
-export interface DnsRecordsUpdateInput extends DnsRecordUpdateOptions {
-  readonly domain?: string;
-}
-
-/** `hosting dns records delete`. */
-export interface DnsRecordsDeleteInput extends DnsRecordDeleteOptions {
-  readonly domain?: string;
-}
-
 /* -------------------------------------------------------------------------- */
 /* Handlers                                                                   */
 /* -------------------------------------------------------------------------- */
@@ -119,10 +86,6 @@ export interface DnsRecordsDeleteInput extends DnsRecordDeleteOptions {
 export interface DomainsHandlers {
   domainsList(input: DomainsListInput, options: HostingOptions): Promise<void>;
   domainsAdd(input: DomainsAddInput, options: HostingOptions): Promise<void>;
-  domainsDelete(
-    input: DomainsDeleteInput,
-    options: HostingOptions,
-  ): Promise<void>;
   domainsVerify(siteDomainId: string, options: HostingOptions): Promise<void>;
   domainsPrimary(
     input: DomainsPrimaryInput,
@@ -134,18 +97,6 @@ export interface DomainsHandlers {
   ): Promise<void>;
   dnsRecordsList(
     input: DnsRecordsListInput,
-    options: HostingOptions,
-  ): Promise<void>;
-  dnsRecordsCreate(
-    input: DnsRecordsCreateInput,
-    options: HostingOptions,
-  ): Promise<void>;
-  dnsRecordsUpdate(
-    input: DnsRecordsUpdateInput,
-    options: HostingOptions,
-  ): Promise<void>;
-  dnsRecordsDelete(
-    input: DnsRecordsDeleteInput,
     options: HostingOptions,
   ): Promise<void>;
 }
@@ -184,15 +135,6 @@ export function createDomainsHandlers(
         const body = await domainAddPayload(input, io);
         return renderAction(
           await client.action({ kind: "add-domain", envId, body }),
-        );
-      }),
-
-    domainsDelete: (input, options) =>
-      runHostingCommand(dependencies, options, async ({ client, io }) => {
-        const envId = requireIdentifier(input.env, "--env");
-        const body = await domainDeletePayload(input, io);
-        return renderAction(
-          await client.action({ kind: "delete-domains", envId, body }),
         );
       }),
 
@@ -237,33 +179,6 @@ export function createDomainsHandlers(
           }),
         ),
       ),
-
-    dnsRecordsCreate: (input, options) =>
-      runHostingCommand(dependencies, options, async ({ client, io }) => {
-        const domainId = requireIdentifier(input.domain, "--domain");
-        const body = await dnsRecordCreatePayload(input, io);
-        return renderAction(
-          await client.action({ kind: "dns-record-create", domainId, body }),
-        );
-      }),
-
-    dnsRecordsUpdate: (input, options) =>
-      runHostingCommand(dependencies, options, async ({ client, io }) => {
-        const domainId = requireIdentifier(input.domain, "--domain");
-        const body = await dnsRecordUpdatePayload(input, io);
-        return renderAction(
-          await client.action({ kind: "dns-record-update", domainId, body }),
-        );
-      }),
-
-    dnsRecordsDelete: (input, options) =>
-      runHostingCommand(dependencies, options, async ({ client, io }) => {
-        const domainId = requireIdentifier(input.domain, "--domain");
-        const body = await dnsRecordDeletePayload(input, io);
-        return renderAction(
-          await client.action({ kind: "dns-record-delete", domainId, body }),
-        );
-      }),
   };
 }
 
@@ -331,16 +246,6 @@ function registerDomains(
       handlers.domainsAdd(input, optionsFor([command])),
   );
 
-  const remove = domains
-    .command("delete")
-    .description("delete domains from an environment")
-    .option("--env <id>", "environment id")
-    .option("--domain-id <id>", "domain id to delete; repeatable", collect, []);
-  addFromJsonOption(remove).action(
-    async (input: DomainsDeleteInput, command: Command) =>
-      handlers.domainsDelete(input, optionsFor([command])),
-  );
-
   domains
     .command("verify")
     .description("read the verification status of a site domain")
@@ -392,47 +297,4 @@ function registerDns(
     .action(async (input: DnsRecordsListInput, command: Command) =>
       handlers.dnsRecordsList(input, optionsFor([command])),
     );
-
-  const create = records
-    .command("create")
-    .description("create a DNS record")
-    .option("--domain <id>", "DNS domain id")
-    .option("--record-type <type>", "DNS record type, e.g. A or CNAME")
-    .option("--name <name>", "record name")
-    .option("--ttl <seconds>", "record time to live", parseUnsignedInteger)
-    .option("--value <value>", "record value; repeatable", collect, []);
-  addFromJsonOption(create).action(
-    async (input: DnsRecordsCreateInput, command: Command) =>
-      handlers.dnsRecordsCreate(input, optionsFor([command])),
-  );
-
-  const update = records
-    .command("update")
-    .description("update a DNS record")
-    .option("--domain <id>", "DNS domain id")
-    .option("--record-type <type>", "DNS record type, e.g. A or CNAME")
-    .option("--name <name>", "record name")
-    .option("--ttl <seconds>", "record time to live", parseUnsignedInteger)
-    .option("--add-value <value>", "value to add; repeatable", collect, [])
-    .option(
-      "--remove-value <value>",
-      "value to remove; repeatable",
-      collect,
-      [],
-    );
-  addFromJsonOption(update).action(
-    async (input: DnsRecordsUpdateInput, command: Command) =>
-      handlers.dnsRecordsUpdate(input, optionsFor([command])),
-  );
-
-  const destroy = records
-    .command("delete")
-    .description("delete a DNS record")
-    .option("--domain <id>", "DNS domain id")
-    .option("--record-type <type>", "DNS record type, e.g. A or CNAME")
-    .option("--name <name>", "record name");
-  addFromJsonOption(destroy).action(
-    async (input: DnsRecordsDeleteInput, command: Command) =>
-      handlers.dnsRecordsDelete(input, optionsFor([command])),
-  );
 }

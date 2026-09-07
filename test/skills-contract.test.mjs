@@ -158,7 +158,7 @@ test("4: readable() reports the shipped tree intact, and a broken one honestly",
 /* 5-8: what the shipped markdown may and may not say                         */
 /* -------------------------------------------------------------------------- */
 
-test("5: neither bundle describes the deleted site surface", async () => {
+test("5: neither bundle crosses the hosting safety boundary", async () => {
   const { core, hosting, stub } = await bundles();
   const documents = {
     core: core.content,
@@ -172,8 +172,7 @@ test("5: neither bundle describes the deleted site surface", async () => {
     /--site-profile/,
     /--replace-profile/,
     /novamiraLinkedToEnv/,
-    // The deleted command surface: HQ installs no agent stub and has no
-    // `setup` command.
+    // HQ installs no agent stub and has no top-level `setup` command.
     /skills install/,
     /novamira-hq setup/,
   ];
@@ -181,10 +180,11 @@ test("5: neither bundle describes the deleted site surface", async () => {
     for (const pattern of forbidden)
       assert.ok(!pattern.test(text), `${label}: ${String(pattern)}`);
 
-  // `sites delete` may only appear as the sentence saying it does not exist,
-  // so an agent does not go looking for a command HQ deliberately withholds.
-  assert.ok(hosting.content.includes("`hosting sites delete` does not exist."));
-  assert.ok(!/novamira-hq[^\n]*hosting sites delete/.test(hosting.content));
+  assert.ok(
+    hosting.content.includes(
+      "HQ deliberately implements no site deletion/reset, environment deletion, backup deletion or restoration, domain deletion, DNS record writes, or SSH/SFTP access management.",
+    ),
+  );
 });
 
 test("6: the hosting bundle hands off to @novamira/cli and nothing else runs novamira", async () => {

@@ -49,35 +49,24 @@ import {
 } from "../dist/cli/inputs.js";
 import {
   ADMIN_PASSWORD_SECRET,
-  DEFAULT_SFTP_PERMISSION,
-  DEFAULT_SFTP_ROOT_DIRECTORY,
   DEFAULT_WP_LANGUAGE,
   backupCreatePayload,
-  backupRestorePayload,
   buildQuery,
   cacheClearPayload,
   deniedIpsSetPayload,
-  dnsRecordCreatePayload,
-  dnsRecordDeletePayload,
-  dnsRecordUpdatePayload,
   domainAddPayload,
-  domainDeletePayload,
   domainPrimaryPayload,
   environmentClonePayload,
   environmentCreatePayload,
   environmentCreatePlainPayload,
-  environmentPushPayload,
   payloadOrObject,
   phpSetVersionPayload,
   requiredPayload,
-  sftpAddPayload,
   shellJoin,
   shellQuote,
   siteClonePayload,
   siteCreatePayload,
   siteCreatePlainPayload,
-  siteResetPayload,
-  sshAllowlistPayload,
   wpAssetUpdateAllPayload,
   wpAssetUpdatePayload,
   wpCliCommandPayload,
@@ -86,14 +75,14 @@ import {
   wpPluginInstallPayload,
 } from "../dist/cli/payloads.js";
 import {
-  SITE_DELETE_CAPABILITY,
-  disableSiteDeleteCapability,
+  HQ_PUBLIC_CAPABILITIES,
+  applyHqCapabilityPolicy,
+  isHqPublicCapability,
   renderAction,
   renderEnvironment,
   renderEnvironments,
   renderOperation,
   renderRaw,
-  renderSecretWrite,
   renderSite,
   renderSites,
   renderValidation,
@@ -666,7 +655,7 @@ test("site create switches to the InstaWP template body", async () => {
   });
 });
 
-test("site create-plain, clone and reset keep their Go bodies", async () => {
+test("site create-plain and clone keep their Go bodies", async () => {
   const io = fakeIo({ env: { ADMIN_PW: "s3cr3t" } });
   assert.deepEqual(
     await siteCreatePlainPayload({ displayName: "Plain", region: "eu" }, io),
@@ -675,12 +664,6 @@ test("site create-plain, clone and reset keep their Go bodies", async () => {
   assert.deepEqual(
     await siteClonePayload({ displayName: "Copy", sourceEnv: "env-1" }, io),
     { display_name: "Copy", source_env_id: "env-1" },
-  );
-  assert.deepEqual(
-    await siteResetPayload({ adminPasswordEnv: "ADMIN_PW" }, io),
-    {
-      admin_password: "s3cr3t",
-    },
   );
   await rejectsWithCode("usage_error", () =>
     siteClonePayload({ displayName: "Copy" }, io),
@@ -732,42 +715,6 @@ test("environment payloads carry the premium and asset flags", async () => {
   );
 });
 
-test("environment push chooses ALL_FILES or SPECIFIC_FILES", async () => {
-  const io = fakeIo();
-  assert.deepEqual(
-    await environmentPushPayload({ sourceEnv: "a", targetEnv: "b" }, io),
-    {
-      source_env_id: "a",
-      target_env_id: "b",
-      push_db: true,
-      push_files: true,
-      run_search_and_replace: true,
-      push_files_option: "ALL_FILES",
-    },
-  );
-  assert.deepEqual(
-    await environmentPushPayload(
-      {
-        sourceEnv: "a",
-        targetEnv: "b",
-        noDb: true,
-        noSearchReplace: true,
-        file: ["wp-content/uploads", "wp-content/themes"],
-      },
-      io,
-    ),
-    {
-      source_env_id: "a",
-      target_env_id: "b",
-      push_db: false,
-      push_files: true,
-      run_search_and_replace: false,
-      push_files_option: "SPECIFIC_FILES",
-      file_list: ["wp-content/uploads", "wp-content/themes"],
-    },
-  );
-});
-
 /* -------------------------------------------------------------------------- */
 /* payloads.ts — domains, DNS and cache                                       */
 /* -------------------------------------------------------------------------- */
@@ -803,75 +750,11 @@ test("domain add inlines certificate files without echoing them", async () => {
   });
 });
 
-test("domain delete requires at least one id and primary carries search-replace", async () => {
+test("domain primary carries search-replace", async () => {
   const io = fakeIo();
-  const error = await rejectsWithCode("usage_error", () =>
-    domainDeletePayload({}, io),
-  );
-  assert.equal(error.message, "At least one --domain-id is required.");
-  assert.deepEqual(await domainDeletePayload({ domainId: ["d1", "d2"] }, io), {
-    domain_ids: ["d1", "d2"],
-  });
   assert.deepEqual(
     await domainPrimaryPayload({ domainId: "d1", searchReplace: true }, io),
     { domain_id: "d1", run_search_and_replace: true },
-  );
-});
-
-test("DNS record payloads keep the resource-record wrapper and optional ttl", async () => {
-  const io = fakeIo();
-  assert.deepEqual(
-    await dnsRecordCreatePayload(
-      { recordType: "A", name: "www", value: ["1.2.3.4", "5.6.7.8"] },
-      io,
-    ),
-    {
-      type: "A",
-      name: "www",
-      resource_records: [{ value: "1.2.3.4" }, { value: "5.6.7.8" }],
-    },
-  );
-  assert.deepEqual(
-    await dnsRecordCreatePayload(
-      { recordType: "A", name: "www", ttl: 300, value: ["1.2.3.4"] },
-      io,
-    ),
-    {
-      type: "A",
-      name: "www",
-      ttl: 300,
-      resource_records: [{ value: "1.2.3.4" }],
-    },
-  );
-  const error = await rejectsWithCode("usage_error", () =>
-    dnsRecordCreatePayload({ recordType: "A", name: "www" }, io),
-  );
-  assert.equal(error.message, "At least one --value is required.");
-
-  assert.deepEqual(
-    await dnsRecordUpdatePayload(
-      {
-        recordType: "A",
-        name: "www",
-        addValue: ["1.1.1.1"],
-        removeValue: ["2.2.2.2"],
-      },
-      io,
-    ),
-    {
-      type: "A",
-      name: "www",
-      new_resource_records: [{ value: "1.1.1.1" }],
-      removed_resource_records: [{ value: "2.2.2.2" }],
-    },
-  );
-  assert.deepEqual(
-    await dnsRecordUpdatePayload({ recordType: "A", name: "www" }, io),
-    { type: "A", name: "www" },
-  );
-  assert.deepEqual(
-    await dnsRecordDeletePayload({ recordType: "A", name: "www" }, io),
-    { type: "A", name: "www" },
   );
 });
 
@@ -1035,25 +918,17 @@ test("wp-cli run takes its command from an option, stdin or JSON", async () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* payloads.ts — backups, PHP, denied IPs, SSH and SFTP                       */
+/* payloads.ts — backups, PHP, and denied IPs                                 */
 /* -------------------------------------------------------------------------- */
 
 test("the bodies Go built inline are now shared builders", async () => {
-  const io = fakeIo({ env: { SFTP_PW: "s3cr3t" } });
+  const io = fakeIo();
 
   assert.deepEqual(await backupCreatePayload({}, io), {});
   assert.deepEqual(await backupCreatePayload({ tag: "" }, io), { tag: "" });
   assert.deepEqual(await backupCreatePayload({ tag: "nightly" }, io), {
     tag: "nightly",
   });
-
-  assert.deepEqual(
-    await backupRestorePayload({ backupId: 12, notifiedUserId: "u1" }, io),
-    { backup_id: 12, notified_user_id: "u1" },
-  );
-  await rejectsWithCode("usage_error", () =>
-    backupRestorePayload({ notifiedUserId: "u1" }, io),
-  );
 
   assert.deepEqual(
     await phpSetVersionPayload({ env: "env-1", phpVersion: "8.3" }, io),
@@ -1074,17 +949,6 @@ test("the bodies Go built inline are now shared builders", async () => {
   assert.deepEqual(
     await deniedIpsSetPayload({ env: "env-1", ip: ["1.2.3.4"] }, io),
     { environment_id: "env-1", ip_list: ["1.2.3.4"] },
-  );
-  assert.deepEqual(await sshAllowlistPayload({}, io), { ip_allowlist: [] });
-
-  assert.deepEqual(
-    await sftpAddPayload({ username: "deploy", passwordEnv: "SFTP_PW" }, io),
-    {
-      username: "deploy",
-      password: "s3cr3t",
-      root_directory: DEFAULT_SFTP_ROOT_DIRECTORY,
-      permission: DEFAULT_SFTP_PERMISSION,
-    },
   );
 });
 
@@ -1213,7 +1077,7 @@ test("action and operation rendering drop the empty-message trailing space", () 
   );
 });
 
-test("validation and secret-write rendering never expose a value", () => {
+test("validation rendering exposes only the credential reference", () => {
   const validation = renderValidation({
     provider: "kinsta",
     status: "ok",
@@ -1225,13 +1089,6 @@ test("validation and secret-write rendering never expose a value", () => {
     "kinsta credential=env:KINSTA_API_KEY status=ok company=(not set)",
   );
   assert.equal(validation.data.company_id, null);
-
-  const write = renderSecretWrite("/tmp/ssh-password");
-  assert.deepEqual(write.data, {
-    path: "/tmp/ssh-password",
-    value: "********",
-  });
-  assert.equal(write.human, "wrote redacted secret to /tmp/ssh-password");
 });
 
 test("raw provider values pass through, with null for an empty body", () => {
@@ -1241,21 +1098,15 @@ test("raw provider values pass through, with null for an empty body", () => {
   assert.equal(renderRaw(null).data, null);
 });
 
-// Ported from TestSiteDeleteCapabilityIsDisabledForCLI.
-test("the sites.delete capability is reported unsupported", () => {
-  const value = disableSiteDeleteCapability([
+test("HQ publishes only explicitly allowed capabilities", () => {
+  const value = applyHqCapabilityPolicy([
     { name: "sites.list", supported: true },
-    { name: SITE_DELETE_CAPABILITY, supported: true },
+    { name: "provider.internal-operation", supported: true },
   ]);
-  assert.equal(
-    value[0].supported,
-    true,
-    "an unrelated capability was modified",
-  );
-  assert.equal(value[0].name, "sites.list");
-  assert.equal(value[1].supported, false);
-  assert.equal(typeof value[1].notes, "string");
-  assert.notEqual(value[1].notes, "");
+  assert.deepEqual(value, [{ name: "sites.list", supported: true }]);
+  assert.equal(HQ_PUBLIC_CAPABILITIES.has("sites.list"), true);
+  assert.equal(isHqPublicCapability("sites.list"), true);
+  assert.equal(isHqPublicCapability("provider.internal-operation"), false);
 });
 
 test("a response that is not a capability list is passed through unchanged", () => {
@@ -1266,14 +1117,21 @@ test("a response that is not a capability list is passed through unchanged", () 
     [{ name: "sites.list", supported: "yes" }],
     "text",
   ]) {
-    assert.equal(disableSiteDeleteCapability(value), value);
+    assert.equal(applyHqCapabilityPolicy(value), value);
   }
   // Notes on unrelated capabilities survive the round trip.
   assert.deepEqual(
-    disableSiteDeleteCapability([
+    applyHqCapabilityPolicy([
       { name: "sites.list", supported: false, notes: "read-only key" },
     ]),
     [{ name: "sites.list", supported: false, notes: "read-only key" }],
+  );
+  assert.deepEqual(
+    applyHqCapabilityPolicy([
+      { unexpected: true },
+      { name: "provider.internal-operation", supported: "yes" },
+    ]),
+    [{ unexpected: true }],
   );
 });
 

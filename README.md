@@ -5,8 +5,10 @@ Novamira.
 
 It manages hosting-provider profiles and provider API credentials, operates
 provider resources — sites, environments, backups, domains, caches, DNS, plugins
-and themes, SSH and SFTP access — and provisions the Novamira plugin so a site
-becomes ready for an agent to use.
+and themes — and provisions the Novamira plugin so a site becomes ready for an
+agent to use. Site and environment deletion, site reset, backup deletion or
+restoration, domain deletion, DNS writes, and SSH/SFTP credential management are
+deliberately outside HQ's surface and provider adapters.
 
 HQ stops there. It never holds a WordPress site token, never calls a WordPress
 REST route on a configured site's behalf, and never proxies an Ability. Once a
@@ -140,7 +142,7 @@ Three top-level groups plus four commands: `config` manages HQ's own
 configuration and its hosting profiles, `hosting` operates provider resources
 through one profile, `skills` prints the bundled agent instructions, `dashboard`
 serves the local web UI, `doctor` checks the installation, `update` installs a
-newer release, and `mcp` serves the policy-controlled command surface over MCP
+newer release, and `mcp` serves the policy-controlled typed tool surface over MCP
 stdio.
 
 ```sh
@@ -162,8 +164,8 @@ novamira-hq --profile kinsta hosting wp plugins install --env <env-id> \
 ```
 
 `hosting` covers provider inventory and capabilities, sites and environments,
-domains and DNS, backups, cache, PHP, redirects, denied IPs, WordPress plugins
-and themes, WP-CLI, logs, analytics, and SSH/SFTP access. `--profile` is
+domain and DNS inspection, backups, cache, PHP, redirects, denied IPs,
+WordPress plugins and themes, WP-CLI, logs, and analytics. `--profile` is
 required and never inferred, and every command accepts `--json`. Run
 `novamira-hq hosting --help` for the tree, or see
 [`docs/v1-contract.md`](docs/v1-contract.md) for the normative surface.
@@ -312,29 +314,34 @@ update check. Configure the package directly through `npx`:
 }
 ```
 
-MCP defaults to full access to the existing HQ command surface. Configure a
-smaller launch-time capability set when an agent should have less access:
+MCP exposes a deliberately smaller, typed operational surface rather than a
+generic CLI bridge. The default `standard` preset includes provider reads,
+backup creation, and Novamira provisioning; environment push requires the
+separate `deploy` capability:
 
 ```sh
 npx -y @novamira/hq mcp --access read
 npx -y @novamira/hq mcp --allow hosting-read --allow provisioning
-npx -y @novamira/hq mcp --access all --deny update --deny dashboard
+npx -y @novamira/hq mcp --access all
 ```
 
 `--allow` is repeatable and, when present, replaces the preset. `--deny` is
-repeatable and removes capabilities from it. Capabilities are `config`,
-`hosting-read`, `hosting-write`, `provisioning`, `dashboard`, `doctor`, `skills`
-and `update`. Alongside focused read tools, `novamira_hq_cli` accepts an argv
-array and runs any existing HQ command allowed by that launch policy, capturing
-its stdout and stderr inside the MCP result. This means the default can mutate
-or delete hosting resources, run provider WP-CLI, change local configuration and
-self-update; use launch flags to apply least privilege.
+repeatable and removes capabilities from it. Capabilities are `profiles-read`,
+`hosting-read`, `maintenance`, `provisioning`, and `deploy`. Typed tools cover
+profile and hosting inventory, provider validation, operation status, backup
+creation, Novamira setup, and environment push. There is no arbitrary argv tool,
+no configuration mutation, no self-update, no provider WP-CLI passthrough, no
+domain or DNS mutation, and no SSH/SFTP tool.
 
-MCP cannot invoke itself or use CLI options that read payloads, commands, or
-secrets from stdin because stdin belongs to the MCP transport. Tool inputs never
-accept provider credential values; credentials continue to resolve from the HQ
-profile's configured environment, file, or credential store reference. The MCP
-server retains HQ's WordPress-site boundary rule.
+Environment push is two-step: `hosting_environment_push_plan` requires an
+explicit database, all-files, or file-list scope and returns a five-minute,
+session-local, one-use confirmation ID; `hosting_environment_push_apply` consumes
+it and creates a completed safety backup of the target before starting the push.
+Tool inputs never accept provider credential values; credentials continue to
+resolve from the HQ profile's configured environment, file, or credential store
+reference. The safe granular push contract is currently available on Kinsta;
+Rocket.net's all-or-nothing publish and Cloudways' provider-native sync remain
+unexposed. The MCP server retains HQ's WordPress-site boundary rule.
 
 ## Agent skills
 

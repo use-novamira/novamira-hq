@@ -687,7 +687,6 @@ test("rocketnet maps the simple site reads", async () => {
       { expected: "GET /v1/sites/123/backup", body: OK },
       { expected: "GET /v1/sites/123/plugins", body: OK },
       { expected: "GET /v1/sites/123/themes", body: OK },
-      { expected: "GET /v1/sites/123/ftp/accounts", body: OK },
       { expected: "GET /v1/sites/123/file_manager/files", body: OK },
     ],
     async (client) => {
@@ -695,39 +694,9 @@ test("rocketnet maps the simple site reads", async () => {
       await client.read({ kind: "backups", envId: "123" });
       await client.read({ kind: "plugins", envId: "123" });
       await client.read({ kind: "themes", envId: "123" });
-      await client.read({ kind: "sftp-accounts", envId: "123" });
       await client.read({ kind: "file-list", envId: "123" });
     },
   );
-});
-
-test("rocketnet maps every ssh read onto the site key listing", async () => {
-  await withRocketNet(
-    [
-      { expected: "GET /v1/sites/123/ssh/keys", body: OK },
-      { expected: "GET /v1/sites/456/ssh/keys", body: OK },
-      { expected: "GET /v1/sites/789/ssh/keys", body: OK },
-      { expected: "GET /v1/sites/111/ssh/keys", body: OK },
-    ],
-    async (client) => {
-      await client.read({ kind: "ssh-status", envId: "123" });
-      await client.read({ kind: "ssh-allowlist", envId: "456" });
-      await client.read({ kind: "ssh-config", siteId: "x", envId: "789" });
-      await client.read({ kind: "ssh-config", siteId: "111", envId: "" });
-    },
-  );
-});
-
-test("rocketnet ssh reads require an id", async () => {
-  await withRocketNet([], async (client) => {
-    await assert.rejects(
-      client.read({ kind: "ssh-config", siteId: "", envId: "" }),
-      (error) => {
-        assert.equal(error.code, "usage_error");
-        return true;
-      },
-    );
-  });
 });
 
 test("rocketnet maps the analytics endpoints", async () => {
@@ -807,24 +776,21 @@ test("rocketnet reports its capability list without a request", async () => {
       notes: "uses POST /v1/sites",
     });
     assert.equal(byName.get("dns.domains.list").supported, false);
-    assert.equal(byName.get("sites.reset").supported, false);
-    assert.equal(byName.get("backups.delete").supported, false);
-    assert.equal(capabilities.length, 55);
+    assert.equal(byName.get("envs.push").supported, false);
+    assert.match(byName.get("envs.push").notes, /all-or-nothing/);
+    assert.equal(capabilities.length, 44);
     assert.equal(server.logins, 0);
   });
 });
 
-test("rocketnet maps the site lifecycle actions", async () => {
+test("rocketnet maps the site lifecycle actions HQ exposes", async () => {
   await withRocketNet(
     [
-      { expected: "DELETE /v1/sites/123", noBody: true, body: OK },
       {
         expected: "POST /v1/sites/123/staging",
         bodyLike: '"copy":true',
         body: OK,
       },
-      { expected: "POST /v1/sites/123/staging/publish", body: OK },
-      { expected: "DELETE /v1/sites/123/staging", noBody: true, body: OK },
       {
         expected: "POST /v1/sites/123/domains",
         bodyLike: "a.example",
@@ -839,15 +805,9 @@ test("rocketnet maps the site lifecycle actions", async () => {
       { expected: "PUT /v1/sites/123/plugins", body: OK },
       { expected: "PUT /v1/sites/123/themes", bodyLike: "twenty", body: OK },
       { expected: "PUT /v1/sites/123/themes", body: OK },
-      {
-        expected: "POST /v1/sites/123/ftp/accounts",
-        bodyLike: "deploy",
-        body: OK,
-      },
     ],
     async (client) => {
       const actions = [
-        [{ kind: "delete-site", siteId: "123" }, "sites.delete"],
         [
           {
             kind: "create-environment",
@@ -857,11 +817,6 @@ test("rocketnet maps the site lifecycle actions", async () => {
           },
           "envs.create",
         ],
-        [
-          { kind: "push-environment", siteId: "123", body: { push_db: true } },
-          "envs.push",
-        ],
-        [{ kind: "delete-environment", envId: "123" }, "envs.delete"],
         [
           { kind: "add-domain", envId: "123", body: { domain: "a.example" } },
           "domains.add",
@@ -887,14 +842,6 @@ test("rocketnet maps the site lifecycle actions", async () => {
           "wp.themes.update",
         ],
         [{ kind: "bulk-update-themes", envId: "123" }, "wp.themes.update-all"],
-        [
-          {
-            kind: "add-sftp-account",
-            envId: "123",
-            body: { username: "deploy" },
-          },
-          "access.sftp.add",
-        ],
       ];
       for (const [request, action] of actions) {
         const result = await client.action(request);
@@ -903,68 +850,6 @@ test("rocketnet maps the site lifecycle actions", async () => {
       }
     },
   );
-});
-
-test("rocketnet deletes a single domain in place", async () => {
-  await withRocketNet(
-    [
-      {
-        expected: "DELETE /v1/sites/123/domains/d-1",
-        noBody: true,
-        body: '{"success":true,"result":{"message":"deleted"}}',
-      },
-    ],
-    async (client) => {
-      const result = await client.action({
-        kind: "delete-domains",
-        envId: "123",
-        body: { domain_id: "d-1" },
-      });
-      assert.equal(result.action, "domains.delete");
-      assert.equal(result.message, "deleted");
-    },
-  );
-});
-
-test("rocketnet fans a multi-domain delete out and aggregates the results", async () => {
-  await withRocketNet(
-    [
-      {
-        expected: "DELETE /v1/sites/123/domains/d-1",
-        body: '{"success":true,"result":{"id":"d-1"}}',
-      },
-      {
-        expected: "DELETE /v1/sites/123/domains/d-2",
-        body: '{"success":true,"result":{"id":"d-2"}}',
-      },
-    ],
-    async (client) => {
-      const result = await client.action({
-        kind: "delete-domains",
-        envId: "123",
-        body: { domain_ids: ["d-1", "d-2"] },
-      });
-      assert.equal(result.action, "domains.delete");
-      assert.equal(result.status, 200);
-      assert.equal(result.message, undefined);
-      assert.equal(result.raw.success, true);
-      assert.equal(result.raw.result.length, 2);
-      assert.equal(result.raw.result[0].result.id, "d-1");
-    },
-  );
-});
-
-test("rocketnet requires a domain id for domains.delete", async () => {
-  await withRocketNet([], async (client) => {
-    await assert.rejects(
-      client.action({ kind: "delete-domains", envId: "123", body: {} }),
-      (error) => {
-        assert.equal(error.code, "usage_error");
-        assert.match(error.message, /domain_id/);
-        return true;
-      },
-    );
-  });
 });
 
 test("rocketnet renames a backup tag to a label", async () => {
@@ -995,62 +880,6 @@ test("rocketnet requires a backup label", async () => {
       (error) => {
         assert.equal(error.code, "usage_error");
         assert.match(error.message, /label/);
-        return true;
-      },
-    );
-  });
-});
-
-test("rocketnet restores a backup onto the target environment", async () => {
-  await withRocketNet(
-    [
-      {
-        expected: "POST /v1/sites/123/backup/b-9/restore",
-        bodyLike: '"files":true',
-        body: '{"success":true,"result":{"task_id":"t-1"}}',
-      },
-    ],
-    async (client) => {
-      const result = await client.action({
-        kind: "restore-backup",
-        targetEnvId: "123",
-        body: { backup_id: "b-9", files: true },
-      });
-      assert.equal(result.action, "backups.restore");
-      assert.equal(result.operationId, "t-1");
-    },
-  );
-});
-
-test("rocketnet prefers an explicit site id when restoring a backup", async () => {
-  await withRocketNet(
-    [
-      {
-        expected: "POST /v1/sites/999/backup/7/restore",
-        body: '{"success":true,"result":{}}',
-      },
-    ],
-    async (client) => {
-      await client.action({
-        kind: "restore-backup",
-        targetEnvId: "123",
-        body: { site_id: "999", id: 7 },
-      });
-    },
-  );
-});
-
-test("rocketnet requires a backup id to restore", async () => {
-  await withRocketNet([], async (client) => {
-    await assert.rejects(
-      client.action({
-        kind: "restore-backup",
-        targetEnvId: "123",
-        body: { note: "x" },
-      }),
-      (error) => {
-        assert.equal(error.code, "usage_error");
-        assert.match(error.message, /backup_id/);
         return true;
       },
     );
@@ -1095,12 +924,12 @@ test("rocketnet redacts secret-looking keys from every raw payload", async () =>
   await withRocketNet(
     [
       {
-        expected: "GET /v1/sites/123/ftp/accounts",
+        expected: "GET /v1/sites/123/plugins",
         body: '{"success":true,"result":[{"username":"a","password":"hunter2","meta":{"api_token":"t","private_key":"k","note":"fine"}}]}',
       },
     ],
     async (client) => {
-      const raw = await client.read({ kind: "sftp-accounts", envId: "123" });
+      const raw = await client.read({ kind: "plugins", envId: "123" });
       const serialized = JSON.stringify(raw);
       assert.ok(!serialized.includes("hunter2"), serialized);
       assert.equal(raw.result[0].password, "redacted");
@@ -1245,25 +1074,13 @@ test("rocketnet reports its deliberate gaps as provider_unsupported", async () =
     { kind: "denied-ips", envId: "1" },
     { kind: "company-plugins" },
     { kind: "company-themes" },
-    { kind: "ssh-password", envId: "1" },
   ];
   const unsupportedActions = [
-    { kind: "reset-site", siteId: "1" },
+    { kind: "push-environment", siteId: "1" },
     { kind: "restart-php", envId: "1" },
     { kind: "set-php-version" },
     { kind: "set-denied-ips" },
     { kind: "apply-redirects", envId: "1" },
-    { kind: "dns-record-create", domainId: "d-1" },
-    { kind: "dns-record-update", domainId: "d-1" },
-    { kind: "dns-record-delete", domainId: "d-1" },
-    { kind: "set-ssh-status", envId: "1" },
-    { kind: "set-ssh-password-status", envId: "1" },
-    { kind: "generate-ssh-password", envId: "1" },
-    { kind: "set-ssh-allowlist", envId: "1" },
-    { kind: "change-ssh-password-expiration", envId: "1" },
-    { kind: "toggle-sftp-accounts", envId: "1" },
-    { kind: "delete-backup", backupId: 7 },
-    { kind: "remove-sftp-account", sftpAccountId: "a-1" },
   ];
 
   await withRocketNet([], async (client) => {

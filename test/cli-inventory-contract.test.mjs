@@ -321,12 +321,11 @@ test("providers validate renders the validation envelope", async () => {
   });
 });
 
-// Ported from TestSiteDeleteCapabilityIsDisabledForCLI, through the command.
-test("providers capabilities reads capabilities and disables sites.delete", async () => {
+test("providers capabilities omits operations outside HQ's surface", async () => {
   const fake = fakeClient({
     read: [
       { name: "sites.list", supported: true },
-      { name: "sites.delete", supported: true },
+      { name: "provider.internal-operation", supported: true },
     ],
   });
   const envelope = await harness({ client: fake.client }).run([
@@ -336,12 +335,7 @@ test("providers capabilities reads capabilities and disables sites.delete", asyn
   ]);
 
   assert.deepEqual(fake.calls.read, [{ kind: "capabilities" }]);
-  assert.equal(envelope.data[0].name, "sites.list");
-  assert.equal(envelope.data[0].supported, true);
-  assert.equal(envelope.data[1].name, "sites.delete");
-  assert.equal(envelope.data[1].supported, false);
-  assert.equal(typeof envelope.data[1].notes, "string");
-  assert.notEqual(envelope.data[1].notes, "");
+  assert.deepEqual(envelope.data, [{ name: "sites.list", supported: true }]);
 });
 
 test("a capabilities response that is not a capability list passes through", async () => {

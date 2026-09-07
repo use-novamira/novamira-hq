@@ -39,7 +39,6 @@ import {
   readSecret,
   readStdinTrimmed,
   readTextFile,
-  requireNumberOption,
   requireOption,
   type CommandIo,
   type JsonBuilder,
@@ -52,22 +51,10 @@ import {
 /** Go's `--wp-language` flag default. Kept here so the builder owns it. */
 export const DEFAULT_WP_LANGUAGE = "en_US";
 
-/** Go's `--root-directory` flag default for `access sftp add`. */
-export const DEFAULT_SFTP_ROOT_DIRECTORY = "/";
-
-/** Go's `--permission` flag default for `access sftp add`. */
-export const DEFAULT_SFTP_PERMISSION = "read";
-
 /** The secret spec for every `--admin-password-*` option group. */
 export const ADMIN_PASSWORD_SECRET: SecretSpec = {
   label: "The admin password",
   prefix: "admin-password",
-};
-
-/** The secret spec for `access sftp add`'s `--password-*` option group. */
-export const SFTP_PASSWORD_SECRET: SecretSpec = {
-  label: "The SFTP password",
-  prefix: "password",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -133,11 +120,6 @@ export function buildQuery(entries: readonly QueryEntry[]): Query {
 
 function stringList(values: readonly string[] | undefined): JsonValue {
   return [...(values ?? [])];
-}
-
-/** Go's `dnsValues`: `["1.2.3.4"]` becomes `[{"value":"1.2.3.4"}]`. */
-function dnsValues(values: readonly string[]): JsonValue {
-  return values.map((value) => ({ value }));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -286,30 +268,6 @@ export async function siteClonePayload(
   );
 }
 
-export interface SiteResetOptions extends FromJsonOptions {
-  readonly adminPasswordEnv?: string;
-  readonly adminPasswordStdin?: boolean;
-  readonly adminPasswordFile?: string;
-}
-
-/** `hosting sites reset`. */
-export async function siteResetPayload(
-  options: SiteResetOptions,
-  io: CommandIo,
-): Promise<JsonValue> {
-  return payloadOrObject(
-    options.fromJson,
-    async () => ({
-      admin_password: await readSecret(
-        adminPasswordSource(options),
-        ADMIN_PASSWORD_SECRET,
-        io,
-      ),
-    }),
-    io,
-  );
-}
-
 /* -------------------------------------------------------------------------- */
 /* Environments                                                               */
 /* -------------------------------------------------------------------------- */
@@ -409,43 +367,13 @@ export async function environmentClonePayload(
   );
 }
 
-export interface EnvironmentPushOptions extends FromJsonOptions {
+export interface EnvironmentPushOptions {
   readonly sourceEnv?: string;
   readonly targetEnv?: string;
-  readonly noDb?: boolean;
-  readonly noFiles?: boolean;
-  readonly noSearchReplace?: boolean;
+  readonly db?: boolean;
+  readonly allFiles?: boolean;
+  readonly searchReplace?: boolean;
   readonly file?: readonly string[];
-}
-
-/** `hosting envs push`. */
-export async function environmentPushPayload(
-  options: EnvironmentPushOptions,
-  io: CommandIo,
-): Promise<JsonValue> {
-  return payloadOrObject(
-    options.fromJson,
-    () => {
-      const sourceEnv = requireOption(options.sourceEnv, "--source-env");
-      const targetEnv = requireOption(options.targetEnv, "--target-env");
-      const files = options.file ?? [];
-      const body: JsonBuilder = {
-        source_env_id: sourceEnv,
-        target_env_id: targetEnv,
-        push_db: !(options.noDb ?? false),
-        push_files: !(options.noFiles ?? false),
-        run_search_and_replace: !(options.noSearchReplace ?? false),
-      };
-      if (files.length === 0) {
-        body.push_files_option = "ALL_FILES";
-      } else {
-        body.push_files_option = "SPECIFIC_FILES";
-        body.file_list = stringList(files);
-      }
-      return body;
-    },
-    io,
-  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -509,32 +437,6 @@ export async function domainAddPayload(
   );
 }
 
-export interface DomainDeleteOptions extends FromJsonOptions {
-  readonly domainId?: readonly string[];
-}
-
-/** `hosting domains delete`. */
-export async function domainDeletePayload(
-  options: DomainDeleteOptions,
-  io: CommandIo,
-): Promise<JsonValue> {
-  return payloadOrObject(
-    options.fromJson,
-    () => {
-      const ids = options.domainId ?? [];
-      if (ids.length === 0) {
-        throw new CliError(
-          "usage_error",
-          "At least one --domain-id is required.",
-          { details: { flag: "--domain-id" } },
-        );
-      }
-      return { domain_ids: stringList(ids) };
-    },
-    io,
-  );
-}
-
 export interface DomainPrimaryOptions extends FromJsonOptions {
   readonly domainId?: string;
   readonly searchReplace?: boolean;
@@ -550,95 +452,6 @@ export async function domainPrimaryPayload(
     () => ({
       domain_id: requireOption(options.domainId, "--domain-id"),
       run_search_and_replace: options.searchReplace ?? false,
-    }),
-    io,
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* DNS                                                                        */
-/* -------------------------------------------------------------------------- */
-
-export interface DnsRecordCreateOptions extends FromJsonOptions {
-  readonly recordType?: string;
-  readonly name?: string;
-  /** Absent when `--ttl` was not given; Go tracked this with `Changed("ttl")`. */
-  readonly ttl?: number;
-  readonly value?: readonly string[];
-}
-
-/** `hosting dns records create`. */
-export async function dnsRecordCreatePayload(
-  options: DnsRecordCreateOptions,
-  io: CommandIo,
-): Promise<JsonValue> {
-  return payloadOrObject(
-    options.fromJson,
-    () => {
-      const values = options.value ?? [];
-      if (values.length === 0) {
-        throw new CliError("usage_error", "At least one --value is required.", {
-          details: { flag: "--value" },
-        });
-      }
-      const recordType = requireOption(options.recordType, "--record-type");
-      const name = requireOption(options.name, "--name");
-      const body: JsonBuilder = { type: recordType, name };
-      if (options.ttl !== undefined) body.ttl = options.ttl;
-      body.resource_records = dnsValues(values);
-      return body;
-    },
-    io,
-  );
-}
-
-export interface DnsRecordUpdateOptions extends FromJsonOptions {
-  readonly recordType?: string;
-  readonly name?: string;
-  readonly ttl?: number;
-  readonly addValue?: readonly string[];
-  readonly removeValue?: readonly string[];
-}
-
-/** `hosting dns records update`. */
-export async function dnsRecordUpdatePayload(
-  options: DnsRecordUpdateOptions,
-  io: CommandIo,
-): Promise<JsonValue> {
-  return payloadOrObject(
-    options.fromJson,
-    () => {
-      const body: JsonBuilder = {
-        type: requireOption(options.recordType, "--record-type"),
-        name: requireOption(options.name, "--name"),
-      };
-      if (options.ttl !== undefined) body.ttl = options.ttl;
-      const added = options.addValue ?? [];
-      const removed = options.removeValue ?? [];
-      if (added.length > 0) body.new_resource_records = dnsValues(added);
-      if (removed.length > 0)
-        body.removed_resource_records = dnsValues(removed);
-      return body;
-    },
-    io,
-  );
-}
-
-export interface DnsRecordDeleteOptions extends FromJsonOptions {
-  readonly recordType?: string;
-  readonly name?: string;
-}
-
-/** `hosting dns records delete`. */
-export async function dnsRecordDeletePayload(
-  options: DnsRecordDeleteOptions,
-  io: CommandIo,
-): Promise<JsonValue> {
-  return payloadOrObject(
-    options.fromJson,
-    () => ({
-      type: requireOption(options.recordType, "--record-type"),
-      name: requireOption(options.name, "--name"),
     }),
     io,
   );
@@ -837,7 +650,7 @@ export async function wpCliPayload(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Backups, PHP, denied IPs, SSH and SFTP                                     */
+/* Backups, PHP, and denied IPs                                               */
 /* -------------------------------------------------------------------------- */
 
 export interface BackupCreateOptions extends FromJsonOptions {
@@ -853,29 +666,6 @@ export async function backupCreatePayload(
   return payloadOrObject(
     options.fromJson,
     () => (options.tag === undefined ? {} : { tag: options.tag }),
-    io,
-  );
-}
-
-export interface BackupRestoreOptions extends FromJsonOptions {
-  readonly backupId?: number;
-  readonly notifiedUserId?: string;
-}
-
-/** `hosting backups restore`. Inline in Go's `hosting.go`. */
-export async function backupRestorePayload(
-  options: BackupRestoreOptions,
-  io: CommandIo,
-): Promise<JsonValue> {
-  return payloadOrObject(
-    options.fromJson,
-    () => ({
-      backup_id: requireNumberOption(options.backupId, "--backup-id"),
-      notified_user_id: requireOption(
-        options.notifiedUserId,
-        "--notified-user-id",
-      ),
-    }),
     io,
   );
 }
@@ -923,66 +713,6 @@ export async function deniedIpsSetPayload(
       environment_id: requireOption(options.env, "--env"),
       ip_list: stringList(options.ip),
     }),
-    io,
-  );
-}
-
-export interface SshAllowlistSetOptions extends FromJsonOptions {
-  readonly ip?: readonly string[];
-}
-
-/** `hosting access ssh set-allowlist`. Inline in Go's `access.go`. */
-export async function sshAllowlistPayload(
-  options: SshAllowlistSetOptions,
-  io: CommandIo,
-): Promise<JsonValue> {
-  return payloadOrObject(
-    options.fromJson,
-    () => ({ ip_allowlist: stringList(options.ip) }),
-    io,
-  );
-}
-
-export interface SftpAddOptions extends FromJsonOptions {
-  readonly username?: string;
-  readonly passwordEnv?: string;
-  readonly passwordStdin?: boolean;
-  readonly passwordFile?: string;
-  readonly rootDirectory?: string;
-  readonly permission?: string;
-}
-
-/** `hosting access sftp add`. */
-export async function sftpAddPayload(
-  options: SftpAddOptions,
-  io: CommandIo,
-): Promise<JsonValue> {
-  return payloadOrObject(
-    options.fromJson,
-    async () => {
-      const username = requireOption(options.username, "--username");
-      const password = await readSecret(
-        {
-          ...(options.passwordEnv === undefined
-            ? {}
-            : { env: options.passwordEnv }),
-          ...(options.passwordStdin === undefined
-            ? {}
-            : { stdin: options.passwordStdin }),
-          ...(options.passwordFile === undefined
-            ? {}
-            : { file: options.passwordFile }),
-        },
-        SFTP_PASSWORD_SECRET,
-        io,
-      );
-      return {
-        username,
-        password,
-        root_directory: options.rootDirectory ?? DEFAULT_SFTP_ROOT_DIRECTORY,
-        permission: options.permission ?? DEFAULT_SFTP_PERMISSION,
-      };
-    },
     io,
   );
 }

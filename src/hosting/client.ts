@@ -153,32 +153,6 @@ export interface ReadCompanyThemesRequest {
   readonly companyId?: string;
 }
 
-export interface ReadSshStatusRequest {
-  readonly kind: "ssh-status";
-  readonly envId: string;
-}
-
-export interface ReadSshAllowlistRequest {
-  readonly kind: "ssh-allowlist";
-  readonly envId: string;
-}
-
-export interface ReadSshConfigRequest {
-  readonly kind: "ssh-config";
-  readonly siteId: string;
-  readonly envId: string;
-}
-
-export interface ReadSshPasswordRequest {
-  readonly kind: "ssh-password";
-  readonly envId: string;
-}
-
-export interface ReadSftpAccountsRequest {
-  readonly kind: "sftp-accounts";
-  readonly envId: string;
-}
-
 export interface ReadAnalyticsUsageRequest {
   readonly kind: "analytics-usage";
   readonly siteId: string;
@@ -197,7 +171,7 @@ export interface ReadFileListRequest {
   readonly envId: string;
 }
 
-/** Every read-only provider request. One member per Go `ReadX` struct. */
+/** Every read-only provider request exposed by HQ. */
 export type ReadRequest =
   | ReadCapabilitiesRequest
   | ReadRegionsRequest
@@ -215,11 +189,6 @@ export type ReadRequest =
   | ReadThemesRequest
   | ReadCompanyPluginsRequest
   | ReadCompanyThemesRequest
-  | ReadSshStatusRequest
-  | ReadSshAllowlistRequest
-  | ReadSshConfigRequest
-  | ReadSshPasswordRequest
-  | ReadSftpAccountsRequest
   | ReadAnalyticsUsageRequest
   | ReadAnalyticsEnvRequest
   | ReadFileListRequest;
@@ -241,11 +210,6 @@ export const READ_REQUEST_KINDS = [
   "themes",
   "company-plugins",
   "company-themes",
-  "ssh-status",
-  "ssh-allowlist",
-  "ssh-config",
-  "ssh-password",
-  "sftp-accounts",
   "analytics-usage",
   "analytics-env",
   "file-list",
@@ -270,17 +234,6 @@ export interface ActionCreateSiteRequest {
   readonly body?: ActionBody;
 }
 
-export interface ActionDeleteSiteRequest {
-  readonly kind: "delete-site";
-  readonly siteId: string;
-}
-
-export interface ActionResetSiteRequest {
-  readonly kind: "reset-site";
-  readonly siteId: string;
-  readonly body?: ActionBody;
-}
-
 export interface ActionCreateEnvironmentRequest {
   readonly kind: "create-environment";
   readonly siteId: string;
@@ -292,11 +245,6 @@ export interface ActionPushEnvironmentRequest {
   readonly kind: "push-environment";
   readonly siteId: string;
   readonly body?: ActionBody;
-}
-
-export interface ActionDeleteEnvironmentRequest {
-  readonly kind: "delete-environment";
-  readonly envId: string;
 }
 
 export interface ActionClearCacheRequest {
@@ -321,12 +269,6 @@ export interface ActionAddDomainRequest {
   readonly body?: ActionBody;
 }
 
-export interface ActionDeleteDomainsRequest {
-  readonly kind: "delete-domains";
-  readonly envId: string;
-  readonly body?: ActionBody;
-}
-
 export interface ActionChangePrimaryDomainRequest {
   readonly kind: "change-primary-domain";
   readonly envId: string;
@@ -337,18 +279,6 @@ export interface ActionCreateBackupRequest {
   readonly kind: "create-backup";
   readonly envId: string;
   readonly body?: ActionBody;
-}
-
-export interface ActionRestoreBackupRequest {
-  readonly kind: "restore-backup";
-  readonly targetEnvId: string;
-  readonly body?: ActionBody;
-}
-
-export interface ActionDeleteBackupRequest {
-  readonly kind: "delete-backup";
-  /** Go models this as `uint64`; must be a non-negative safe integer. */
-  readonly backupId: number;
 }
 
 export interface ActionUpdatePluginRequest {
@@ -392,122 +322,35 @@ export interface ActionApplyRedirectsRequest {
   readonly body?: ActionBody;
 }
 
-export interface ActionDnsRecordCreateRequest {
-  readonly kind: "dns-record-create";
-  readonly domainId: string;
-  readonly body?: ActionBody;
-}
-
-export interface ActionDnsRecordUpdateRequest {
-  readonly kind: "dns-record-update";
-  readonly domainId: string;
-  readonly body?: ActionBody;
-}
-
-export interface ActionDnsRecordDeleteRequest {
-  readonly kind: "dns-record-delete";
-  readonly domainId: string;
-  readonly body?: ActionBody;
-}
-
-export interface ActionSetSshStatusRequest {
-  readonly kind: "set-ssh-status";
-  readonly envId: string;
-  readonly body?: ActionBody;
-}
-
-export interface ActionSetSshPasswordStatusRequest {
-  readonly kind: "set-ssh-password-status";
-  readonly envId: string;
-  readonly body?: ActionBody;
-}
-
-export interface ActionGenerateSshPasswordRequest {
-  readonly kind: "generate-ssh-password";
-  readonly envId: string;
-}
-
-export interface ActionSetSshAllowlistRequest {
-  readonly kind: "set-ssh-allowlist";
-  readonly envId: string;
-  readonly body?: ActionBody;
-}
-
-export interface ActionChangeSshPasswordExpirationRequest {
-  readonly kind: "change-ssh-password-expiration";
-  readonly envId: string;
-  readonly body?: ActionBody;
-}
-
-export interface ActionToggleSftpAccountsRequest {
-  readonly kind: "toggle-sftp-accounts";
-  readonly envId: string;
-  readonly body?: ActionBody;
-}
-
-export interface ActionAddSftpAccountRequest {
-  readonly kind: "add-sftp-account";
-  readonly envId: string;
-  readonly body?: ActionBody;
-}
-
-export interface ActionRemoveSftpAccountRequest {
-  readonly kind: "remove-sftp-account";
-  readonly sftpAccountId: string;
-}
-
-/** Every mutating provider request. One member per Go `ActionX` struct. */
+/** Every mutating provider request exposed by HQ. */
 export type ActionRequest =
   | ActionCreateSiteRequest
-  | ActionDeleteSiteRequest
-  | ActionResetSiteRequest
   | ActionCreateEnvironmentRequest
   | ActionPushEnvironmentRequest
-  | ActionDeleteEnvironmentRequest
   | ActionClearCacheRequest
   | ActionRestartPhpRequest
   | ActionSetPhpVersionRequest
   | ActionAddDomainRequest
-  | ActionDeleteDomainsRequest
   | ActionChangePrimaryDomainRequest
   | ActionCreateBackupRequest
-  | ActionRestoreBackupRequest
-  | ActionDeleteBackupRequest
   | ActionUpdatePluginRequest
   | ActionBulkUpdatePluginsRequest
   | ActionUpdateThemeRequest
   | ActionBulkUpdateThemesRequest
   | ActionRunWpCliRequest
   | ActionSetDeniedIpsRequest
-  | ActionApplyRedirectsRequest
-  | ActionDnsRecordCreateRequest
-  | ActionDnsRecordUpdateRequest
-  | ActionDnsRecordDeleteRequest
-  | ActionSetSshStatusRequest
-  | ActionSetSshPasswordStatusRequest
-  | ActionGenerateSshPasswordRequest
-  | ActionSetSshAllowlistRequest
-  | ActionChangeSshPasswordExpirationRequest
-  | ActionToggleSftpAccountsRequest
-  | ActionAddSftpAccountRequest
-  | ActionRemoveSftpAccountRequest;
+  | ActionApplyRedirectsRequest;
 
 export const ACTION_REQUEST_KINDS = [
   "create-site",
-  "delete-site",
-  "reset-site",
   "create-environment",
   "push-environment",
-  "delete-environment",
   "clear-cache",
   "restart-php",
   "set-php-version",
   "add-domain",
-  "delete-domains",
   "change-primary-domain",
   "create-backup",
-  "restore-backup",
-  "delete-backup",
   "update-plugin",
   "bulk-update-plugins",
   "update-theme",
@@ -515,17 +358,6 @@ export const ACTION_REQUEST_KINDS = [
   "run-wp-cli",
   "set-denied-ips",
   "apply-redirects",
-  "dns-record-create",
-  "dns-record-update",
-  "dns-record-delete",
-  "set-ssh-status",
-  "set-ssh-password-status",
-  "generate-ssh-password",
-  "set-ssh-allowlist",
-  "change-ssh-password-expiration",
-  "toggle-sftp-accounts",
-  "add-sftp-account",
-  "remove-sftp-account",
 ] as const;
 
 export type ActionRequestKind = (typeof ACTION_REQUEST_KINDS)[number];

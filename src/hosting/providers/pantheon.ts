@@ -118,8 +118,6 @@ const CAPABILITIES: readonly ProviderCapability[] = providerCapabilities([
   ["sites.create", true, `uses POST /v0/sites; ${NOTE_NATIVE}`],
   ["sites.create-plain", true, `uses POST /v0/sites; ${NOTE_NATIVE}`],
   ["sites.clone", false, NOTE_UNSUPPORTED],
-  ["sites.delete", true, "uses DELETE /v0/sites/{site_id}"],
-  ["sites.reset", false, NOTE_UNSUPPORTED],
   [
     "envs.create",
     true,
@@ -132,17 +130,13 @@ const CAPABILITIES: readonly ProviderCapability[] = providerCapabilities([
   ],
   ["envs.clone", true, "creates Pantheon multidev environments"],
   ["envs.push", false, NOTE_NOT_MAPPED],
-  ["envs.delete", true, NOTE_ENV],
   ["domains.list", true, NOTE_ENV],
   ["domains.add", true, NOTE_ENV],
-  ["domains.delete", true, NOTE_ENV],
   ["domains.primary", true, NOTE_ENV],
   ["dns.domains.list", false, NOTE_NOT_MAPPED],
   ["backups.list", true, NOTE_ENV],
   ["backups.downloadable", true, NOTE_ENV],
   ["backups.create", true, NOTE_ENV],
-  ["backups.restore", true, NOTE_ENV],
-  ["backups.delete", false, NOTE_UNSUPPORTED],
   ["cache.clear", true, NOTE_ENV],
   ["php.restart", false, NOTE_NOT_MAPPED],
   ["php.set-version", false, NOTE_NOT_MAPPED],
@@ -161,8 +155,6 @@ const CAPABILITIES: readonly ProviderCapability[] = providerCapabilities([
     true,
     "uses GET /v0/sites/{site_id}/environments/{env_id}/metrics",
   ],
-  ["access.ssh", false, NOTE_NOT_MAPPED],
-  ["access.sftp", false, NOTE_NOT_MAPPED],
 ]);
 
 /** The cached result of one machine-token exchange. */
@@ -427,47 +419,6 @@ export const createPantheonClient: ProviderClientFactory = (
     };
   }
 
-  async function deleteDomains(
-    siteId: string,
-    envId: string,
-    body: Record<string, unknown>,
-  ): Promise<ActionResult> {
-    const domains = domainsFromBody(body);
-    const domainPath = (domain: string): string =>
-      `/v0/sites/${segment(siteId)}/environments/${segment(envId)}/domains/${segment(domain)}`;
-
-    const only = domains.length === 1 ? domains[0] : undefined;
-    if (only !== undefined) {
-      return sendAction(
-        "domains.delete",
-        "DELETE",
-        domainPath(only),
-        undefined,
-        siteId,
-      );
-    }
-
-    const results: unknown[] = [];
-    for (const domain of domains) {
-      const result = await sendAction(
-        "domains.delete",
-        "DELETE",
-        domainPath(domain),
-        undefined,
-        siteId,
-      );
-      results.push(result.raw);
-    }
-    // The aggregate carries no message and no operation id, and Go hard-codes
-    // HTTP 200 because there is no single response to report.
-    return {
-      provider: PROVIDER,
-      action: "domains.delete",
-      status: 200,
-      raw: { results },
-    };
-  }
-
   async function read(request: ReadRequest): Promise<unknown> {
     switch (request.kind) {
       case "capabilities":
@@ -508,11 +459,6 @@ export const createPantheonClient: ProviderClientFactory = (
       case "themes":
       case "company-plugins":
       case "company-themes":
-      case "ssh-status":
-      case "ssh-allowlist":
-      case "ssh-config":
-      case "ssh-password":
-      case "sftp-accounts":
       case "analytics-usage":
       case "file-list":
         throw unsupportedReadRequest(PROVIDER, request);
@@ -538,16 +484,6 @@ export const createPantheonClient: ProviderClientFactory = (
           stringFromMap(body, "site_name"),
         );
       }
-      case "delete-site": {
-        const siteId = await resolveSiteId(request.siteId);
-        return sendAction(
-          "sites.delete",
-          "DELETE",
-          `/v0/sites/${segment(siteId)}`,
-          undefined,
-          siteId,
-        );
-      }
       case "create-environment": {
         // Every create mode makes a multidev environment; Go ignores the mode
         // and does not resolve the site name here either.
@@ -560,17 +496,6 @@ export const createPantheonClient: ProviderClientFactory = (
           request.siteId,
         );
       }
-      case "delete-environment": {
-        const ref = environmentRef(request.envId, undefined);
-        // Go forwards the (empty) map, so the request carries a `{}` body.
-        return sendAction(
-          "envs.delete",
-          "DELETE",
-          `/v0/sites/${segment(ref.siteId)}/environments/${segment(ref.envId)}`,
-          ref.body,
-          ref.siteId,
-        );
-      }
       case "add-domain": {
         const ref = environmentRef(request.envId, request.body);
         return sendAction(
@@ -580,10 +505,6 @@ export const createPantheonClient: ProviderClientFactory = (
           domainBody(ref.body),
           ref.siteId,
         );
-      }
-      case "delete-domains": {
-        const ref = environmentRef(request.envId, request.body);
-        return deleteDomains(ref.siteId, ref.envId, ref.body);
       }
       case "change-primary-domain": {
         const ref = environmentRef(request.envId, request.body);
@@ -605,16 +526,6 @@ export const createPantheonClient: ProviderClientFactory = (
           ref.siteId,
         );
       }
-      case "restore-backup": {
-        const restore = restoreBackupBody(request.targetEnvId, request.body);
-        return sendAction(
-          "backups.restore",
-          "POST",
-          `/v0/sites/${segment(restore.siteId)}/environments/${segment(restore.envId)}/backups/${segment(restore.backupId)}/restore`,
-          restore.body,
-          restore.siteId,
-        );
-      }
       case "clear-cache": {
         // `cache` is not mapped: Pantheon has one cache-clear endpoint, and the
         // environment always comes from the body because there is no env id on
@@ -628,11 +539,9 @@ export const createPantheonClient: ProviderClientFactory = (
           ref.siteId,
         );
       }
-      case "reset-site":
       case "push-environment":
       case "restart-php":
       case "set-php-version":
-      case "delete-backup":
       case "update-plugin":
       case "bulk-update-plugins":
       case "update-theme":
@@ -640,17 +549,6 @@ export const createPantheonClient: ProviderClientFactory = (
       case "run-wp-cli":
       case "set-denied-ips":
       case "apply-redirects":
-      case "dns-record-create":
-      case "dns-record-update":
-      case "dns-record-delete":
-      case "set-ssh-status":
-      case "set-ssh-password-status":
-      case "generate-ssh-password":
-      case "set-ssh-allowlist":
-      case "change-ssh-password-expiration":
-      case "toggle-sftp-accounts":
-      case "add-sftp-account":
-      case "remove-sftp-account":
         throw unsupportedActionRequest(PROVIDER, request);
       default:
         return assertNever(request);
@@ -879,59 +777,6 @@ function primaryDomainBody(
   return map;
 }
 
-/** Go's `pantheonDomainsFromBody`. */
-function domainsFromBody(map: Readonly<Record<string, unknown>>): string[] {
-  for (const key of ["domains", "domain_ids"]) {
-    if (Object.hasOwn(map, key)) return domainList(map[key]);
-  }
-  for (const key of ["domain", "domain_name", "domain_id", "id"]) {
-    if (Object.hasOwn(map, key)) {
-      const value = goSprint(map[key]);
-      // Go breaks out of the loop on an empty value and falls through to the
-      // error below rather than trying the next key.
-      if (value === "" || value === NIL) break;
-      return [value];
-    }
-  }
-  throw new CliError(
-    "usage_error",
-    "Pantheon requires domain, domain_name, domain_id, id, domains, or domain_ids.",
-    { details: { provider: PROVIDER } },
-  );
-}
-
-/**
- * Go's shared `stringsFromAnySlice`, whose messages name Pressable because that
- * is where the helper lives; here they name Pantheon.
- */
-function domainList(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    throw new CliError(
-      "usage_error",
-      "Pantheon requires the domain list to be an array.",
-      { details: { provider: PROVIDER } },
-    );
-  }
-  const domains = (value as readonly unknown[]).map(goSprint);
-  if (domains.length === 0) {
-    throw new CliError(
-      "usage_error",
-      "Pantheon requires at least one domain id.",
-      { details: { provider: PROVIDER } },
-    );
-  }
-  for (const domain of domains) {
-    if (domain === "" || domain === NIL) {
-      throw new CliError(
-        "usage_error",
-        "Pantheon requires non-empty domain ids.",
-        { details: { provider: PROVIDER } },
-      );
-    }
-  }
-  return domains;
-}
-
 /** Go's `pantheonBackupCreateBody`. */
 function backupCreateBody(
   map: Record<string, unknown>,
@@ -941,22 +786,6 @@ function backupCreateBody(
   // Pantheon rejects the neutral `tag` field.
   Reflect.deleteProperty(map, "tag");
   return map;
-}
-
-/** Go's `pantheonRestoreBackupBody`. */
-function restoreBackupBody(
-  targetEnvId: string,
-  body: unknown,
-): PantheonEnvironmentRef & { readonly backupId: string } {
-  const ref = environmentRef(targetEnvId, body);
-  const backupId = takeString(ref.body, ["backup_id", "id"]) ?? "";
-  if (backupId === "" || backupId === NIL) {
-    throw new CliError("usage_error", "Pantheon requires backup_id or id.", {
-      details: { provider: PROVIDER },
-    });
-  }
-  if (!Object.hasOwn(ref.body, "element")) ref.body.element = "all";
-  return { ...ref, backupId };
 }
 
 /** Go's `pantheonCacheBody`. */

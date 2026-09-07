@@ -220,11 +220,6 @@ class WpEngineClient implements ProviderClient {
       case "themes":
       case "company-plugins":
       case "company-themes":
-      case "ssh-status":
-      case "ssh-allowlist":
-      case "ssh-config":
-      case "ssh-password":
-      case "sftp-accounts":
       case "analytics-usage":
       case "analytics-env":
       case "file-list":
@@ -246,12 +241,6 @@ class WpEngineClient implements ProviderClient {
           siteBody(request.body),
         );
       }
-      case "delete-site":
-        return this.#sendAction(
-          "sites.delete",
-          "DELETE",
-          `/sites/${escapePathSegment(request.siteId)}`,
-        );
       case "create-environment": {
         if (request.mode === "clone")
           throw unsupportedOperation(PROVIDER, "envs.clone");
@@ -262,12 +251,6 @@ class WpEngineClient implements ProviderClient {
           installBody(request.siteId, request.body),
         );
       }
-      case "delete-environment":
-        return this.#sendAction(
-          "envs.delete",
-          "DELETE",
-          `/installs/${escapePathSegment(request.envId)}`,
-        );
       case "add-domain":
         return this.#sendAction(
           "domains.add",
@@ -275,8 +258,6 @@ class WpEngineClient implements ProviderClient {
           `/installs/${escapePathSegment(request.envId)}/domains`,
           domainBody(request.body),
         );
-      case "delete-domains":
-        return this.#deleteDomains(request.envId, request.body);
       case "change-primary-domain": {
         const domainId = domainIdFromBody(request.body);
         return this.#sendAction(
@@ -293,15 +274,6 @@ class WpEngineClient implements ProviderClient {
           `/installs/${escapePathSegment(request.envId)}/backups`,
           backupBody(request.body),
         );
-      case "restore-backup": {
-        const { backupId, body } = restoreBody(request.body);
-        return this.#sendAction(
-          "backups.restore",
-          "POST",
-          `/installs/${escapePathSegment(request.targetEnvId)}/backups/${escapePathSegment(backupId)}/restore`,
-          body,
-        );
-      }
       case "clear-cache": {
         const { installId, body } = cacheBody(request.cache, request.body);
         return this.#sendAction(
@@ -312,11 +284,9 @@ class WpEngineClient implements ProviderClient {
         );
       }
       // Deliberately not mapped onto the Hosting Platform API.
-      case "reset-site":
       case "push-environment":
       case "restart-php":
       case "set-php-version":
-      case "delete-backup":
       case "update-plugin":
       case "bulk-update-plugins":
       case "update-theme":
@@ -324,17 +294,6 @@ class WpEngineClient implements ProviderClient {
       case "run-wp-cli":
       case "set-denied-ips":
       case "apply-redirects":
-      case "dns-record-create":
-      case "dns-record-update":
-      case "dns-record-delete":
-      case "set-ssh-status":
-      case "set-ssh-password-status":
-      case "generate-ssh-password":
-      case "set-ssh-allowlist":
-      case "change-ssh-password-expiration":
-      case "toggle-sftp-accounts":
-      case "add-sftp-account":
-      case "remove-sftp-account":
         throw unsupportedActionRequest(PROVIDER, request);
       default:
         return assertNever(request);
@@ -383,38 +342,6 @@ class WpEngineClient implements ProviderClient {
       ...(message === undefined ? {} : { message }),
       ...(operationId === undefined ? {} : { operationId }),
       raw,
-    };
-  }
-
-  /**
-   * WP Engine deletes one domain per request. A single id is reported as an
-   * ordinary `domains.delete`; several are issued sequentially and aggregated
-   * into `{"results": [...]}` with a synthetic HTTP 200, as in Go.
-   */
-  async #deleteDomains(envId: string, body: ActionBody): Promise<ActionResult> {
-    const domainIds = domainIdsFromBody(body);
-    const first = domainIds[0];
-    if (domainIds.length === 1 && first !== undefined) {
-      return this.#sendAction(
-        "domains.delete",
-        "DELETE",
-        `/installs/${escapePathSegment(envId)}/domains/${escapePathSegment(first)}`,
-      );
-    }
-    const results: unknown[] = [];
-    for (const domainId of domainIds) {
-      const result = await this.#sendAction(
-        "domains.delete",
-        "DELETE",
-        `/installs/${escapePathSegment(envId)}/domains/${escapePathSegment(domainId)}`,
-      );
-      results.push(result.raw);
-    }
-    return {
-      provider: PROVIDER,
-      action: "domains.delete",
-      status: 200,
-      raw: { results },
     };
   }
 
@@ -478,20 +405,12 @@ function capabilities(): ProviderCapability[] {
     ["sites.create", true, `uses POST /sites; ${NOTE_NATIVE_JSON}`],
     ["sites.create-plain", true, `uses POST /sites; ${NOTE_NATIVE_JSON}`],
     ["sites.clone", false, NOTE_UNSUPPORTED],
-    ["sites.delete", true, "uses DELETE /sites/{site_id}"],
-    ["sites.reset", false, NOTE_UNSUPPORTED],
     ["envs.create", true, `uses POST /installs; ${NOTE_NATIVE_JSON}`],
     ["envs.create-plain", true, `uses POST /installs; ${NOTE_NATIVE_JSON}`],
     ["envs.clone", false, NOTE_UNSUPPORTED],
     ["envs.push", false, NOTE_UNSUPPORTED],
-    ["envs.delete", true, "uses DELETE /installs/{install_id}"],
     ["domains.list", true, "uses GET /installs/{install_id}/domains"],
     ["domains.add", true, "uses POST /installs/{install_id}/domains"],
-    [
-      "domains.delete",
-      true,
-      "uses DELETE /installs/{install_id}/domains/{domain_id}",
-    ],
     [
       "domains.primary",
       true,
@@ -503,11 +422,6 @@ function capabilities(): ProviderCapability[] {
       "backups.create",
       true,
       `uses POST /installs/{install_id}/backups; ${NOTE_NATIVE_JSON}`,
-    ],
-    [
-      "backups.restore",
-      true,
-      "uses POST /installs/{install_id}/backups/{backup_id}/restore; requires --from-json for UUID backup IDs",
     ],
     ["cache.clear", true, "uses POST /installs/{install_id}/purge_cache"],
     ["php.restart", false, NOTE_UNSUPPORTED],
@@ -523,8 +437,6 @@ function capabilities(): ProviderCapability[] {
     ["logs.get", false, NOTE_NOT_MAPPED],
     ["analytics.usage", false, NOTE_NOT_MAPPED],
     ["analytics.env", false, NOTE_NOT_MAPPED],
-    ["access.ssh", false, NOTE_NOT_MAPPED],
-    ["access.sftp", false, NOTE_NOT_MAPPED],
   ]);
 }
 
@@ -724,54 +636,6 @@ function domainIdFromBody(body: ActionBody): string {
   }
   throw usageError(
     "WP Engine needs a domain_id or id to change the primary domain.",
-  );
-}
-
-function restoreBody(body: ActionBody): {
-  readonly backupId: string;
-  readonly body: JsonRecord;
-} {
-  const payload = objectBody(body);
-  for (const key of ["backup_id", "id"]) {
-    const text = key in payload ? scalarText(payload[key]) : "";
-    if (text === "") continue;
-    // The id is consumed by the URL, so it is dropped from the payload
-    // (Go deletes the key in place; HQ rebuilds the object without it).
-    const rest = Object.fromEntries(
-      Object.entries(payload).filter(([name]) => name !== key),
-    );
-    return { backupId: text, body: rest };
-  }
-  throw usageError("WP Engine needs a backup_id or id to restore a backup.");
-}
-
-function domainIdsFromBody(body: ActionBody): string[] {
-  if (body === undefined || body === null) throw missingDomainIds();
-  const payload = objectBody(body);
-  if ("domain_ids" in payload) return domainIdList(payload.domain_ids);
-  for (const key of ["domain_id", "id"]) {
-    if (!(key in payload)) continue;
-    const text = scalarText(payload[key]);
-    if (text === "") throw usageError("WP Engine needs a non-empty domain id.");
-    return [text];
-  }
-  throw missingDomainIds();
-}
-
-function domainIdList(value: unknown): string[] {
-  if (!Array.isArray(value))
-    throw usageError("WP Engine needs domain_ids to be an array.");
-  const ids = (value as readonly unknown[]).map(scalarText);
-  if (ids.length === 0)
-    throw usageError("WP Engine needs at least one domain id.");
-  if (ids.some((id) => id === ""))
-    throw usageError("WP Engine needs non-empty domain ids.");
-  return ids;
-}
-
-function missingDomainIds(): CliError {
-  return usageError(
-    "WP Engine needs domain_id, id, or domain_ids to delete domains.",
   );
 }
 

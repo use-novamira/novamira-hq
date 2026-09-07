@@ -4,10 +4,9 @@
 /**
  * The InstaWP provider client, ported from `internal/providers/instawp.go`.
  *
- * InstaWP has no environment concept: a site *is* the environment. The Go client
- * therefore synthesizes exactly one environment per site (`name: "site"`, the
- * site id as its id) and maps `envs.delete` onto `DELETE /sites/{id}`. That
- * shape carries over verbatim.
+ * InstaWP has no environment concept: a site *is* the environment. HQ therefore
+ * synthesizes exactly one environment per site (`name: "site"`, with the site
+ * id as its id) but exposes no environment-removal operation.
  *
  * Deviations from the Go source are marked `Deviation:` where they occur. The
  * structural ones:
@@ -108,13 +107,10 @@ const CAPABILITIES: readonly ProviderCapability[] = providerCapabilities([
     true,
     "uses POST /sites/template when template_slug is supplied",
   ],
-  ["sites.delete", true, "uses DELETE /sites/{site_id}"],
-  ["sites.reset", false, NOTE_UNSUPPORTED],
   ["envs.create", false, NOTE_SINGLE_ENV],
   ["envs.create-plain", false, NOTE_SINGLE_ENV],
   ["envs.clone", false, NOTE_SINGLE_ENV],
   ["envs.push", false, NOTE_SINGLE_ENV],
-  ["envs.delete", true, "deletes the underlying synthetic InstaWP site"],
   ["domains.list", false, NOTE_NOT_MAPPED],
   ["dns.domains.list", false, NOTE_NOT_MAPPED],
   ["backups.list", false, NOTE_NOT_MAPPED],
@@ -136,8 +132,6 @@ const CAPABILITIES: readonly ProviderCapability[] = providerCapabilities([
   ["logs.get", false, NOTE_NOT_MAPPED],
   ["analytics.usage", false, NOTE_NOT_MAPPED],
   ["analytics.env", false, NOTE_NOT_MAPPED],
-  ["access.ssh", false, NOTE_NOT_MAPPED],
-  ["access.sftp", false, NOTE_NOT_MAPPED],
 ]);
 
 /** A prepared InstaWP request: the endpoint plus the JSON object to POST. */
@@ -256,11 +250,6 @@ export const createInstaWpClient: ProviderClientFactory = (
       case "themes":
       case "company-plugins":
       case "company-themes":
-      case "ssh-status":
-      case "ssh-allowlist":
-      case "ssh-config":
-      case "ssh-password":
-      case "sftp-accounts":
       case "analytics-usage":
       case "analytics-env":
       case "file-list":
@@ -274,50 +263,22 @@ export const createInstaWpClient: ProviderClientFactory = (
     switch (request.kind) {
       case "create-site":
         return createSite(request.mode, request.body);
-      case "delete-site":
-        return sendAction(
-          "sites.delete",
-          "DELETE",
-          `/sites/${encodePathSegment(request.siteId)}`,
-        );
-      case "delete-environment":
-        // The synthetic environment id *is* the site id.
-        return sendAction(
-          "envs.delete",
-          "DELETE",
-          `/sites/${encodePathSegment(request.envId)}`,
-        );
       case "run-wp-cli":
         return runWpCli(request.envId, request.body);
-      case "reset-site":
       case "create-environment":
       case "push-environment":
       case "clear-cache":
       case "restart-php":
       case "set-php-version":
       case "add-domain":
-      case "delete-domains":
       case "change-primary-domain":
       case "create-backup":
-      case "restore-backup":
-      case "delete-backup":
       case "update-plugin":
       case "bulk-update-plugins":
       case "update-theme":
       case "bulk-update-themes":
       case "set-denied-ips":
       case "apply-redirects":
-      case "dns-record-create":
-      case "dns-record-update":
-      case "dns-record-delete":
-      case "set-ssh-status":
-      case "set-ssh-password-status":
-      case "generate-ssh-password":
-      case "set-ssh-allowlist":
-      case "change-ssh-password-expiration":
-      case "toggle-sftp-accounts":
-      case "add-sftp-account":
-      case "remove-sftp-account":
         return Promise.reject(unsupportedActionRequest(PROVIDER, request));
       default:
         return assertNever(request);

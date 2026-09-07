@@ -378,22 +378,6 @@ test("creates a site with POST /sites", async () => {
   }
 });
 
-test("deletes a site with DELETE /sites/{id}", async () => {
-  const server = await startPressableServer([
-    { body: `{"message":"Success","data":null,"errors":null}` },
-  ]);
-  try {
-    const client = await pressableClient(server);
-    const result = await client.action({ kind: "delete-site", siteId: "123" });
-
-    assert.equal(result.action, "sites.delete");
-    assert.deepEqual(server.lines(), ["DELETE /v1/sites/123"]);
-    assert.equal(server.record.requests[0].body, "");
-  } finally {
-    await server.close();
-  }
-});
-
 test("clears the object cache using the site id carried in the body", async () => {
   const server = await startPressableServer([
     { body: `{"message":"Success","data":null,"errors":null}` },
@@ -460,103 +444,6 @@ test("adds a domain with POST /sites/{id}/domains", async () => {
     assert.deepEqual(JSON.parse(server.record.requests[0].body), {
       domain: "example.test",
     });
-  } finally {
-    await server.close();
-  }
-});
-
-test("deletes a single domain from the CLI domain_ids payload", async () => {
-  const server = await startPressableServer([
-    { body: `{"message":"Success","data":null,"errors":null}` },
-  ]);
-  try {
-    const client = await pressableClient(server);
-    const result = await client.action({
-      kind: "delete-domains",
-      envId: "123",
-      body: { domain_ids: ["456"] },
-    });
-
-    assert.equal(result.action, "domains.delete");
-    assert.equal(result.status, 200);
-    assert.deepEqual(server.lines(), ["DELETE /v1/sites/123/domains/456"]);
-  } finally {
-    await server.close();
-  }
-});
-
-test("deletes several domains one by one and aggregates the raw bodies", async () => {
-  const server = await startPressableServer([
-    { body: `{"message":"Success","data":{"id":1},"errors":null}` },
-    { body: `{"message":"Success","data":{"id":2},"errors":null}` },
-  ]);
-  try {
-    const client = await pressableClient(server);
-    const result = await client.action({
-      kind: "delete-domains",
-      envId: "123",
-      body: { domain_ids: [1, "2"] },
-    });
-
-    assert.deepEqual(serializeActionResult(result), {
-      provider: "pressable",
-      action: "domains.delete",
-      status: 200,
-      message: "Success",
-      raw: {
-        message: "Success",
-        data: [
-          { message: "Success", data: { id: 1 }, errors: null },
-          { message: "Success", data: { id: 2 }, errors: null },
-        ],
-        errors: null,
-      },
-    });
-    assert.deepEqual(server.lines(), [
-      "DELETE /v1/sites/123/domains/1",
-      "DELETE /v1/sites/123/domains/2",
-    ]);
-  } finally {
-    await server.close();
-  }
-});
-
-test("accepts domain_id and id, and rejects an unusable domain payload", async () => {
-  const server = await startPressableServer([
-    { body: `{"message":"Success","data":null,"errors":null}` },
-    { body: `{"message":"Success","data":null,"errors":null}` },
-  ]);
-  try {
-    const client = await pressableClient(server);
-    await client.action({
-      kind: "delete-domains",
-      envId: "s",
-      body: { domain_id: "11" },
-    });
-    await client.action({
-      kind: "delete-domains",
-      envId: "s",
-      body: { id: 12 },
-    });
-    assert.deepEqual(server.lines(), [
-      "DELETE /v1/sites/s/domains/11",
-      "DELETE /v1/sites/s/domains/12",
-    ]);
-
-    for (const body of [
-      undefined,
-      {},
-      { domain_ids: [] },
-      { domain_ids: ["ok", ""] },
-      { domain_ids: "not-an-array" },
-      { domain_id: null },
-    ]) {
-      await assert.rejects(
-        client.action({ kind: "delete-domains", envId: "s", body }),
-        { code: "usage_error" },
-      );
-    }
-    assert.equal(server.record.requests.length, 2);
   } finally {
     await server.close();
   }
@@ -712,9 +599,8 @@ test("maps the log file name onto the php and webserver log endpoints", async ()
   }
 });
 
-test("reads domains, backups, sftp accounts, statistics and DNS zones", async () => {
+test("reads domains, backups, statistics and DNS zones", async () => {
   const server = await startPressableServer([
-    { body: `{"message":"Success","data":[],"errors":null}` },
     { body: `{"message":"Success","data":[],"errors":null}` },
     { body: `{"message":"Success","data":[],"errors":null}` },
     { body: `{"message":"Success","data":{},"errors":null}` },
@@ -724,14 +610,12 @@ test("reads domains, backups, sftp accounts, statistics and DNS zones", async ()
     const client = await pressableClient(server);
     await client.read({ kind: "site-domains", envId: "123" });
     await client.read({ kind: "backups", envId: "123" });
-    await client.read({ kind: "sftp-accounts", envId: "123" });
     await client.read({ kind: "analytics-usage", siteId: "123", metric: "" });
     await client.read({ kind: "dns-domains" });
 
     assert.deepEqual(server.lines(), [
       "GET /v1/sites/123/domains",
       "GET /v1/sites/123/backups",
-      "GET /v1/sites/123/ftp",
       "GET /v1/sites/123/statistics",
       "GET /v1/dns/zones",
     ]);
@@ -780,9 +664,6 @@ test("reports the capability matrix without any network call", async () => {
       supported: false,
       notes: "not mapped for Pressable in Novamira",
     });
-    assert.equal(byName.get("access.ssh").supported, false);
-    assert.equal(byName.get("access.sftp").supported, true);
-
     // Reading capabilities never reaches the API and never needs a token.
     assert.deepEqual(server.lines(), []);
     assert.deepEqual(server.record.tokenRequests, []);
@@ -905,16 +786,13 @@ const SUPPORTED_READS = new Set([
   "backups",
   "logs",
   "plugins",
-  "sftp-accounts",
   "analytics-usage",
 ]);
 
 const SUPPORTED_ACTIONS = new Set([
   "create-site",
-  "delete-site",
   "clear-cache",
   "add-domain",
-  "delete-domains",
   "run-wp-cli",
 ]);
 

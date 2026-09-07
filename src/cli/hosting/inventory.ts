@@ -41,7 +41,7 @@ import {
 } from "../hosting-command.js";
 import { buildQuery } from "../payloads.js";
 import {
-  disableSiteDeleteCapability,
+  applyHqCapabilityPolicy,
   renderOperation,
   renderRaw,
   renderValidation,
@@ -142,9 +142,7 @@ export function createHostingInventoryHandlers(
     providersCapabilities: (options) =>
       runHostingCommand(dependencies, options, async ({ client }) => {
         const value = await client.read({ kind: "capabilities" });
-        // `hosting sites delete` is deliberately not registered, so a provider
-        // that advertises sites.delete must not be reported as offering it.
-        return renderRaw(disableSiteDeleteCapability(value));
+        return renderRaw(applyHqCapabilityPolicy(value));
       }),
 
     regionsList: (options, globals) =>

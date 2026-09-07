@@ -410,23 +410,38 @@ JSON-RPC responses. It supports protocol versions `2025-11-25`, `2025-06-18` and
 `2025-03-26`, the initialize lifecycle, `ping`, `tools/list` and `tools/call`, and
 advertises only the `tools` capability. It performs no background update check.
 
-The MCP launch policy defaults to `--access all`. `--access read` selects
-`config`, `hosting-read`, `doctor` and `skills`; repeated `--allow <capability>`
-replaces that preset with an explicit allowlist, and repeated
-`--deny <capability>` removes entries afterward. The frozen capability names are
-`config`, `hosting-read`, `hosting-write`, `provisioning`, `dashboard`, `doctor`,
-`skills` and `update`.
+The MCP launch policy defaults to `--access standard`. `--access read` selects
+`profiles-read` and `hosting-read`; `standard` adds `maintenance` and
+`provisioning`; `all` additionally selects `deploy`. Repeated
+`--allow <capability>` replaces the preset with an explicit allowlist, and
+repeated `--deny <capability>` removes entries afterward. The frozen capability
+names are `profiles-read`, `hosting-read`, `maintenance`, `provisioning`, and
+`deploy`.
 
-The focused tools are `hosting_profiles_list`, `hosting_provider_validate`,
+The typed read tools are `hosting_profiles_list`, `hosting_provider_validate`,
 `hosting_capabilities_get`, `hosting_sites_list`, `hosting_site_get`,
-`hosting_environments_list` and `hosting_operation_get`; they are advertised only
-when their capability is allowed. `novamira_hq_cli` accepts an argv string array
-without the executable name and invokes any existing HQ command whose classified
-capability is allowed. Its output is captured in the tool result and never
-written outside MCP framing. It cannot invoke `mcp`, and stdin-consuming forms
-(`--from-json -`, `--command-stdin` and every secret `*-stdin` option) are
-refused because stdin belongs exclusively to the transport. Credentials still
-come only from configured references, never an MCP credential argument.
+`hosting_environments_list`, and `hosting_operation_get`. The typed mutations
+are `hosting_backup_create` and `hosting_novamira_setup`. The `deploy`
+capability adds `hosting_environment_push_plan` and
+`hosting_environment_push_apply`; it is intentionally absent from the default
+preset. Every tool carries MCP read-only and destructive annotations.
+
+There is no generic CLI/argv bridge. MCP cannot mutate HQ configuration,
+self-update, invoke arbitrary provider WP-CLI, manage domains or DNS, or manage
+SSH/SFTP access. A tool not selected at launch is neither advertised nor
+callable by name. Credentials still come only from configured references, never
+an MCP credential argument.
+
+Environment push is a two-call transaction. The plan call requires different
+source and target environments plus at least one positive scope: database, all
+files, or a non-empty explicit file list. All-files and explicit files are
+mutually exclusive, and search/replace requires database. It verifies the
+provider advertises both `envs.push` and `backups.create`, resolves both
+environment IDs under the named site, and returns a session-local random
+confirmation ID expiring after five minutes. Apply consumes that ID before any
+provider request, so it is one-use even after failure; it creates a backup of the
+target and waits for its successful completion when the provider returns an
+operation ID, then performs and likewise awaits the push.
 
 Expected command, hosting, policy and argument failures are MCP tool results with
 `isError: true`; malformed protocol requests remain JSON-RPC errors. All returned
@@ -450,23 +465,21 @@ otherwise contribute a body field; an option required only as a body field is
 therefore not required alongside it. A malformed document is a `usage_error`.
 
 An option naming a resource that becomes part of the provider request path
-rather than of its body — `--env` and `--target-env` on the commands addressed
-per environment, `--domain` on the DNS record commands, and `--site` where a
-command requires it — must be non-empty even with `--from-json`, because no body
-can supply it. Omitting one is a `usage_error` naming the flag in
-`details.flag`, raised before any provider request. Missing body fields are
+rather than of its body — `--env` and `--target-env` on commands addressed per
+environment, and `--site` where a command requires it — must be non-empty even
+with `--from-json`, because no body can supply it. Omitting one is a
+`usage_error` raised before any provider request. Missing body fields are
 reported the same way.
 
 A secret is always named and never given: a command that needs one registers
 `--<name>-env <variable>`, `--<name>-stdin`, and `--<name>-file <path>`, and
 exactly one must be supplied. No option anywhere accepts a secret value, so no
 secret enters argv. Trailing newlines are trimmed from the stdin and file
-sources; an absent or empty secret is `credential_missing`. `hosting access ssh
-password` writes the provider-generated password to an owner-only file and
-reports only `{ "path": …, "value": "********" }`.
+sources; an absent or empty secret is `credential_missing`. No command reads,
+generates, rotates, or exports an SSH/SFTP credential.
 
-Repeatable options accumulate: `--domain-id`, `--value`, `--add-value`,
-`--remove-value`, `--ip`, `--file`, and `--name` on the `update-all` commands.
+Repeatable options accumulate: `--ip`, `--file`, and `--name` on the
+`update-all` commands.
 Boolean options default to false unless documented otherwise, and a
 true-defaulting boolean also registers its `--no-` form.
 
@@ -544,11 +557,11 @@ envelope.
 | `regions` | `list` |
 | `activity` | `list` |
 | `ops` | `get <operation_id>`, `wait <operation_id>` |
-| `sites` | `list`, `get <site_id>`, `create`, `create-plain`, `clone`, `reset <site_id>` |
-| `envs` | `list`, `get <env_id>`, `create`, `create-plain`, `clone`, `push`, `delete <env_id>` |
-| `domains` | `list`, `add`, `delete`, `verify <site_domain_id>`, `primary` |
-| `dns` | `domains list`, `records list`, `records create`, `records update`, `records delete` |
-| `backups` | `list`, `downloadable`, `create`, `restore`, `delete <backup_id>` |
+| `sites` | `list`, `get <site_id>`, `create`, `create-plain`, `clone` |
+| `envs` | `list`, `get <env_id>`, `create`, `create-plain`, `clone`, `push` |
+| `domains` | `list`, `add`, `verify <site_domain_id>`, `primary` |
+| `dns` | `domains list`, `records list` |
+| `backups` | `list`, `downloadable`, `create` |
 | `cache` | `clear` |
 | `php` | `restart`, `set-version` |
 | `redirects` | `list`, `apply` |
@@ -558,7 +571,6 @@ envelope.
 | `wp-cli` | `run` |
 | `logs` | `get` |
 | `analytics` | `usage`, `env` |
-| `access` | `ssh status`, `ssh set-status`, `ssh allowlist`, `ssh set-allowlist`, `ssh config`, `ssh generate-password`, `ssh password`, `ssh set-password-status`, `ssh change-expiration`, `sftp list`, `sftp toggle`, `sftp add`, `sftp remove <sftp_account_id>` |
 
 Fixed value sets:
 
@@ -579,16 +591,28 @@ resolves to the newest published Novamira plugin zip. `hosting novamira setup
 --source` has no default and must be given. `hosting activity list --api-key`
 names a provider-side API key **identifier**, never a key value.
 
+`hosting envs push` has no `--from-json` escape hatch and no implicit scope. It
+requires `--site`, `--source-env`, `--target-env`, and at least one of `--db`,
+`--all-files`, or repeatable `--file`. `--all-files` and `--file` cannot be
+combined; `--search-replace` requires `--db`. HQ confirms both environments
+exist beneath the site, requires provider support for push and backup creation,
+creates and waits for a target safety backup, then starts and awaits the push.
+Kinsta is the only provider currently advertising this safe granular contract;
+Rocket.net's all-or-nothing staging publish and Cloudways' provider-native sync
+are not implemented by their HQ adapters.
+
 Read commands render the provider response unchanged under `data`; action
 commands render the provider's action result; `hosting providers capabilities`
-renders the provider's capability list with `sites.delete` forced to unsupported.
+applies HQ's capability visibility policy before rendering.
 
 ### Not in the v1 command surface
 
-- **`hosting sites delete` is not registered.** HQ reports `sites.delete` as an
-  unsupported capability for every provider, and offers no command that deletes
-  a site. The provider-neutral delete request still exists for the dashboard's
-  future use, but no CLI grammar reaches it.
+- HQ never implements site deletion or reset, environment deletion, backup
+  deletion or restoration, domain deletion, DNS record creation/update/deletion,
+  or SSH/SFTP access management. Provider capability output is a positive
+  allowlist, so provider-native and unknown operations remain private by
+  default. These exclusions apply to CLI, dashboard, MCP, the provider-neutral
+  client, and provider adapters; `--yes` does not unlock them.
 - No command prompts, and no command reads standard input except through
   `--from-json -`, `--command-stdin`, and the `-stdin` secret sources.
 - Deploy-path commands are not shipped. `deployPaths` is reserved in the
@@ -1061,9 +1085,9 @@ no other, with the report pretty-printed inside a `<pre>`.
 `/_dashboard/diagnostics/capabilities` reads its profile from `?profile=`, then
 from the `diagnostics` signal subtree, which wins. An empty selection or the
 `__all__` sentinel is a `danger` notice and **no provider call**. Otherwise it
-reads the profile's capability document with `sites.delete` forced to unsupported,
-exactly as `hosting providers capabilities` does, and patches the same two
-fragments.
+reads the profile's capability document after HQ's visibility policy has omitted
+destructive and access-management operations, exactly as `hosting providers
+capabilities` does, and patches the same two fragments.
 
 `/_dashboard/updates/check` reads the `latest` dist-tag and patches
 `#updates-card` (outer) and then `#toast` (outer), in that order and no other.

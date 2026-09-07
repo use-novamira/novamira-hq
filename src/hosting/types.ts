@@ -212,14 +212,16 @@ export function providerLabel(provider: ProviderKind): string {
  */
 
 /**
- * Providers whose `action` implements `push-environment`.
+ * Providers whose public HQ capability implements the safe granular
+ * `push-environment` contract, including a target safety backup.
  *
- * Verified against the clients: implemented by `kinsta.ts:433`,
- * `rocketnet.ts:525` and `cloudways.ts:422`; every other provider's
- * `push-environment` falls into its unsupported arm.
+ * Rocket.net's provider-native staging publish is all-or-nothing, and
+ * Cloudways requires native sync fields, so neither can promise the explicit
+ * database/file scope HQ requires even though their adapters retain the raw
+ * provider action internally.
  */
 export const DEPLOY_PUSH_PROVIDERS: ReadonlySet<ProviderKind> = Object.freeze(
-  new Set<ProviderKind>(["kinsta", "rocketnet", "cloudways"]),
+  new Set<ProviderKind>(["kinsta"]),
 );
 
 /**

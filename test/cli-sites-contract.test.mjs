@@ -108,8 +108,26 @@ function fakeClient({ sites = [], site = SITE, environments = [] } = {}) {
       calls.push({ method: "listEnvironments", siteId });
       return environments;
     },
+    async read(request) {
+      calls.push({ method: "read", request });
+      return [
+        { name: "envs.push", supported: true },
+        { name: "backups.create", supported: true },
+      ];
+    },
     async action(request) {
       calls.push({ method: "action", request });
+      if (
+        request.kind === "create-backup" ||
+        request.kind === "push-environment"
+      )
+        return {
+          provider: "kinsta",
+          action:
+            request.kind === "create-backup" ? "backups.create" : "envs.push",
+          status: 200,
+          raw: null,
+        };
       return ACTION;
     },
     async operationStatus() {
@@ -270,65 +288,37 @@ test("the sites and envs trees register exactly the ported subcommands", () => {
 
   assert.deepEqual(
     sites.commands.map((child) => child.name()),
-    ["list", "get", "create", "create-plain", "clone", "reset"],
+    ["list", "get", "create", "create-plain", "clone"],
   );
   assert.deepEqual(
     envs.commands.map((child) => child.name()),
-    ["list", "get", "create", "create-plain", "clone", "push", "delete"],
+    ["list", "get", "create", "create-plain", "clone", "push"],
   );
 });
 
 // Ported from TestSitesDeleteCommandIsNotRegistered.
-test("hosting sites delete is not registered", async () => {
+test("site and environment deletion are not registered", async () => {
   const { program } = harness();
-  const sites = commandNamed(program, "sites");
-  assert.equal(
-    sites.commands.some((child) => child.name() === "delete"),
-    false,
-    "hosting sites delete must not be registered",
-  );
+  for (const group of ["sites", "envs"])
+    assert.equal(
+      commandNamed(program, group).commands.some(
+        (child) => child.name() === "delete",
+      ),
+      false,
+      `hosting ${group} delete must not be registered`,
+    );
 
-  // And it is genuinely unreachable from argv, not merely hidden from help.
-  const harnessed = harness();
-  const { code, envelope } = await failing(harnessed, "sites", "delete", "s1");
-  assert.equal(code, 2);
-  assert.equal(envelope.error.code, "usage_error");
-  assert.equal(harnessed.client.calls.length, 0);
-});
-
-test("the retained sitesDelete handler still dispatches delete-site", async () => {
-  // Go kept `newSitesDeleteCommand` so the provider action wiring would survive
-  // if the command were ever restored. The handler is kept for the same reason
-  // and must stay callable — but only from code, never from argv.
-  const client = fakeClient();
-  const out = [];
-  const renderer = createRenderer(
-    { json: true, requestId: "req-1" },
-    {
-      stdout: { write: (chunk) => out.push(chunk) },
-      stderr: { write: () => undefined },
-    },
-  );
-  const handlers = createSitesHandlers({
-    store: {
-      async selectHostingProfile(name) {
-        return { name, profile: { provider: "kinsta" } };
-      },
-    },
-    hosting: {
-      async clientFromEntry() {
-        return client;
-      },
-    },
-    io: fakeIo(),
-    rendererFor: () => renderer,
-  });
-
-  await handlers.sitesDelete("site-1", { json: true, profile: "prod" });
-  assert.deepEqual(client.calls, [
-    { method: "action", request: { kind: "delete-site", siteId: "site-1" } },
-  ]);
-  assert.equal(JSON.parse(out.join("")).ok, true);
+  // Both are genuinely unreachable from argv, not merely hidden from help.
+  for (const argv of [
+    ["sites", "delete", "s1"],
+    ["envs", "delete", "e1"],
+  ]) {
+    const harnessed = harness();
+    const { code, envelope } = await failing(harnessed, ...argv);
+    assert.equal(code, 2);
+    assert.equal(envelope.error.code, "usage_error");
+    assert.equal(harnessed.client.calls.length, 0);
+  }
 });
 
 test("sites create registers every Go flag, in order, and no bare secret", () => {
@@ -380,12 +370,6 @@ test("the remaining sites subcommands register their Go flags", () => {
     "--display-name",
     "--source-env",
   ]);
-  assert.deepEqual(longFlags(commandNamed(sites, "reset")), [
-    "--from-json",
-    "--admin-password-env",
-    "--admin-password-stdin",
-    "--admin-password-file",
-  ]);
 });
 
 test("the envs subcommands register their Go flags", () => {
@@ -394,7 +378,6 @@ test("the envs subcommands register their Go flags", () => {
 
   assert.deepEqual(longFlags(commandNamed(envs, "list")), ["--site"]);
   assert.deepEqual(longFlags(commandNamed(envs, "get")), ["--site"]);
-  assert.deepEqual(longFlags(commandNamed(envs, "delete")), []);
   assert.deepEqual(longFlags(commandNamed(envs, "create")), [
     "--site",
     "--from-json",
@@ -428,12 +411,11 @@ test("the envs subcommands register their Go flags", () => {
   ]);
   assert.deepEqual(longFlags(commandNamed(envs, "push")), [
     "--site",
-    "--from-json",
     "--source-env",
     "--target-env",
-    "--no-db",
-    "--no-files",
-    "--no-search-replace",
+    "--db",
+    "--all-files",
+    "--search-replace",
     "--file",
   ]);
 });
@@ -698,24 +680,6 @@ test("sites create-plain and clone dispatch their own create modes", async () =>
   );
 });
 
-test("sites reset carries the positional id and the admin password", async () => {
-  const harnessed = harness({ io: fakeIo({ env: { ADMIN_PW: "s3cr3t" } }) });
-  const call = await dispatched(
-    harnessed,
-    "sites",
-    "reset",
-    "site-1",
-    "--admin-password-env",
-    "ADMIN_PW",
-  );
-  assert.deepEqual(call.request, {
-    kind: "reset-site",
-    siteId: "site-1",
-    body: { admin_password: "s3cr3t" },
-  });
-  assert.equal(JSON.stringify(harnessed.envelope()).includes("s3cr3t"), false);
-});
-
 /* -------------------------------------------------------------------------- */
 /* Actions: environments                                                      */
 /* -------------------------------------------------------------------------- */
@@ -766,7 +730,7 @@ test("envs create dispatches the WordPress mode against its parent site", async 
   assert.equal(Object.hasOwn(call.request.body, "site"), false);
 });
 
-test("envs create-plain, clone and delete keep their Go requests", async () => {
+test("envs create-plain and clone keep their provider requests", async () => {
   assert.deepEqual(
     (
       await dispatched(
@@ -813,16 +777,12 @@ test("envs create-plain, clone and delete keep their Go requests", async () => {
       },
     },
   );
-
-  assert.deepEqual(
-    (await dispatched(harness(), "envs", "delete", "env-1")).request,
-    { kind: "delete-environment", envId: "env-1" },
-  );
 });
 
-test("envs push defaults to pushing everything", async () => {
-  const call = await dispatched(
-    harness(),
+test("envs push requires an explicit scope and performs no provider call otherwise", async () => {
+  const harnessed = harness();
+  const { envelope } = await failing(
+    harnessed,
     "envs",
     "push",
     "--site",
@@ -832,72 +792,88 @@ test("envs push defaults to pushing everything", async () => {
     "--target-env",
     "env-2",
   );
-  assert.deepEqual(call.request, {
-    kind: "push-environment",
-    siteId: "site-1",
-    body: {
-      source_env_id: "env-1",
-      target_env_id: "env-2",
-      push_db: true,
-      push_files: true,
-      run_search_and_replace: true,
-      push_files_option: "ALL_FILES",
-    },
-  });
+  assert.equal(envelope.error.code, "usage_error");
+  assert.match(envelope.error.message, /Select the database, all files/);
+  assert.equal(harnessed.client.calls.length, 0);
 });
 
-test("envs push inverts the --no-* flags and collects repeated --file", async () => {
-  const call = await dispatched(
-    harness(),
+test("envs push backs up the target before its granular push", async () => {
+  const harnessed = harness({
+    client: fakeClient({ environments: [PRODUCTION, STAGING] }),
+  });
+  const result = await harnessed.run(
     "envs",
     "push",
+    "--site",
+    "site-1",
     "--source-env",
     "env-1",
     "--target-env",
     "env-2",
-    "--no-db",
-    "--no-search-replace",
+    "--db",
+    "--search-replace",
     "--file",
     "wp-content/uploads",
     "--file",
     "wp-content/themes",
   );
-  assert.deepEqual(call.request, {
-    kind: "push-environment",
-    // Go passed the zero value when --site was omitted.
-    siteId: "",
-    body: {
-      source_env_id: "env-1",
-      target_env_id: "env-2",
-      push_db: false,
-      push_files: true,
-      run_search_and_replace: false,
-      push_files_option: "SPECIFIC_FILES",
-      file_list: ["wp-content/uploads", "wp-content/themes"],
+  assert.equal(result.code, 0, result.stdout);
+  assert.deepEqual(harnessed.client.calls, [
+    { method: "read", request: { kind: "capabilities" } },
+    { method: "listEnvironments", siteId: "site-1" },
+    {
+      method: "action",
+      request: {
+        kind: "create-backup",
+        envId: "env-2",
+        body: { tag: "novamira-hq pre-push safety backup" },
+      },
     },
-  });
+    {
+      method: "action",
+      request: {
+        kind: "push-environment",
+        siteId: "site-1",
+        body: {
+          source_env_id: "env-1",
+          target_env_id: "env-2",
+          push_db: true,
+          push_files: true,
+          run_search_and_replace: true,
+          push_files_option: "SPECIFIC_FILES",
+          file_list: ["wp-content/uploads", "wp-content/themes"],
+        },
+      },
+    },
+  ]);
 });
 
-test("envs push --no-files still pushes the database", async () => {
-  const call = await dispatched(
-    harness(),
+test("envs push rejects overlapping file scopes before provider access", async () => {
+  const harnessed = harness();
+  const { envelope } = await failing(
+    harnessed,
     "envs",
     "push",
+    "--site",
+    "site-1",
     "--source-env",
     "env-1",
     "--target-env",
     "env-2",
-    "--no-files",
+    "--all-files",
+    "--file",
+    "wp-content/uploads",
   );
-  assert.equal(call.request.body.push_files, false);
-  assert.equal(call.request.body.push_db, true);
+  assert.equal(envelope.error.code, "usage_error");
+  assert.match(envelope.error.message, /allFiles and explicit file paths/);
+  assert.equal(harnessed.client.calls.length, 0);
 });
 
 /* -------------------------------------------------------------------------- */
 /* --from-json                                                                */
 /* -------------------------------------------------------------------------- */
 
-test("--from-json replaces the built body on every payload subcommand", async () => {
+test("--from-json replaces built bodies on creation subcommands", async () => {
   const io = fakeIo({
     files: { "/body.json": '{"display_name":"From File","extra":[1,2]}' },
     stdin: '{"display_name":"From Stdin"}',
@@ -914,17 +890,6 @@ test("--from-json replaces the built body on every payload subcommand", async ()
     display_name: "From File",
     extra: [1, 2],
   });
-
-  const fromStdin = await dispatched(
-    harness({ io }),
-    "envs",
-    "push",
-    "--site",
-    "site-1",
-    "--from-json",
-    "-",
-  );
-  assert.deepEqual(fromStdin.request.body, { display_name: "From Stdin" });
 
   // A malformed payload is a usage error, not a provider call.
   const broken = harness({ io: fakeIo({ files: { "/bad.json": "{oops" } }) });
@@ -951,8 +916,6 @@ test("a missing required option fails usage_error before any provider call", asy
     [["envs", "create", "--site", "s1"], "--display-name"],
     [["envs", "create-plain"], "--display-name"],
     [["envs", "clone", "--display-name", "x"], "--source-env"],
-    [["envs", "push"], "--source-env"],
-    [["envs", "push", "--source-env", "a"], "--target-env"],
   ];
   for (const [argv, flag] of cases) {
     const harnessed = harness();
@@ -966,6 +929,27 @@ test("a missing required option fails usage_error before any provider call", asy
     );
     assert.equal(envelope.error.details.flag, flag);
     assert.equal(harnessed.client.calls.length, 0, argv.join(" "));
+  }
+});
+
+test("envs push requires its site, source and target before provider access", async () => {
+  const cases = [
+    [["envs", "push", "--db"], "siteId must be a non-empty string."],
+    [
+      ["envs", "push", "--site", "site-1", "--db"],
+      "sourceEnvironmentId must be a non-empty string.",
+    ],
+    [
+      ["envs", "push", "--site", "site-1", "--source-env", "env-1", "--db"],
+      "targetEnvironmentId must be a non-empty string.",
+    ],
+  ];
+  for (const [argv, message] of cases) {
+    const harnessed = harness();
+    const { envelope } = await failing(harnessed, ...argv);
+    assert.equal(envelope.error.code, "usage_error");
+    assert.equal(envelope.error.message, message);
+    assert.equal(harnessed.client.calls.length, 0);
   }
 });
 
@@ -987,9 +971,7 @@ test("an empty string counts as an absent option, as cobra had it", async () => 
 test("a missing positional argument is commander's error, mapped to usage_error", async () => {
   for (const argv of [
     ["sites", "get"],
-    ["sites", "reset"],
     ["envs", "get"],
-    ["envs", "delete"],
   ]) {
     const harnessed = harness();
     const { code, envelope } = await failing(harnessed, ...argv);
@@ -1011,43 +993,6 @@ test("an unknown option or subcommand never reaches a provider", async () => {
     assert.equal(envelope.error.code, "usage_error", argv.join(" "));
     assert.equal(harnessed.client.calls.length, 0, argv.join(" "));
   }
-});
-
-test("a secret must name exactly one source, and an absent one exits 3", async () => {
-  const harnessed = harness();
-  const missingSource = await failing(harnessed, "sites", "reset", "site-1");
-  assert.equal(missingSource.code, 2);
-  assert.equal(missingSource.envelope.error.code, "usage_error");
-  assert.match(
-    missingSource.envelope.error.message,
-    /exactly one of --admin-password-env, --admin-password-stdin, or --admin-password-file/,
-  );
-
-  const both = harness();
-  const conflicting = await failing(
-    both,
-    "sites",
-    "reset",
-    "site-1",
-    "--admin-password-env",
-    "PW",
-    "--admin-password-stdin",
-  );
-  assert.equal(conflicting.envelope.error.code, "usage_error");
-
-  const absent = harness({ io: fakeIo({ env: {} }) });
-  const unset = await failing(
-    absent,
-    "sites",
-    "reset",
-    "site-1",
-    "--admin-password-env",
-    "ADMIN_PW",
-  );
-  assert.equal(unset.code, 3);
-  assert.equal(unset.envelope.error.code, "credential_missing");
-  assert.equal(unset.envelope.error.details.source, "env:ADMIN_PW");
-  assert.equal(absent.client.calls.length, 0);
 });
 
 /* -------------------------------------------------------------------------- */

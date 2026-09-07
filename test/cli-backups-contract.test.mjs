@@ -252,7 +252,7 @@ test("the group registers exactly the Go command tree", async () => {
     );
 
     const tree = {
-      backups: ["list", "downloadable", "create", "restore", "delete"],
+      backups: ["list", "downloadable", "create"],
       cache: ["clear"],
       php: ["restart", "set-version"],
       redirects: ["list", "apply"],
@@ -266,13 +266,12 @@ test("the group registers exactly the Go command tree", async () => {
       );
     }
 
-    // `backups delete <backup_id>` is the group's only positional argument.
     for (const [group, subcommands] of Object.entries(tree)) {
       for (const name of subcommands) {
         const command = commandNamed(hosting, [group, name]);
         assert.deepEqual(
           command.registeredArguments.map((argument) => argument.name()),
-          group === "backups" && name === "delete" ? ["backup_id"] : [],
+          [],
           `${group} ${name}`,
         );
       }
@@ -289,13 +288,6 @@ test("every subcommand exposes exactly its Go flags", async () => {
       "backups list": ["--env"],
       "backups downloadable": ["--env"],
       "backups create": ["--env", "--from-json", "--tag"],
-      "backups restore": [
-        "--target-env",
-        "--from-json",
-        "--backup-id",
-        "--notified-user-id",
-      ],
-      "backups delete": [],
       "cache clear": [
         "--from-json",
         "--env",
@@ -386,10 +378,6 @@ test("flag defaults match the Go flag declarations", async () => {
       assert.equal(option.defaultValue, undefined, long);
       assert.equal(typeof option.parseArg, "function", long);
     }
-    assert.equal(
-      typeof optionNamed(["backups", "restore"], "--backup-id").parseArg,
-      "function",
-    );
     // Repeatable, and empty rather than undefined when never given.
     const ip = optionNamed(["denied-ips", "set"], "--ip");
     assert.deepEqual(ip.defaultValue, []);
@@ -433,28 +421,6 @@ test("each subcommand dispatches exactly the Go provider request", async () => {
           envId: "env-1",
           body: { tag: "nightly" },
         },
-      },
-      {
-        argv: [
-          "hosting",
-          "backups",
-          "restore",
-          "--target-env",
-          "env-2",
-          "--backup-id",
-          "42",
-          "--notified-user-id",
-          "user-9",
-        ],
-        request: {
-          kind: "restore-backup",
-          targetEnvId: "env-2",
-          body: { backup_id: 42, notified_user_id: "user-9" },
-        },
-      },
-      {
-        argv: ["hosting", "backups", "delete", "42"],
-        request: { kind: "delete-backup", backupId: 42 },
       },
       {
         argv: ["hosting", "cache", "clear", "--env", "env-1"],
@@ -675,15 +641,6 @@ test("--from-json replaces the built body, from a file or from stdin", async () 
 
     const cases = [
       ["hosting", "backups", "create", "--env", "env-1"],
-      [
-        "hosting",
-        "backups",
-        "restore",
-        "--target-env",
-        "env-2",
-        // Deliberately omitted: --from-json must win before the required
-        // --backup-id / --notified-user-id are ever consulted.
-      ],
       ["hosting", "cache", "clear", "--kind", "cdn"],
       ["hosting", "php", "set-version"],
       ["hosting", "redirects", "apply", "--env", "env-1"],
@@ -727,31 +684,6 @@ test("a missing required option is a usage_error naming the flag", async () => {
       { argv: ["hosting", "backups", "list"], flag: "--env" },
       { argv: ["hosting", "backups", "downloadable"], flag: "--env" },
       { argv: ["hosting", "backups", "create"], flag: "--env" },
-      { argv: ["hosting", "backups", "restore"], flag: "--target-env" },
-      {
-        argv: [
-          "hosting",
-          "backups",
-          "restore",
-          "--target-env",
-          "env-2",
-          "--notified-user-id",
-          "user-9",
-        ],
-        flag: "--backup-id",
-      },
-      {
-        argv: [
-          "hosting",
-          "backups",
-          "restore",
-          "--target-env",
-          "env-2",
-          "--backup-id",
-          "1",
-        ],
-        flag: "--notified-user-id",
-      },
       { argv: ["hosting", "cache", "clear"], flag: "--env" },
       {
         argv: ["hosting", "cache", "clear", "--kind", "cdn", "--env", "env-1"],
@@ -812,9 +744,6 @@ test("an unparseable option or argument fails during commander's parse", async (
       ["hosting", "cache", "clear", "--kind", "disk", "--env", "env-1"],
       ["hosting", "redirects", "list", "--env", "env-1", "--limit", "many"],
       ["hosting", "redirects", "list", "--env", "env-1", "--offset", "1.5"],
-      ["hosting", "backups", "restore", "--backup-id", "-1"],
-      ["hosting", "backups", "delete", "not-a-number"],
-      ["hosting", "backups", "delete"],
       ["hosting", "backups", "nope"],
     ];
 

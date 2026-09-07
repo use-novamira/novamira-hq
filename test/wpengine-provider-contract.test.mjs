@@ -313,34 +313,6 @@ test("wpengine add domain uses the install endpoint", async () => {
   );
 });
 
-// TestWPEngineRestoreBackupSendsRequestBody
-test("wpengine restore backup sends the remaining request body", async () => {
-  await withServer([{ body: "{}" }], async (server) => {
-    const client = await wpEngineClient(server.baseUrl);
-    const result = await client.action({
-      kind: "restore-backup",
-      targetEnvId: "install-1",
-      body: {
-        backup_id: "backup-1",
-        notification_emails: ["agent@example.com"],
-        restore_database: true,
-        create_checkpoint: false,
-      },
-    });
-
-    assert.equal(result.action, "backups.restore");
-    assertRequestLines(server.requests, [
-      "POST /v1/installs/install-1/backups/backup-1/restore",
-    ]);
-    // The backup id is consumed by the path and removed from the body.
-    assert.deepEqual(JSON.parse(server.requests[0].body), {
-      notification_emails: ["agent@example.com"],
-      restore_database: true,
-      create_checkpoint: false,
-    });
-  });
-});
-
 /* -------------------------------------------------------------------------- */
 /* Coverage beyond the Go suite                                               */
 /* -------------------------------------------------------------------------- */
@@ -350,10 +322,9 @@ test("wpengine reports its capability list", async () => {
     const client = await wpEngineClient(server.baseUrl);
     const capabilities = await client.read({ kind: "capabilities" });
 
-    // The 40 entries of Go's `(*WPEngineClient).capabilities`, in order.
-    assert.equal(capabilities.length, 40);
+    assert.equal(capabilities.length, 33);
     assert.equal(capabilities[0].name, "providers.validate");
-    assert.equal(capabilities[39].name, "access.sftp");
+    assert.equal(capabilities[32].name, "analytics.env");
     const byName = new Map(
       capabilities.map((capability) => [capability.name, capability]),
     );
@@ -503,13 +474,11 @@ test("wpengine reads domains and backups from the install endpoints", async () =
   );
 });
 
-test("wpengine creates and deletes sites and installs", async () => {
+test("wpengine creates sites and installs", async () => {
   await withServer(
     [
       { body: '{"id":"site-1","name":"Torque"}' },
-      { body: "" },
       { body: '{"id":"install-1"}' },
-      { body: "" },
     ],
     async (server) => {
       const client = await wpEngineClient(server.baseUrl);
@@ -522,17 +491,6 @@ test("wpengine creates and deletes sites and installs", async () => {
       assert.equal(created.action, "sites.create");
       assert.equal(created.operationId, "site-1");
 
-      const deleted = await client.action({
-        kind: "delete-site",
-        siteId: "site-1",
-      });
-      assert.equal(deleted.action, "sites.delete");
-      assert.equal(deleted.status, 200);
-      // An empty response body parses to null, as Go's parseJSONBody does.
-      assert.equal(deleted.raw, null);
-      assert.equal(deleted.operationId, undefined);
-      assert.equal(deleted.message, undefined);
-
       const install = await client.action({
         kind: "create-environment",
         siteId: "site-1",
@@ -541,17 +499,9 @@ test("wpengine creates and deletes sites and installs", async () => {
       });
       assert.equal(install.action, "envs.create");
 
-      const removed = await client.action({
-        kind: "delete-environment",
-        envId: "install-1",
-      });
-      assert.equal(removed.action, "envs.delete");
-
       assertRequestLines(server.requests, [
         "POST /v1/sites",
-        "DELETE /v1/sites/site-1",
         "POST /v1/installs",
-        "DELETE /v1/installs/install-1",
       ]);
       // `display_name` seeds the WP Engine-native `name` field.
       assert.deepEqual(JSON.parse(server.requests[0].body), {
@@ -559,7 +509,7 @@ test("wpengine creates and deletes sites and installs", async () => {
         account_id: "account-1",
         name: "Torque",
       });
-      assert.deepEqual(JSON.parse(server.requests[2].body), {
+      assert.deepEqual(JSON.parse(server.requests[1].body), {
         display_name: "torquemag",
         environment: "staging",
         site_id: "site-1",
@@ -585,47 +535,6 @@ test("wpengine changes the primary domain with PATCH", async () => {
         "PATCH /v1/installs/install-1/domains/domain-1",
       ]);
       assert.deepEqual(JSON.parse(server.requests[0].body), { primary: true });
-    },
-  );
-});
-
-test("wpengine deletes a single domain directly", async () => {
-  await withServer([{ body: "" }], async (server) => {
-    const client = await wpEngineClient(server.baseUrl);
-    const result = await client.action({
-      kind: "delete-domains",
-      envId: "install-1",
-      body: { id: "domain-1" },
-    });
-
-    assert.equal(result.action, "domains.delete");
-    assert.equal(result.raw, null);
-    assertRequestLines(server.requests, [
-      "DELETE /v1/installs/install-1/domains/domain-1",
-    ]);
-  });
-});
-
-test("wpengine deletes several domains and aggregates the results", async () => {
-  await withServer(
-    [{ body: '{"deleted":"domain-1"}' }, { body: '{"deleted":"domain-2"}' }],
-    async (server) => {
-      const client = await wpEngineClient(server.baseUrl);
-      const result = await client.action({
-        kind: "delete-domains",
-        envId: "install-1",
-        body: { domain_ids: ["domain-1", "domain-2"] },
-      });
-
-      assert.equal(result.action, "domains.delete");
-      assert.equal(result.status, 200);
-      assert.deepEqual(result.raw, {
-        results: [{ deleted: "domain-1" }, { deleted: "domain-2" }],
-      });
-      assertRequestLines(server.requests, [
-        "DELETE /v1/installs/install-1/domains/domain-1",
-        "DELETE /v1/installs/install-1/domains/domain-2",
-      ]);
     },
   );
 });
@@ -742,11 +651,6 @@ test("wpengine rejects unmapped read requests", async () => {
       { kind: "themes", envId: "x" },
       { kind: "company-plugins" },
       { kind: "company-themes" },
-      { kind: "ssh-status", envId: "x" },
-      { kind: "ssh-allowlist", envId: "x" },
-      { kind: "ssh-config", siteId: "x", envId: "y" },
-      { kind: "ssh-password", envId: "x" },
-      { kind: "sftp-accounts", envId: "x" },
       { kind: "analytics-usage", siteId: "x", metric: "visits" },
       { kind: "analytics-env", envId: "x", metric: "visits" },
       { kind: "file-list", envId: "x" },
@@ -770,11 +674,9 @@ test("wpengine rejects unmapped action requests", async () => {
   await withServer([], async (server) => {
     const client = await wpEngineClient(server.baseUrl);
     const unmapped = [
-      { kind: "reset-site", siteId: "x" },
       { kind: "push-environment", siteId: "x" },
       { kind: "restart-php", envId: "x" },
       { kind: "set-php-version" },
-      { kind: "delete-backup", backupId: 1 },
       { kind: "update-plugin", envId: "x" },
       { kind: "bulk-update-plugins", envId: "x" },
       { kind: "update-theme", envId: "x" },
@@ -782,17 +684,6 @@ test("wpengine rejects unmapped action requests", async () => {
       { kind: "run-wp-cli", envId: "x" },
       { kind: "set-denied-ips" },
       { kind: "apply-redirects", envId: "x" },
-      { kind: "dns-record-create", domainId: "x" },
-      { kind: "dns-record-update", domainId: "x" },
-      { kind: "dns-record-delete", domainId: "x" },
-      { kind: "set-ssh-status", envId: "x" },
-      { kind: "set-ssh-password-status", envId: "x" },
-      { kind: "generate-ssh-password", envId: "x" },
-      { kind: "set-ssh-allowlist", envId: "x" },
-      { kind: "change-ssh-password-expiration", envId: "x" },
-      { kind: "toggle-sftp-accounts", envId: "x" },
-      { kind: "add-sftp-account", envId: "x" },
-      { kind: "remove-sftp-account", sftpAccountId: "x" },
     ];
     for (const request of unmapped) {
       await assert.rejects(
@@ -858,51 +749,6 @@ test("wpengine rejects malformed action bodies", async () => {
           kind: "change-primary-domain",
           envId: "install-1",
           body: {},
-        }),
-      (error) => {
-        assert.equal(error.code, "usage_error");
-        return true;
-      },
-    );
-    // domains.delete needs at least one id
-    await assert.rejects(
-      () => client.action({ kind: "delete-domains", envId: "install-1" }),
-      (error) => {
-        assert.equal(error.code, "usage_error");
-        return true;
-      },
-    );
-    await assert.rejects(
-      () =>
-        client.action({
-          kind: "delete-domains",
-          envId: "install-1",
-          body: { domain_ids: [] },
-        }),
-      (error) => {
-        assert.equal(error.code, "usage_error");
-        return true;
-      },
-    );
-    await assert.rejects(
-      () =>
-        client.action({
-          kind: "delete-domains",
-          envId: "install-1",
-          body: { domain_ids: "domain-1" },
-        }),
-      (error) => {
-        assert.equal(error.code, "usage_error");
-        return true;
-      },
-    );
-    // backups.restore needs a backup id
-    await assert.rejects(
-      () =>
-        client.action({
-          kind: "restore-backup",
-          targetEnvId: "install-1",
-          body: { restore_database: true },
         }),
       (error) => {
         assert.equal(error.code, "usage_error");

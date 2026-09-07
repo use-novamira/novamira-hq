@@ -354,31 +354,6 @@ test("hostinger creates a site", async () => {
   }
 });
 
-// TestHostingerDeleteDomainsUsesEnvRef
-test("hostinger delete domains uses the env ref", async () => {
-  const server = await startServer([
-    {
-      expected:
-        "DELETE /api/hosting/v1/accounts/u123/websites/example.com/parked-domains/alias.com",
-      body: JSON.stringify({ message: "success" }),
-    },
-  ]);
-  try {
-    const result = await client(server.baseUrl).action({
-      kind: "delete-domains",
-      envId: "u123:example.com",
-      body: { domain: "alias.com" },
-    });
-    assert.equal(result.action, "domains.delete");
-    assert.equal(result.provider, "hostinger");
-    assert.equal(result.status, 200);
-    // Go collects one raw body per deleted parked domain into a JSON array.
-    assert.deepEqual(result.raw, [{ message: "success" }]);
-  } finally {
-    await server.finish();
-  }
-});
-
 /* -------------------------------------------------------------------------- */
 /* Behaviour the Go implementation specifies but its test file does not cover  */
 /* -------------------------------------------------------------------------- */
@@ -390,7 +365,7 @@ test("hostinger reports its capability table", async () => {
       kind: "capabilities",
     });
     assert.ok(Array.isArray(capabilities));
-    assert.equal(capabilities.length, 42);
+    assert.equal(capabilities.length, 33);
     const byName = new Map(capabilities.map((entry) => [entry.name, entry]));
 
     assert.deepEqual(byName.get("providers.validate"), {
@@ -769,153 +744,6 @@ test("hostinger adds a parked domain", async () => {
   }
 });
 
-test("hostinger deletes several parked domains from a list body", async () => {
-  const server = await startServer([
-    {
-      expected:
-        "DELETE /api/hosting/v1/accounts/acct/websites/site.example/parked-domains/one.example",
-      body: JSON.stringify({ message: "one" }),
-    },
-    {
-      expected:
-        "DELETE /api/hosting/v1/accounts/acct/websites/site.example/parked-domains/two.example",
-      body: JSON.stringify({ message: "two" }),
-    },
-  ]);
-  try {
-    const result = await client(server.baseUrl).action({
-      kind: "delete-domains",
-      envId: "u123:example.com",
-      // `username` and `website` in the body override the env ref.
-      body: {
-        username: "acct",
-        website: "site.example",
-        domains: ["one.example", "two.example"],
-      },
-    });
-    assert.equal(result.action, "domains.delete");
-    assert.deepEqual(result.raw, [{ message: "one" }, { message: "two" }]);
-  } finally {
-    await server.finish();
-  }
-});
-
-test("hostinger rejects malformed delete-domains bodies", async () => {
-  const server = await startServer([]);
-  const hostinger = client(server.baseUrl);
-  try {
-    await assert.rejects(
-      hostinger.action({ kind: "delete-domains", envId: "u:d", body: {} }),
-      (error) => {
-        assert.equal(error.code, "usage_error");
-        assert.match(error.message, /parked_domain/);
-        return true;
-      },
-    );
-    await assert.rejects(
-      hostinger.action({
-        kind: "delete-domains",
-        envId: "u:d",
-        body: { domains: "one.example" },
-      }),
-      (error) => error.code === "usage_error",
-    );
-    await assert.rejects(
-      hostinger.action({
-        kind: "delete-domains",
-        envId: "u:d",
-        body: { domain_ids: [""] },
-      }),
-      (error) => error.code === "usage_error",
-    );
-    await assert.rejects(
-      hostinger.action({
-        kind: "delete-domains",
-        envId: "u:d",
-        body: { domains: [] },
-      }),
-      (error) => error.code === "usage_error",
-    );
-    // No domain anywhere: the env ref is empty and the username comes from the
-    // profile, so `deleteParkedDomains` has nothing to address.
-    await assert.rejects(
-      client(server.baseUrl, { companyId: "acct" }).action({
-        kind: "delete-domains",
-        envId: "",
-        body: { domains: ["a.example"] },
-      }),
-      (error) => {
-        assert.equal(error.code, "usage_error");
-        assert.match(error.message, /website domain/);
-        return true;
-      },
-    );
-    // `deleteParkedDomains` resolves the env ref with a nil body, so a username
-    // that only exists in the body cannot rescue a missing profile company id.
-    await assert.rejects(
-      hostinger.action({
-        kind: "delete-domains",
-        envId: "",
-        body: { username: "acct", domains: ["a.example"] },
-      }),
-      (error) => {
-        assert.equal(error.code, "usage_error");
-        assert.match(error.message, /username/);
-        return true;
-      },
-    );
-    // A non-object body cannot be read as a Hostinger field map.
-    await assert.rejects(
-      hostinger.action({ kind: "delete-domains", envId: "u:d", body: [1, 2] }),
-      (error) => error.code === "usage_error",
-    );
-  } finally {
-    await server.finish();
-  }
-});
-
-test("hostinger writes dns zones", async () => {
-  const server = await startServer([
-    {
-      expected: "PUT /api/dns/v1/zones/example.com",
-      body: JSON.stringify({ message: "created" }),
-    },
-    {
-      expected: "PUT /api/dns/v1/zones/example.com",
-      body: JSON.stringify({ message: "updated" }),
-    },
-    {
-      expected: "DELETE /api/dns/v1/zones/example.com",
-      body: JSON.stringify({ message: "deleted" }),
-    },
-  ]);
-  try {
-    const hostinger = client(server.baseUrl);
-    const created = await hostinger.action({
-      kind: "dns-record-create",
-      domainId: "example.com",
-      body: { overwrite: true, zone: [] },
-    });
-    assert.equal(created.action, "dns.records.create");
-
-    const updated = await hostinger.action({
-      kind: "dns-record-update",
-      domainId: "example.com",
-      body: { zone: [] },
-    });
-    assert.equal(updated.action, "dns.records.update");
-
-    const deleted = await hostinger.action({
-      kind: "dns-record-delete",
-      domainId: "example.com",
-      body: { filters: [] },
-    });
-    assert.equal(deleted.action, "dns.records.delete");
-  } finally {
-    await server.finish();
-  }
-});
-
 test("hostinger escapes path segments the way Go's url.PathEscape does", async () => {
   const server = await startServer([
     {
@@ -981,11 +809,6 @@ test("hostinger reports every unmapped read as provider_unsupported", async () =
     { kind: "themes", envId: "e" },
     { kind: "company-plugins" },
     { kind: "company-themes" },
-    { kind: "ssh-status", envId: "e" },
-    { kind: "ssh-allowlist", envId: "e" },
-    { kind: "ssh-config", siteId: "s", envId: "e" },
-    { kind: "ssh-password", envId: "e" },
-    { kind: "sftp-accounts", envId: "e" },
     { kind: "analytics-usage", siteId: "s", metric: "visits" },
     { kind: "analytics-env", envId: "e", metric: "visits" },
     { kind: "file-list", envId: "e" },
@@ -1010,17 +833,12 @@ test("hostinger reports every unmapped action as provider_unsupported", async ()
   const server = await startServer([]);
   const hostinger = client(server.baseUrl);
   const unmapped = [
-    { kind: "delete-site", siteId: "s" },
-    { kind: "reset-site", siteId: "s" },
     { kind: "push-environment", siteId: "s" },
-    { kind: "delete-environment", envId: "e" },
     { kind: "clear-cache", cache: "site" },
     { kind: "restart-php", envId: "e" },
     { kind: "set-php-version" },
     { kind: "change-primary-domain", envId: "e" },
     { kind: "create-backup", envId: "e" },
-    { kind: "restore-backup", targetEnvId: "e" },
-    { kind: "delete-backup", backupId: 1 },
     { kind: "update-plugin", envId: "e" },
     { kind: "bulk-update-plugins", envId: "e" },
     { kind: "update-theme", envId: "e" },
@@ -1028,14 +846,6 @@ test("hostinger reports every unmapped action as provider_unsupported", async ()
     { kind: "run-wp-cli", envId: "e" },
     { kind: "set-denied-ips" },
     { kind: "apply-redirects", envId: "e" },
-    { kind: "set-ssh-status", envId: "e" },
-    { kind: "set-ssh-password-status", envId: "e" },
-    { kind: "generate-ssh-password", envId: "e" },
-    { kind: "set-ssh-allowlist", envId: "e" },
-    { kind: "change-ssh-password-expiration", envId: "e" },
-    { kind: "toggle-sftp-accounts", envId: "e" },
-    { kind: "add-sftp-account", envId: "e" },
-    { kind: "remove-sftp-account", sftpAccountId: "a" },
   ];
   try {
     for (const request of unmapped) {

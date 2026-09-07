@@ -102,8 +102,6 @@ const CAPABILITIES: readonly ProviderCapabilityInput[] = [
     `uses POST /api/hosting/v1/websites; ${NOTE_NATIVE_JSON}`,
   ],
   ["sites.clone", false, NOTE_UNSUPPORTED],
-  ["sites.delete", false, NOTE_UNSUPPORTED],
-  ["sites.reset", false, NOTE_UNSUPPORTED],
   [
     "envs.create",
     true,
@@ -112,7 +110,6 @@ const CAPABILITIES: readonly ProviderCapabilityInput[] = [
   ["envs.create-plain", false, NOTE_UNSUPPORTED],
   ["envs.clone", false, NOTE_UNSUPPORTED],
   ["envs.push", false, NOTE_UNSUPPORTED],
-  ["envs.delete", false, NOTE_UNSUPPORTED],
   [
     "domains.list",
     true,
@@ -123,29 +120,9 @@ const CAPABILITIES: readonly ProviderCapabilityInput[] = [
     true,
     "uses POST /api/hosting/v1/accounts/{username}/websites/{domain}/parked-domains",
   ],
-  [
-    "domains.delete",
-    true,
-    "uses DELETE /api/hosting/v1/accounts/{username}/websites/{domain}/parked-domains/{parked_domain}",
-  ],
   ["domains.primary", false, NOTE_NOT_MAPPED],
   ["dns.domains.list", true, "uses GET /api/domains/v1/portfolio"],
   ["dns.records.list", true, "uses GET /api/dns/v1/zones/{domain}"],
-  [
-    "dns.records.create",
-    true,
-    `uses PUT /api/dns/v1/zones/{domain}; ${NOTE_NATIVE_JSON}`,
-  ],
-  [
-    "dns.records.update",
-    true,
-    `uses PUT /api/dns/v1/zones/{domain}; ${NOTE_NATIVE_JSON}`,
-  ],
-  [
-    "dns.records.delete",
-    true,
-    `uses DELETE /api/dns/v1/zones/{domain}; ${NOTE_NATIVE_JSON}`,
-  ],
   ["backups.list", false, NOTE_NOT_MAPPED],
   ["cache.clear", false, NOTE_UNSUPPORTED],
   ["php.restart", false, NOTE_UNSUPPORTED],
@@ -161,8 +138,6 @@ const CAPABILITIES: readonly ProviderCapabilityInput[] = [
   ["logs.get", false, NOTE_NOT_MAPPED],
   ["analytics.usage", false, NOTE_NOT_MAPPED],
   ["analytics.env", false, NOTE_NOT_MAPPED],
-  ["access.ssh", false, NOTE_NOT_MAPPED],
-  ["access.sftp", false, NOTE_NOT_MAPPED],
 ];
 
 /* -------------------------------------------------------------------------- */
@@ -414,11 +389,6 @@ class HostingerClient implements ProviderClient {
       case "themes":
       case "company-plugins":
       case "company-themes":
-      case "ssh-status":
-      case "ssh-allowlist":
-      case "ssh-config":
-      case "ssh-password":
-      case "sftp-accounts":
       case "analytics-usage":
       case "analytics-env":
       case "file-list":
@@ -466,41 +436,13 @@ class HostingerClient implements ProviderClient {
           ref.body,
         );
       }
-      case "delete-domains":
-        return this.#deleteParkedDomains(request.envId, request.body);
-      case "dns-record-create":
-        return this.#sendAction(
-          "dns.records.create",
-          "PUT",
-          this.#url(`/api/dns/v1/zones/${pathEscape(request.domainId)}`),
-          request.body,
-        );
-      case "dns-record-update":
-        return this.#sendAction(
-          "dns.records.update",
-          "PUT",
-          this.#url(`/api/dns/v1/zones/${pathEscape(request.domainId)}`),
-          request.body,
-        );
-      case "dns-record-delete":
-        return this.#sendAction(
-          "dns.records.delete",
-          "DELETE",
-          this.#url(`/api/dns/v1/zones/${pathEscape(request.domainId)}`),
-          request.body,
-        );
       // Deliberately unmapped, mirroring Go's `default` arm.
-      case "delete-site":
-      case "reset-site":
       case "push-environment":
-      case "delete-environment":
       case "clear-cache":
       case "restart-php":
       case "set-php-version":
       case "change-primary-domain":
       case "create-backup":
-      case "restore-backup":
-      case "delete-backup":
       case "update-plugin":
       case "bulk-update-plugins":
       case "update-theme":
@@ -508,14 +450,6 @@ class HostingerClient implements ProviderClient {
       case "run-wp-cli":
       case "set-denied-ips":
       case "apply-redirects":
-      case "set-ssh-status":
-      case "set-ssh-password-status":
-      case "generate-ssh-password":
-      case "set-ssh-allowlist":
-      case "change-ssh-password-expiration":
-      case "toggle-sftp-accounts":
-      case "add-sftp-account":
-      case "remove-sftp-account":
         throw unsupportedActionRequest(PROVIDER, request);
       default:
         return assertNever(request);
@@ -583,47 +517,6 @@ class HostingerClient implements ProviderClient {
       status: response.status,
       ...(operationId === undefined ? {} : { operationId }),
       raw: response.data,
-    };
-  }
-
-  /** `deleteParkedDomains`: one DELETE per parked domain, results combined. */
-  async #deleteParkedDomains(
-    envId: string,
-    body: unknown,
-  ): Promise<ActionResult> {
-    // Go resolves the env ref with a nil body first, then lets the body override
-    // the username and the website; a username that exists only in the body
-    // cannot satisfy the env ref itself.
-    const ref = resolveEnvRef(envId, undefined, this.#username);
-    const fields = objectFromBody(body);
-    const username =
-      stringFromMap(fields, "username", "account_username") || ref.username;
-    const domain = stringFromMap(fields, "website", "site_id") || ref.domain;
-    if (domain === "")
-      throw new CliError(
-        "usage_error",
-        "Hostinger requires a website domain in --env username:domain, --env domain, or body.website.",
-        { details: { provider: PROVIDER, action: "delete-domains" } },
-      );
-
-    const domains = domainsFromBody(fields);
-    const combined: unknown[] = [];
-    let status = 200;
-    for (const parked of domains) {
-      const response = await this.#http.request({
-        path: this.#url(
-          `/api/hosting/v1/accounts/${pathEscape(username)}/websites/${pathEscape(domain)}/parked-domains/${pathEscape(parked)}`,
-        ),
-        method: "DELETE",
-      });
-      status = response.status;
-      combined.push(response.data);
-    }
-    return {
-      provider: PROVIDER,
-      action: "domains.delete",
-      status,
-      raw: combined,
     };
   }
 }
@@ -805,62 +698,6 @@ function stringFromMap(
       return String(Math.trunc(value));
   }
   return "";
-}
-
-/** `hostingerDomainsFromBody`. */
-function domainsFromBody(fields: Readonly<Record<string, unknown>>): string[] {
-  const single = stringFromMap(
-    fields,
-    "parked_domain",
-    "parkedDomain",
-    "domain",
-    "domain_id",
-    "id",
-  );
-  if (single !== "") return [single];
-
-  for (const key of ["domains", "domain_ids"]) {
-    if (!Object.hasOwn(fields, key)) continue;
-    const raw = fields[key];
-    if (!Array.isArray(raw))
-      throw new CliError(
-        "usage_error",
-        `Hostinger requires ${key} to be an array.`,
-        {
-          details: { provider: PROVIDER, action: "delete-domains", field: key },
-        },
-      );
-    const out: string[] = [];
-    for (const item of raw as readonly unknown[]) {
-      if (typeof item !== "string" || item === "")
-        throw new CliError(
-          "usage_error",
-          "Hostinger requires non-empty domain names.",
-          {
-            details: {
-              provider: PROVIDER,
-              action: "delete-domains",
-              field: key,
-            },
-          },
-        );
-      out.push(item);
-    }
-    if (out.length === 0)
-      throw new CliError(
-        "usage_error",
-        "Hostinger requires at least one domain name.",
-        {
-          details: { provider: PROVIDER, action: "delete-domains", field: key },
-        },
-      );
-    return out;
-  }
-  throw new CliError(
-    "usage_error",
-    "Hostinger requires parked_domain, domain, id, domains, or domain_ids for domains.delete.",
-    { details: { provider: PROVIDER, action: "delete-domains" } },
-  );
 }
 
 /** Go sends no request body for a nil body and a JSON body for anything else. */

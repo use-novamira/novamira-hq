@@ -30,6 +30,23 @@ The one exception is bounded: `hosting novamira setup` issues a single
 compatibility metadata, carrying `Accept` and `User-Agent` and no `Authorization`
 header, ever. No other URL on a configured site may be requested.
 
+## Hosting safety exclusions
+
+HQ deliberately implements no site deletion/reset, environment deletion, backup
+deletion or restoration, domain deletion, DNS-record mutation, or SSH/SFTP
+access management through CLI, dashboard, MCP, the provider-neutral client, or
+provider adapters. Capability output must pass through
+`src/hosting/capabilities.ts`, whose positive allowlist keeps unknown
+provider-native operations private by default.
+
+`hosting envs push` is the exceptional high-impact operation: it requires an
+explicit positive scope, validates distinct source/target environments, requires
+provider support for both push and backup creation, and creates and waits for a
+target safety backup before pushing. MCP exposes only typed tools; it has no
+generic CLI/argv bridge. MCP push is a two-step plan/apply flow using a
+short-lived, session-local, one-use confirmation ID, and `deploy` is not in the
+default MCP capability preset.
+
 ## Storage namespace
 
 HQ's namespace is disjoint from the site CLI's, and `NOVAMIRA_HOME` is never

@@ -213,7 +213,7 @@ test("the group registers exactly the Go command tree", () => {
   );
   assert.deepEqual(
     subcommandNames(hosting, ["domains"]).commands.map((c) => c.name()),
-    ["list", "add", "delete", "verify", "primary"],
+    ["list", "add", "verify", "primary"],
   );
   assert.deepEqual(
     subcommandNames(hosting, ["dns"]).commands.map((c) => c.name()),
@@ -225,7 +225,7 @@ test("the group registers exactly the Go command tree", () => {
   );
   assert.deepEqual(
     subcommandNames(hosting, ["dns", "records"]).commands.map((c) => c.name()),
-    ["list", "create", "update", "delete"],
+    ["list"],
   );
 });
 
@@ -244,11 +244,6 @@ test("every subcommand carries exactly the Go flags", () => {
     "--custom-ssl-cert-file",
     "--from-json",
   ]);
-  assert.deepEqual(flagsOf(["domains", "delete"]), [
-    "--env",
-    "--domain-id",
-    "--from-json",
-  ]);
   assert.deepEqual(flagsOf(["domains", "verify"]), []);
   assert.deepEqual(flagsOf(["domains", "primary"]), [
     "--env",
@@ -258,29 +253,6 @@ test("every subcommand carries exactly the Go flags", () => {
   ]);
   assert.deepEqual(flagsOf(["dns", "domains", "list"]), ["--company"]);
   assert.deepEqual(flagsOf(["dns", "records", "list"]), ["--domain"]);
-  assert.deepEqual(flagsOf(["dns", "records", "create"]), [
-    "--domain",
-    "--record-type",
-    "--name",
-    "--ttl",
-    "--value",
-    "--from-json",
-  ]);
-  assert.deepEqual(flagsOf(["dns", "records", "update"]), [
-    "--domain",
-    "--record-type",
-    "--name",
-    "--ttl",
-    "--add-value",
-    "--remove-value",
-    "--from-json",
-  ]);
-  assert.deepEqual(flagsOf(["dns", "records", "delete"]), [
-    "--domain",
-    "--record-type",
-    "--name",
-    "--from-json",
-  ]);
 
   // `domains verify` takes the site domain id as a required argument, as
   // cobra's ExactArgs(1) did, not as a flag.
@@ -319,27 +291,6 @@ test("--setup-type is constrained at parse time, unlike Go's late validateEnum",
     "eventually",
   ]);
   // Nothing was dispatched: the parse failed before a client existed.
-  assert.deepEqual(context.calls.action, []);
-});
-
-test("--ttl only accepts a non-negative integer", async () => {
-  const context = harness();
-  await fails("usage_error", context, [
-    "hosting",
-    "dns",
-    "records",
-    "create",
-    "--domain",
-    "dom-1",
-    "--record-type",
-    "A",
-    "--name",
-    "www",
-    "--ttl",
-    "-1",
-    "--value",
-    "1.2.3.4",
-  ]);
   assert.deepEqual(context.calls.action, []);
 });
 
@@ -501,40 +452,6 @@ test("an unreadable custom SSL file is a usage error naming the path", async () 
   assert.deepEqual(context.calls.action, []);
 });
 
-test("domains delete collects every --domain-id in order", async () => {
-  const context = harness();
-  await succeeds(context, [
-    "hosting",
-    "domains",
-    "delete",
-    "--env",
-    "env-1",
-    "--domain-id",
-    "d1",
-    "--domain-id",
-    "d2",
-  ]);
-  assert.deepEqual(context.calls.action, [
-    {
-      kind: "delete-domains",
-      envId: "env-1",
-      body: { domain_ids: ["d1", "d2"] },
-    },
-  ]);
-});
-
-test("domains delete refuses an empty domain id list", async () => {
-  const context = harness();
-  const error = await fails("usage_error", context, [
-    "hosting",
-    "domains",
-    "delete",
-    "--env",
-    "env-1",
-  ]);
-  assert.deepEqual(error.details, { flag: "--domain-id" });
-});
-
 test("domains verify reads the verification of the positional site domain id", async () => {
   const context = harness({ read: { verified: false } });
   const envelope = await succeeds(context, [
@@ -644,213 +561,6 @@ test("dns records list reads the records of one domain", async () => {
     "list",
   ]);
   assert.deepEqual(error.details, { flag: "--domain" });
-});
-
-test("dns records create wraps every --value and only sends a given ttl", async () => {
-  const withTtl = harness();
-  await succeeds(withTtl, [
-    "hosting",
-    "dns",
-    "records",
-    "create",
-    "--domain",
-    "dom-1",
-    "--record-type",
-    "A",
-    "--name",
-    "www",
-    "--ttl",
-    "0",
-    "--value",
-    "1.2.3.4",
-    "--value",
-    "5.6.7.8",
-  ]);
-  assert.deepEqual(withTtl.calls.action, [
-    {
-      kind: "dns-record-create",
-      domainId: "dom-1",
-      body: {
-        type: "A",
-        name: "www",
-        ttl: 0,
-        resource_records: [{ value: "1.2.3.4" }, { value: "5.6.7.8" }],
-      },
-    },
-  ]);
-
-  const withoutTtl = harness();
-  await succeeds(withoutTtl, [
-    "hosting",
-    "dns",
-    "records",
-    "create",
-    "--domain",
-    "dom-1",
-    "--record-type",
-    "CNAME",
-    "--name",
-    "alias",
-    "--value",
-    "example.test",
-  ]);
-  assert.equal(
-    Object.hasOwn(withoutTtl.calls.action[0].body, "ttl"),
-    false,
-    "an unset --ttl must not reach the provider",
-  );
-});
-
-test("dns records create requires at least one value, a type and a name", async () => {
-  const noValue = harness();
-  assert.deepEqual(
-    (
-      await fails("usage_error", noValue, [
-        "hosting",
-        "dns",
-        "records",
-        "create",
-        "--domain",
-        "dom-1",
-        "--record-type",
-        "A",
-        "--name",
-        "www",
-      ])
-    ).details,
-    { flag: "--value" },
-  );
-
-  const noType = harness();
-  assert.deepEqual(
-    (
-      await fails("usage_error", noType, [
-        "hosting",
-        "dns",
-        "records",
-        "create",
-        "--domain",
-        "dom-1",
-        "--name",
-        "www",
-        "--value",
-        "1.2.3.4",
-      ])
-    ).details,
-    { flag: "--record-type" },
-  );
-});
-
-test("dns records update sends only the non-empty value lists", async () => {
-  const both = harness();
-  await succeeds(both, [
-    "hosting",
-    "dns",
-    "records",
-    "update",
-    "--domain",
-    "dom-1",
-    "--record-type",
-    "A",
-    "--name",
-    "www",
-    "--ttl",
-    "300",
-    "--add-value",
-    "1.1.1.1",
-    "--remove-value",
-    "2.2.2.2",
-  ]);
-  assert.deepEqual(both.calls.action, [
-    {
-      kind: "dns-record-update",
-      domainId: "dom-1",
-      body: {
-        type: "A",
-        name: "www",
-        ttl: 300,
-        new_resource_records: [{ value: "1.1.1.1" }],
-        removed_resource_records: [{ value: "2.2.2.2" }],
-      },
-    },
-  ]);
-
-  const neither = harness();
-  await succeeds(neither, [
-    "hosting",
-    "dns",
-    "records",
-    "update",
-    "--domain",
-    "dom-1",
-    "--record-type",
-    "A",
-    "--name",
-    "www",
-  ]);
-  assert.deepEqual(neither.calls.action[0].body, { type: "A", name: "www" });
-});
-
-test("dns records delete sends the type and the name", async () => {
-  const context = harness();
-  await succeeds(context, [
-    "hosting",
-    "dns",
-    "records",
-    "delete",
-    "--domain",
-    "dom-1",
-    "--record-type",
-    "TXT",
-    "--name",
-    "_acme",
-  ]);
-  assert.deepEqual(context.calls.action, [
-    {
-      kind: "dns-record-delete",
-      domainId: "dom-1",
-      body: { type: "TXT", name: "_acme" },
-    },
-  ]);
-});
-
-test("a --from-json payload replaces the option-built body of every DNS command", async () => {
-  const payload = '{"type":"MX","name":"@","resource_records":[]}';
-  for (const [subcommand, kind] of [
-    ["create", "dns-record-create"],
-    ["update", "dns-record-update"],
-    ["delete", "dns-record-delete"],
-  ]) {
-    const context = harness({ io: { stdin: payload } });
-    await succeeds(context, [
-      "hosting",
-      "dns",
-      "records",
-      subcommand,
-      "--domain",
-      "dom-1",
-      "--from-json",
-      "-",
-    ]);
-    assert.deepEqual(context.calls.action, [
-      { kind, domainId: "dom-1", body: JSON.parse(payload) },
-    ]);
-  }
-});
-
-test("a malformed --from-json payload is a usage error", async () => {
-  const context = harness({ io: { stdin: "{not json" } });
-  await fails("usage_error", context, [
-    "hosting",
-    "dns",
-    "records",
-    "create",
-    "--domain",
-    "dom-1",
-    "--from-json",
-    "-",
-  ]);
-  assert.deepEqual(context.calls.action, []);
 });
 
 /* -------------------------------------------------------------------------- */

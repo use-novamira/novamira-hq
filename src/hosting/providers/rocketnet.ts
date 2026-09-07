@@ -108,27 +108,20 @@ const CAPABILITIES: readonly ProviderCapabilityInput[] = (() => {
       true,
       "uses POST /v1/sites/{id}/clone; source site id must be in body.source_site_id",
     ],
-    ["sites.delete", true, "uses DELETE /v1/sites/{id}"],
-    ["sites.reset", false, unsupported],
     ["envs.create", true, "uses POST /v1/sites/{site_id}/staging"],
     ["envs.create-plain", false, singleEnv],
     ["envs.clone", true, "uses POST /v1/sites/{site_id}/staging"],
-    ["envs.push", true, "uses POST /v1/sites/{site_id}/staging/publish"],
-    ["envs.delete", true, "uses DELETE /v1/sites/{id}/staging"],
+    [
+      "envs.push",
+      false,
+      "Rocket.net staging publish is all-or-nothing; HQ requires an explicit granular push scope",
+    ],
     ["domains.list", true, "uses GET /v1/sites/{site_id}/domains"],
     ["domains.add", true, "uses POST /v1/sites/{site_id}/domains"],
-    [
-      "domains.delete",
-      true,
-      "uses DELETE /v1/sites/{site_id}/domains/{domain_id}",
-    ],
     ["domains.verify", true, "uses GET /v1/sites/{site_id}/maindomain/recheck"],
     ["domains.primary", true, "uses PUT /v1/sites/{site_id}/maindomain"],
     ["dns.domains.list", false, notMapped],
     ["dns.records.list", false, notMapped],
-    ["dns.records.create", false, notMapped],
-    ["dns.records.update", false, notMapped],
-    ["dns.records.delete", false, notMapped],
     ["backups.list", true, "uses GET /v1/sites/{site_id}/backup"],
     [
       "backups.downloadable",
@@ -136,16 +129,6 @@ const CAPABILITIES: readonly ProviderCapabilityInput[] = (() => {
       "Rocket.net backup downloads require a token from the backup response",
     ],
     ["backups.create", true, "uses POST /v1/sites/{site_id}/backup"],
-    [
-      "backups.restore",
-      true,
-      "uses POST /v1/sites/{site_id}/backup/{backup_id}/restore",
-    ],
-    [
-      "backups.delete",
-      false,
-      "Rocket.net requires site_id as well as backup_id; the current provider-neutral command only passes backup_id",
-    ],
     [
       "cache.clear",
       true,
@@ -172,8 +155,6 @@ const CAPABILITIES: readonly ProviderCapabilityInput[] = (() => {
       "uses GET /v1/sites/{site_id}/usage or account usage endpoints",
     ],
     ["analytics.env", true, "uses Rocket.net reporting endpoints"],
-    ["access.ssh", true, "uses GET /v1/sites/{site_id}/ssh/keys"],
-    ["access.sftp", true, "uses GET /v1/sites/{site_id}/ftp/accounts"],
   ];
 })();
 
@@ -318,36 +299,6 @@ export const createRocketNetClient: ProviderClientFactory = (context) => {
     };
   }
 
-  async function deleteDomains(
-    envId: string,
-    body: ActionBody,
-  ): Promise<ActionResult> {
-    const domainIds = domainIdsFrom(body);
-    const first = domainIds[0];
-    if (domainIds.length === 1 && first !== undefined) {
-      return sendAction(
-        "domains.delete",
-        "DELETE",
-        `/v1/sites/${escapePath(envId)}/domains/${escapePath(first)}`,
-      );
-    }
-    const results: unknown[] = [];
-    for (const domainId of domainIds) {
-      const result = await sendAction(
-        "domains.delete",
-        "DELETE",
-        `/v1/sites/${escapePath(envId)}/domains/${escapePath(domainId)}`,
-      );
-      results.push(result.raw);
-    }
-    return {
-      provider: PROVIDER,
-      action: "domains.delete",
-      status: 200,
-      raw: { success: true, result: results },
-    };
-  }
-
   async function getSite(siteId: string): Promise<HostingSite> {
     const path = `/v1/sites/${escapePath(siteId)}`;
     const envelope = await getEnvelope(path);
@@ -447,28 +398,6 @@ export const createRocketNetClient: ProviderClientFactory = (context) => {
             `/v1/sites/${escapePath(request.envId)}/access_logs`,
             logQuery(request.fileName, request.lines),
           );
-        case "sftp-accounts":
-          return readJson(
-            `/v1/sites/${escapePath(request.envId)}/ftp/accounts`,
-          );
-        case "ssh-status":
-        case "ssh-allowlist":
-        case "ssh-config": {
-          const envId =
-            request.kind === "ssh-config"
-              ? request.envId === ""
-                ? request.siteId
-                : request.envId
-              : request.envId;
-          if (envId === "") {
-            throw new CliError(
-              "usage_error",
-              `${LABEL} requires an environment or site id for SSH reads.`,
-              { details: { provider: PROVIDER, request: request.kind } },
-            );
-          }
-          return readJson(`/v1/sites/${escapePath(envId)}/ssh/keys`);
-        }
         case "analytics-usage":
           return request.siteId === ""
             ? readJson("/v1/account/usage")
@@ -492,7 +421,6 @@ export const createRocketNetClient: ProviderClientFactory = (context) => {
         case "denied-ips":
         case "company-plugins":
         case "company-themes":
-        case "ssh-password":
           throw unsupportedReadRequest(PROVIDER, request);
         default:
           return assertNever(request);
@@ -518,12 +446,6 @@ export const createRocketNetClient: ProviderClientFactory = (context) => {
             request.body,
           );
         }
-        case "delete-site":
-          return sendAction(
-            "sites.delete",
-            "DELETE",
-            `/v1/sites/${escapePath(request.siteId)}`,
-          );
         case "create-environment":
           // Go maps every environment create mode onto the staging endpoint.
           return sendAction(
@@ -531,19 +453,6 @@ export const createRocketNetClient: ProviderClientFactory = (context) => {
             "POST",
             `/v1/sites/${escapePath(request.siteId)}/staging`,
             request.body,
-          );
-        case "push-environment":
-          return sendAction(
-            "envs.push",
-            "POST",
-            `/v1/sites/${escapePath(request.siteId)}/staging/publish`,
-            request.body,
-          );
-        case "delete-environment":
-          return sendAction(
-            "envs.delete",
-            "DELETE",
-            `/v1/sites/${escapePath(request.envId)}/staging`,
           );
         case "clear-cache": {
           const siteId = extractSiteId(request.body);
@@ -571,8 +480,6 @@ export const createRocketNetClient: ProviderClientFactory = (context) => {
             `/v1/sites/${escapePath(request.envId)}/domains`,
             request.body,
           );
-        case "delete-domains":
-          return deleteDomains(request.envId, request.body);
         case "change-primary-domain":
           return sendAction(
             "domains.primary",
@@ -587,15 +494,6 @@ export const createRocketNetClient: ProviderClientFactory = (context) => {
             `/v1/sites/${escapePath(request.envId)}/backup`,
             backupCreateBody(request.body),
           );
-        case "restore-backup": {
-          const restore = restoreBackupBody(request.targetEnvId, request.body);
-          return sendAction(
-            "backups.restore",
-            "POST",
-            `/v1/sites/${escapePath(restore.siteId)}/backup/${escapePath(restore.backupId)}/restore`,
-            restore.body,
-          );
-        }
         case "update-plugin":
           return sendAction(
             "wp.plugins.update",
@@ -631,41 +529,12 @@ export const createRocketNetClient: ProviderClientFactory = (context) => {
             `/v1/sites/${escapePath(request.envId)}/wpcli`,
             wpCliBody(request.body),
           );
-        case "add-sftp-account":
-          return sendAction(
-            "access.sftp.add",
-            "POST",
-            `/v1/sites/${escapePath(request.envId)}/ftp/accounts`,
-            request.body,
-          );
-        // Rocket.net can perform these two, but not from the provider-neutral
-        // payload: both endpoints are addressed by site id, which the request
-        // does not carry. Go raises the same refusal with a longer sentence.
-        case "delete-backup":
-          throw unsupportedOperation(
-            PROVIDER,
-            'the "delete-backup" action, which needs the site id as well as the backup id',
-          );
-        case "remove-sftp-account":
-          throw unsupportedOperation(
-            PROVIDER,
-            'the "remove-sftp-account" action, which needs the site id and the account username',
-          );
         // Deliberate gaps with no Rocket.net endpoint at all.
-        case "reset-site":
+        case "push-environment":
         case "restart-php":
         case "set-php-version":
         case "set-denied-ips":
         case "apply-redirects":
-        case "dns-record-create":
-        case "dns-record-update":
-        case "dns-record-delete":
-        case "set-ssh-status":
-        case "set-ssh-password-status":
-        case "generate-ssh-password":
-        case "set-ssh-allowlist":
-        case "change-ssh-password-expiration":
-        case "toggle-sftp-accounts":
           throw unsupportedActionRequest(PROVIDER, request);
         default:
           return assertNever(request);
@@ -1078,47 +947,6 @@ function cloneBody(body: ActionBody): CloneTarget {
   );
 }
 
-interface RestoreTarget {
-  readonly siteId: string;
-  readonly backupId: string;
-  readonly body: Record<string, unknown>;
-}
-
-function restoreBackupBody(
-  targetEnvId: string,
-  body: ActionBody,
-): RestoreTarget {
-  const record = objectBody(body);
-  let siteId = targetEnvId;
-  if ("site_id" in record) {
-    siteId = formatValue(record.site_id);
-    delete record.site_id;
-  }
-  let backupId = "";
-  for (const key of ["backup_id", "id"]) {
-    if (!(key in record)) continue;
-    backupId = formatValue(record[key]);
-    // `delete record[key]` is a dynamic delete; this is the same operation.
-    Reflect.deleteProperty(record, key);
-    break;
-  }
-  if (siteId === "" || siteId === "<nil>") {
-    throw new CliError(
-      "usage_error",
-      `${LABEL} requires "site_id" or a target environment for backups.restore.`,
-      { details: { provider: PROVIDER, action: "restore-backup" } },
-    );
-  }
-  if (backupId === "" || backupId === "<nil>") {
-    throw new CliError(
-      "usage_error",
-      `${LABEL} requires "backup_id" for backups.restore.`,
-      { details: { provider: PROVIDER, action: "restore-backup" } },
-    );
-  }
-  return { siteId, backupId, body: record };
-}
-
 function backupCreateBody(body: ActionBody): Record<string, unknown> {
   const record = objectBody(body);
   if (!("label" in record) && "tag" in record) {
@@ -1145,37 +973,6 @@ function wpCliBody(body: ActionBody): Record<string, unknown> {
     `${LABEL} requires "wp_command" or "command" for wp-cli.run.`,
     { details: { provider: PROVIDER, action: "run-wp-cli" } },
   );
-}
-
-/**
- * Go's `rocketNetDomainIDs`: every failure of the shared `domainIDsFromAny`
- * collapses into one message, so the specific reason is deliberately dropped.
- */
-function domainIdsFrom(body: ActionBody): string[] {
-  const ids = tryDomainIds(body);
-  if (ids !== undefined) return ids;
-  throw new CliError(
-    "usage_error",
-    `${LABEL} requires "domain_id", "id", or "domain_ids" for domains.delete.`,
-    { details: { provider: PROVIDER, action: "delete-domains" } },
-  );
-}
-
-function tryDomainIds(body: ActionBody): string[] | undefined {
-  if (body === undefined || body === null) return undefined;
-  if (!isRecord(body)) return undefined;
-  if ("domain_ids" in body) {
-    const value = body.domain_ids;
-    if (!Array.isArray(value) || value.length === 0) return undefined;
-    const ids = (value as unknown[]).map((entry) => formatValue(entry));
-    return ids.some((id) => id === "" || id === "<nil>") ? undefined : ids;
-  }
-  for (const key of ["domain_id", "id"]) {
-    if (!(key in body)) continue;
-    const id = formatValue(body[key]);
-    return id === "" || id === "<nil>" ? undefined : [id];
-  }
-  return undefined;
 }
 
 /** Go's `extractSiteID`. */

@@ -333,33 +333,6 @@ test("pantheon clear cache accepts the site id in the payload", async () => {
   });
 });
 
-// TestPantheonRestoreBackupUsesBackupIDPath
-test("pantheon restore backup puts the backup id in the path", async () => {
-  const routes = [
-    AUTHORIZE_ROUTE,
-    { body: JSON.stringify({ id: "workflow-2" }) },
-  ];
-
-  await withPantheon(routes, async (client, server) => {
-    const result = await client.action({
-      kind: "restore-backup",
-      targetEnvId: "site-1:live",
-      body: { backup_id: "backup-1" },
-    });
-
-    assert.equal(result.operationId, "site-1:workflow-2");
-    assert.equal(result.action, "backups.restore");
-    assert.equal(result.message, undefined);
-
-    assert.equal(
-      server.calls[1].line,
-      "POST /v0/sites/site-1/environments/live/backups/backup-1/restore",
-    );
-    assert.deepEqual(server.calls[1].json, { element: "all" });
-    assertNoUnexpected(server);
-  });
-});
-
 /* -------------------------------------------------------------------------- */
 /* Additional coverage of the ported surface                                  */
 /* -------------------------------------------------------------------------- */
@@ -369,7 +342,7 @@ test("pantheon reports its capability list without any network call", async () =
     const capabilities = await client.read({ kind: "capabilities" });
 
     assert.ok(Array.isArray(capabilities));
-    assert.equal(capabilities.length, 42);
+    assert.equal(capabilities.length, 34);
     const byName = new Map(capabilities.map((entry) => [entry.name, entry]));
 
     assert.deepEqual(byName.get("providers.validate"), {
@@ -392,8 +365,6 @@ test("pantheon reports its capability list without any network call", async () =
       notes: "not mapped for Pantheon in Novamira",
     });
     assert.equal(byName.get("analytics.env").supported, true);
-    assert.equal(byName.get("backups.delete").supported, false);
-
     assert.equal(server.calls.length, 0);
     assertNoUnexpected(server);
   });
@@ -420,11 +391,6 @@ test("pantheon rejects read requests it does not map", async () => {
     { kind: "themes", envId: "s:dev" },
     { kind: "company-plugins" },
     { kind: "company-themes" },
-    { kind: "ssh-status", envId: "s:dev" },
-    { kind: "ssh-allowlist", envId: "s:dev" },
-    { kind: "ssh-config", siteId: "s", envId: "dev" },
-    { kind: "ssh-password", envId: "s:dev" },
-    { kind: "sftp-accounts", envId: "s:dev" },
     { kind: "analytics-usage", siteId: "s", metric: "visits" },
     { kind: "file-list", envId: "s:dev" },
   ];
@@ -445,11 +411,9 @@ test("pantheon rejects read requests it does not map", async () => {
 
 test("pantheon rejects action requests it does not map", async () => {
   const unsupported = [
-    { kind: "reset-site", siteId: "s" },
     { kind: "push-environment", siteId: "s" },
     { kind: "restart-php", envId: "s:dev" },
     { kind: "set-php-version" },
-    { kind: "delete-backup", backupId: 7 },
     { kind: "update-plugin", envId: "s:dev" },
     { kind: "bulk-update-plugins", envId: "s:dev" },
     { kind: "update-theme", envId: "s:dev" },
@@ -457,17 +421,6 @@ test("pantheon rejects action requests it does not map", async () => {
     { kind: "run-wp-cli", envId: "s:dev" },
     { kind: "set-denied-ips" },
     { kind: "apply-redirects", envId: "s:dev" },
-    { kind: "dns-record-create", domainId: "d-1" },
-    { kind: "dns-record-update", domainId: "d-1" },
-    { kind: "dns-record-delete", domainId: "d-1" },
-    { kind: "set-ssh-status", envId: "s:dev" },
-    { kind: "set-ssh-password-status", envId: "s:dev" },
-    { kind: "generate-ssh-password", envId: "s:dev" },
-    { kind: "set-ssh-allowlist", envId: "s:dev" },
-    { kind: "change-ssh-password-expiration", envId: "s:dev" },
-    { kind: "toggle-sftp-accounts", envId: "s:dev" },
-    { kind: "add-sftp-account", envId: "s:dev" },
-    { kind: "remove-sftp-account", sftpAccountId: "a-1" },
   ];
 
   await withPantheon([], async (client, server) => {
@@ -531,70 +484,6 @@ test("pantheon create-site normalizes the body and resolves the new site name", 
   });
 });
 
-test("pantheon delete-site resolves a site name but passes a UUID through", async () => {
-  const named = [
-    AUTHORIZE_ROUTE,
-    { body: JSON.stringify({ id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" }) },
-    { body: JSON.stringify({ id: "workflow-3" }) },
-  ];
-
-  await withPantheon(named, async (client, server) => {
-    const result = await client.action({
-      kind: "delete-site",
-      siteId: "my-site",
-    });
-    assert.deepEqual(
-      server.calls.map((call) => call.line),
-      [
-        "POST /v0/authorize/machine-token",
-        "GET /v0/site-names/my-site",
-        "DELETE /v0/sites/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-      ],
-    );
-    // No request body on a delete, mirroring Go's nil body.
-    assert.equal(server.calls[2].body, "");
-    assert.equal(
-      result.operationId,
-      "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee:workflow-3",
-    );
-    assertNoUnexpected(server);
-  });
-
-  const uuid = [
-    AUTHORIZE_ROUTE,
-    { body: JSON.stringify({ id: "workflow-4" }) },
-  ];
-  await withPantheon(uuid, async (client, server) => {
-    await client.action({
-      kind: "delete-site",
-      siteId: "AAAAAAAA-bbbb-cccc-dddd-eeeeeeeeeeee",
-    });
-    assert.deepEqual(
-      server.calls.map((call) => call.line),
-      [
-        "POST /v0/authorize/machine-token",
-        "DELETE /v0/sites/AAAAAAAA-bbbb-cccc-dddd-eeeeeeeeeeee",
-      ],
-    );
-    assertNoUnexpected(server);
-  });
-});
-
-test("pantheon site name lookup without an id fails", async () => {
-  const routes = [
-    AUTHORIZE_ROUTE,
-    { body: JSON.stringify({ name: "my-site" }) },
-  ];
-  await withPantheon(routes, async (client, server) => {
-    const error = await rejectsWithCode(
-      client.action({ kind: "delete-site", siteId: "my-site" }),
-      "not_found",
-    );
-    assert.ok(error.message.includes("my-site"));
-    assertNoUnexpected(server);
-  });
-});
-
 test("pantheon create-environment fills the multidev defaults", async () => {
   const routes = [
     AUTHORIZE_ROUTE,
@@ -635,26 +524,6 @@ test("pantheon create-environment fills the multidev defaults", async () => {
       clone_database: true,
       clone_files: false,
     });
-    assertNoUnexpected(server);
-  });
-});
-
-test("pantheon delete-environment sends an empty JSON object", async () => {
-  const routes = [
-    AUTHORIZE_ROUTE,
-    { body: JSON.stringify({ id: "workflow-6" }) },
-  ];
-  await withPantheon(routes, async (client, server) => {
-    const result = await client.action({
-      kind: "delete-environment",
-      envId: "site-1:feature-x",
-    });
-    assert.equal(
-      server.calls[1].line,
-      "DELETE /v0/sites/site-1/environments/feature-x",
-    );
-    assert.equal(server.calls[1].body, "{}");
-    assert.equal(result.action, "envs.delete");
     assertNoUnexpected(server);
   });
 });
@@ -704,81 +573,6 @@ test("pantheon change-primary-domain promotes an alternate key and uses PUT", as
       "PUT /v0/sites/site-1/environments/live/domains/primary",
     );
     assert.deepEqual(server.calls[1].json, { domain: "example.com" });
-    assertNoUnexpected(server);
-  });
-});
-
-test("pantheon delete-domains issues one DELETE per domain", async () => {
-  const single = [
-    AUTHORIZE_ROUTE,
-    { body: JSON.stringify({ id: "workflow-a" }) },
-  ];
-  await withPantheon(single, async (client, server) => {
-    const result = await client.action({
-      kind: "delete-domains",
-      envId: "site-1:live",
-      body: { domain: "example.com" },
-    });
-    assert.equal(
-      server.calls[1].line,
-      "DELETE /v0/sites/site-1/environments/live/domains/example.com",
-    );
-    assert.equal(result.operationId, "site-1:workflow-a");
-    assert.deepEqual(result.raw, { id: "workflow-a" });
-    assertNoUnexpected(server);
-  });
-
-  const many = [
-    AUTHORIZE_ROUTE,
-    { body: JSON.stringify({ id: "workflow-b" }) },
-    { body: JSON.stringify({ id: "workflow-c" }) },
-  ];
-  await withPantheon(many, async (client, server) => {
-    const result = await client.action({
-      kind: "delete-domains",
-      envId: "site-1:live",
-      body: { domains: ["a.example.com", "b.example.com"] },
-    });
-    assert.deepEqual(
-      server.calls.slice(1).map((call) => call.line),
-      [
-        "DELETE /v0/sites/site-1/environments/live/domains/a.example.com",
-        "DELETE /v0/sites/site-1/environments/live/domains/b.example.com",
-      ],
-    );
-    // The aggregate result carries no operation id and a synthetic HTTP 200.
-    assert.equal(result.status, 200);
-    assert.equal(result.operationId, undefined);
-    assert.deepEqual(result.raw, {
-      results: [{ id: "workflow-b" }, { id: "workflow-c" }],
-    });
-    assert.deepEqual(serializeActionResult(result), {
-      provider: "pantheon",
-      action: "domains.delete",
-      status: 200,
-      raw: { results: [{ id: "workflow-b" }, { id: "workflow-c" }] },
-    });
-    assertNoUnexpected(server);
-  });
-
-  await withPantheon([AUTHORIZE_ROUTE], async (client, server) => {
-    await rejectsWithCode(
-      client.action({
-        kind: "delete-domains",
-        envId: "site-1:live",
-        body: { other: 1 },
-      }),
-      "usage_error",
-    );
-    await rejectsWithCode(
-      client.action({
-        kind: "delete-domains",
-        envId: "site-1:live",
-        body: { domains: [] },
-      }),
-      "usage_error",
-    );
-    assert.equal(server.calls.length, 0);
     assertNoUnexpected(server);
   });
 });
@@ -874,21 +668,6 @@ test("pantheon requires a site id and an environment id", async () => {
       "usage_error",
     );
 
-    assert.equal(server.calls.length, 0);
-    assertNoUnexpected(server);
-  });
-});
-
-test("pantheon restore-backup requires a backup id", async () => {
-  await withPantheon([], async (client, server) => {
-    await rejectsWithCode(
-      client.action({
-        kind: "restore-backup",
-        targetEnvId: "site-1:live",
-        body: {},
-      }),
-      "usage_error",
-    );
     assert.equal(server.calls.length, 0);
     assertNoUnexpected(server);
   });

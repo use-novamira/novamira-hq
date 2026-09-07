@@ -43,12 +43,7 @@ const AUTHORIZATION = `Bearer ${API_KEY}`;
 const BASE_PATH = "/api/v2";
 
 /** Every action InstaWP maps; the rest must report `provider_unsupported`. */
-const SUPPORTED_ACTIONS = [
-  "create-site",
-  "delete-site",
-  "delete-environment",
-  "run-wp-cli",
-];
+const SUPPORTED_ACTIONS = ["create-site", "run-wp-cli"];
 
 /** `capabilities()` in the Go declaration order. */
 const EXPECTED_CAPABILITIES = [
@@ -73,12 +68,6 @@ const EXPECTED_CAPABILITIES = [
     true,
     "uses POST /sites/template when template_slug is supplied",
   ],
-  ["sites.delete", true, "uses DELETE /sites/{site_id}"],
-  [
-    "sites.reset",
-    false,
-    "not supported by InstaWP's provider-neutral Novamira mapping",
-  ],
   [
     "envs.create",
     false,
@@ -99,7 +88,6 @@ const EXPECTED_CAPABILITIES = [
     false,
     "InstaWP sites are exposed as one synthetic environment",
   ],
-  ["envs.delete", true, "deletes the underlying synthetic InstaWP site"],
   ["domains.list", false, "not mapped for InstaWP in Novamira"],
   ["dns.domains.list", false, "not mapped for InstaWP in Novamira"],
   ["backups.list", false, "not mapped for InstaWP in Novamira"],
@@ -133,8 +121,6 @@ const EXPECTED_CAPABILITIES = [
   ["logs.get", false, "not mapped for InstaWP in Novamira"],
   ["analytics.usage", false, "not mapped for InstaWP in Novamira"],
   ["analytics.env", false, "not mapped for InstaWP in Novamira"],
-  ["access.ssh", false, "not mapped for InstaWP in Novamira"],
-  ["access.sftp", false, "not mapped for InstaWP in Novamira"],
 ];
 
 /* -------------------------------------------------------------------------- */
@@ -667,25 +653,6 @@ test("create-site with a template posts to /sites/template and extracts the task
   );
 });
 
-// TestInstaWPDeleteSite
-test("delete-site issues DELETE /sites/{id}", async () => {
-  await withClient(
-    [{ body: `{"status":true,"message":"Site deleted."}` }],
-    async (client, state) => {
-      const result = await client.action({
-        kind: "delete-site",
-        siteId: "1405177",
-      });
-      assert.deepEqual(requestLines(state), ["DELETE /sites/1405177"]);
-      assert.equal(state.requests[0].body, "");
-      assert.equal(result.action, "sites.delete");
-      assert.equal(result.message, "Site deleted.");
-      assert.equal(result.operationId, undefined);
-      assert.equal("operation_id" in serializeActionResult(result), false);
-    },
-  );
-});
-
 // TestInstaWPRunCommandUsesCommandID
 test("run-wp-cli with a command_id uses the execute-command endpoint", async () => {
   await withClient(
@@ -786,7 +753,7 @@ test("read exposes the capability list and refuses every other read request", as
   });
 });
 
-test("every action outside the four mapped ones reports provider_unsupported", async () => {
+test("every action outside the three mapped ones reports provider_unsupported", async () => {
   await withClient([], async (client, state) => {
     for (const kind of ACTION_REQUEST_KINDS) {
       if (SUPPORTED_ACTIONS.includes(kind)) continue;
@@ -812,20 +779,6 @@ test("an unknown request kind is an internal error, not a silent success", async
       code: "internal_error",
     });
   });
-});
-
-test("delete-environment deletes the underlying synthetic site", async () => {
-  await withClient(
-    [{ body: `{"status":true,"message":"Site deleted."}` }],
-    async (client, state) => {
-      const result = await client.action({
-        kind: "delete-environment",
-        envId: "1405177",
-      });
-      assert.deepEqual(requestLines(state), ["DELETE /sites/1405177"]);
-      assert.equal(result.action, "envs.delete");
-    },
-  );
 });
 
 test("listEnvironments requires a site id and returns the synthetic environment", async () => {
@@ -1130,8 +1083,9 @@ test("the action result prefers the HTTP status and finds a numeric cloud task i
     ],
     async (client) => {
       const result = await client.action({
-        kind: "delete-site",
-        siteId: "1",
+        kind: "create-site",
+        mode: "wordpress",
+        body: { site_name: "demo" },
       });
       assert.equal(result.operationId, "op-1");
     },
@@ -1139,13 +1093,17 @@ test("the action result prefers the HTTP status and finds a numeric cloud task i
 
   // An empty body parses to null, exactly like Go's `parseJSONBody`.
   await withClient([{ body: "" }], async (client) => {
-    const result = await client.action({ kind: "delete-site", siteId: "1" });
+    const result = await client.action({
+      kind: "create-site",
+      mode: "wordpress",
+      body: { site_name: "demo" },
+    });
     assert.equal(result.raw, null);
     assert.equal(result.message, undefined);
     assert.equal(result.operationId, undefined);
     assert.deepEqual(serializeActionResult(result), {
       provider: "instawp",
-      action: "sites.delete",
+      action: "sites.create",
       status: 200,
       raw: null,
     });

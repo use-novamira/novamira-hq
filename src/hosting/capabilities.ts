@@ -5,22 +5,11 @@
  * Post-processing of a provider's capability document, in one place below the
  * CLI.
  *
- * **Why it moved here.** Go's `disabledSiteDeleteCapability` lived beside the
- * CLI's printers, and so did HQ's port, in `src/cli/print.ts`. That was correct
- * while `hosting providers capabilities` was the only caller. Phase 7 adds a
- * second one — the dashboard's `/_dashboard/diagnostics/capabilities` route —
- * and `src/web/` may not import `src/cli/`. So the rule lives here, beside the
- * `ProviderCapability` type it is about, and `src/cli/print.ts` re-exports it
- * for every existing caller. This is the same move `operations.ts` made out of
- * `hosting-command.ts` for `src/provisioning/`, for the same reason.
- *
- * **The rule itself.** `hosting sites delete` is deliberately not registered and
- * the dashboard offers no delete, so a provider that advertises `sites.delete`
- * must not be reported as offering it *through HQ*. The capability is rewritten
- * to `supported: false` with a fixed note, in both surfaces, so the two cannot
- * disagree about what HQ can do. A response that is not a capability list is
- * returned unchanged — Go's "unmarshal failed, pass it through" — because a
- * provider client is allowed to answer with a shape HQ does not model.
+ * Provider APIs have broader surfaces than HQ. Capability output therefore
+ * uses an explicit public allowlist: provider-native and newly-added adapter
+ * operations remain private until HQ deliberately adopts them here. The rule
+ * sits below CLI, dashboard, MCP and the guarded environment-push workflow so
+ * every caller sees the same fail-closed public contract.
  */
 
 import {
@@ -28,12 +17,58 @@ import {
   type ProviderCapability,
 } from "./types.js";
 
-/** The capability HQ reports as unsupported regardless of the provider. */
-export const SITE_DELETE_CAPABILITY = "sites.delete";
+/** The complete provider capability vocabulary that HQ may publish. */
+export const HQ_PUBLIC_CAPABILITIES: ReadonlySet<string> = new Set([
+  "providers.validate",
+  "providers.capabilities",
+  "regions.list",
+  "activity.list",
+  "sites.list",
+  "sites.get",
+  "sites.create",
+  "sites.create-plain",
+  "sites.clone",
+  "envs.list",
+  "envs.get",
+  "envs.create",
+  "envs.create-plain",
+  "envs.clone",
+  "envs.push",
+  "ops.get",
+  "ops.wait",
+  "domains.list",
+  "domains.add",
+  "domains.verify",
+  "domains.primary",
+  "dns.domains.list",
+  "dns.records.list",
+  "backups.list",
+  "backups.downloadable",
+  "backups.create",
+  "cache.clear",
+  "php.restart",
+  "php.set-version",
+  "redirects.list",
+  "redirects.apply",
+  "denied-ips.list",
+  "denied-ips.set",
+  "wp.plugins.list",
+  "wp.plugins.install",
+  "wp.plugins.update",
+  "wp.plugins.update-all",
+  "wp.themes.list",
+  "wp.themes.update",
+  "wp.themes.update-all",
+  "wp-cli.run",
+  "logs.get",
+  "analytics.usage",
+  "analytics.env",
+]);
 
-/** Why {@link SITE_DELETE_CAPABILITY} is reported unsupported. */
-export const SITE_DELETE_DISABLED_NOTE =
-  "site deletion is not exposed by Novamira HQ";
+/** True only for a capability deliberately present in HQ's public contract. */
+export function isHqPublicCapability(name: string): boolean {
+  return HQ_PUBLIC_CAPABILITIES.has(name);
+}
 
 function asCapability(value: unknown): ProviderCapability | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value))
@@ -51,22 +86,21 @@ function asCapability(value: unknown): ProviderCapability | undefined {
   return { name, supported };
 }
 
-/** Go's `disabledSiteDeleteCapability`, behaviour for behaviour. */
-export function disableSiteDeleteCapability(value: unknown): unknown {
+/** Remove operations that do not exist in HQ's public capability surface. */
+export function applyHqCapabilityPolicy(value: unknown): unknown {
   if (!Array.isArray(value)) return value;
+  const visible = value.filter((entry) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry))
+      return true;
+    const name = (entry as Record<string, unknown>).name;
+    return typeof name !== "string" || isHqPublicCapability(name);
+  });
   const capabilities: ProviderCapability[] = [];
-  for (const entry of value as readonly unknown[]) {
+  for (const entry of visible) {
     const capability = asCapability(entry);
-    if (capability === undefined) return value;
-    capabilities.push(
-      capability.name === SITE_DELETE_CAPABILITY
-        ? {
-            name: capability.name,
-            supported: false,
-            notes: SITE_DELETE_DISABLED_NOTE,
-          }
-        : capability,
-    );
+    if (capability === undefined)
+      return visible.length === value.length ? value : visible;
+    capabilities.push(capability);
   }
   return capabilities.map(serializeProviderCapability);
 }

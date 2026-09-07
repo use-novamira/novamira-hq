@@ -32,11 +32,6 @@ import type { Command } from "commander";
 import type { CommandDependencies } from "../commands.js";
 import type { GlobalOptions } from "../program.js";
 import {
-  createAccessHandlers,
-  registerAccessCommands,
-  type AccessHandlers,
-} from "./access.js";
-import {
   createHostingConfigHandlers,
   registerHostingConfigCommands,
   type HostingConfigHandlers,
@@ -82,7 +77,6 @@ export type HostingCommandHandlers = HostingInventoryHandlers &
   MaintenanceHandlers &
   WpHandlers &
   NovamiraHandlers &
-  AccessHandlers &
   HostingConfigHandlers;
 
 /**
@@ -100,7 +94,6 @@ export function createHostingCommandHandlers(
     ...createMaintenanceHandlers(dependencies),
     ...createWpHandlers(dependencies),
     ...createNovamiraHandlers(dependencies),
-    ...createAccessHandlers(dependencies),
     ...createHostingConfigHandlers(dependencies),
   };
 }
@@ -129,7 +122,6 @@ export function registerHostingCommands(
   // it installs the plugin through the very WP-CLI path `wp plugins install`
   // uses, then configures the site and prints the site CLI handoff.
   registerNovamiraCommands(hosting, handlers, optionsFor);
-  registerAccessCommands(hosting, handlers, optionsFor);
 
   // Hosting *profiles* are local configuration, not a provider resource, so
   // they extend the existing top-level `config` command rather than living

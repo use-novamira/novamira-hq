@@ -47,7 +47,7 @@ import {
   serializeProviderValidation,
 } from "../dist/hosting/types.js";
 
-// The 24 Go `ReadRequest` variants, spelled out so a dropped port fails here.
+// HQ's complete public provider-read vocabulary.
 const EXPECTED_READ_KINDS = [
   "capabilities",
   "regions",
@@ -65,33 +65,22 @@ const EXPECTED_READ_KINDS = [
   "themes",
   "company-plugins",
   "company-themes",
-  "ssh-status",
-  "ssh-allowlist",
-  "ssh-config",
-  "ssh-password",
-  "sftp-accounts",
   "analytics-usage",
   "analytics-env",
   "file-list",
 ];
 
-// The 33 Go `ActionRequest` variants.
+// HQ's complete public provider-action vocabulary.
 const EXPECTED_ACTION_KINDS = [
   "create-site",
-  "delete-site",
-  "reset-site",
   "create-environment",
   "push-environment",
-  "delete-environment",
   "clear-cache",
   "restart-php",
   "set-php-version",
   "add-domain",
-  "delete-domains",
   "change-primary-domain",
   "create-backup",
-  "restore-backup",
-  "delete-backup",
   "update-plugin",
   "bulk-update-plugins",
   "update-theme",
@@ -99,17 +88,6 @@ const EXPECTED_ACTION_KINDS = [
   "run-wp-cli",
   "set-denied-ips",
   "apply-redirects",
-  "dns-record-create",
-  "dns-record-update",
-  "dns-record-delete",
-  "set-ssh-status",
-  "set-ssh-password-status",
-  "generate-ssh-password",
-  "set-ssh-allowlist",
-  "change-ssh-password-expiration",
-  "toggle-sftp-accounts",
-  "add-sftp-account",
-  "remove-sftp-account",
 ];
 
 const PROFILE = {
@@ -151,11 +129,6 @@ function dispatchRead(request) {
     case "themes":
     case "company-plugins":
     case "company-themes":
-    case "ssh-status":
-    case "ssh-allowlist":
-    case "ssh-config":
-    case "ssh-password":
-    case "sftp-accounts":
     case "analytics-usage":
     case "analytics-env":
     case "file-list":
@@ -168,20 +141,14 @@ function dispatchRead(request) {
 function dispatchAction(request) {
   switch (request.kind) {
     case "create-site":
-    case "delete-site":
-    case "reset-site":
     case "create-environment":
     case "push-environment":
-    case "delete-environment":
     case "clear-cache":
     case "restart-php":
     case "set-php-version":
     case "add-domain":
-    case "delete-domains":
     case "change-primary-domain":
     case "create-backup":
-    case "restore-backup":
-    case "delete-backup":
     case "update-plugin":
     case "bulk-update-plugins":
     case "update-theme":
@@ -189,17 +156,6 @@ function dispatchAction(request) {
     case "run-wp-cli":
     case "set-denied-ips":
     case "apply-redirects":
-    case "dns-record-create":
-    case "dns-record-update":
-    case "dns-record-delete":
-    case "set-ssh-status":
-    case "set-ssh-password-status":
-    case "generate-ssh-password":
-    case "set-ssh-allowlist":
-    case "change-ssh-password-expiration":
-    case "toggle-sftp-accounts":
-    case "add-sftp-account":
-    case "remove-sftp-account":
       return request.kind;
     default:
       return assertNever(request);
@@ -505,8 +461,8 @@ test("provider semantic errors redact action input secrets", async () => {
     const client = await factory.clientFromProfile("production");
     await assert.rejects(
       client.action({
-        kind: "reset-site",
-        siteId: "site-1",
+        kind: "create-site",
+        mode: "wordpress",
         body: { admin_password: password },
       }),
       (error) => {

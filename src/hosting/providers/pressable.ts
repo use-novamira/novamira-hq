@@ -97,13 +97,10 @@ const PRESSABLE_CAPABILITIES: readonly ProviderCapabilityInput[] = [
   ["sites.create", true, "uses POST /sites"],
   ["sites.create-plain", true, "uses POST /sites"],
   ["sites.clone", false, NOTE_UNSUPPORTED],
-  ["sites.delete", true, "uses DELETE /sites/{site_id}"],
-  ["sites.reset", false, NOTE_UNSUPPORTED],
   ["envs.create", false, NOTE_NOT_MAPPED],
   ["envs.create-plain", false, NOTE_NOT_MAPPED],
   ["envs.clone", false, NOTE_NOT_MAPPED],
   ["envs.push", false, NOTE_NOT_MAPPED],
-  ["envs.delete", false, NOTE_NOT_MAPPED],
   ["domains.list", true, "uses GET /sites/{site_id}/domains"],
   ["dns.domains.list", true, "uses GET /dns/zones"],
   ["backups.list", true, "uses GET /sites/{site_id}/backups"],
@@ -117,8 +114,6 @@ const PRESSABLE_CAPABILITIES: readonly ProviderCapabilityInput[] = [
   ["logs.get", true, "uses GET /sites/{site_id}/php-logs or /webserver-logs"],
   ["analytics.usage", true, "uses GET /sites/{site_id}/statistics"],
   ["analytics.env", false, NOTE_NOT_MAPPED],
-  ["access.ssh", false, NOTE_NOT_MAPPED],
-  ["access.sftp", true, "uses GET /sites/{site_id}/ftp"],
 ];
 
 interface CachedToken {
@@ -277,41 +272,6 @@ export const createPressableClient: ProviderClientFactory = (
     };
   }
 
-  /**
-   * Pressable deletes one domain per request. A single id keeps that response
-   * verbatim; several are aggregated into one envelope-shaped result.
-   */
-  async function deleteDomains(
-    envId: string,
-    body: unknown,
-  ): Promise<ActionResult> {
-    const domainIds = domainIdsFromBody(body);
-    const first = domainIds[0];
-    if (domainIds.length === 1 && first !== undefined) {
-      return sendAction(
-        "domains.delete",
-        "DELETE",
-        `/sites/${escapePath(envId)}/domains/${escapePath(first)}`,
-      );
-    }
-    const results: unknown[] = [];
-    for (const domainId of domainIds) {
-      const result = await sendAction(
-        "domains.delete",
-        "DELETE",
-        `/sites/${escapePath(envId)}/domains/${escapePath(domainId)}`,
-      );
-      results.push(result.raw);
-    }
-    return {
-      provider: PROVIDER,
-      action: "domains.delete",
-      status: 200,
-      message: "Success",
-      raw: { message: "Success", data: results, errors: null },
-    };
-  }
-
   /* ---------------------------------------------------------------------- */
   /* ProviderClient                                                         */
   /* ---------------------------------------------------------------------- */
@@ -413,8 +373,6 @@ export const createPressableClient: ProviderClientFactory = (
         return readJson(logPath(request));
       case "analytics-usage":
         return readJson(`/sites/${escapePath(request.siteId)}/statistics`);
-      case "sftp-accounts":
-        return readJson(`/sites/${escapePath(request.envId)}/ftp`);
       case "dns-domains":
         return readJson("/dns/zones");
       case "activity": {
@@ -429,10 +387,6 @@ export const createPressableClient: ProviderClientFactory = (
       case "themes":
       case "company-plugins":
       case "company-themes":
-      case "ssh-status":
-      case "ssh-allowlist":
-      case "ssh-config":
-      case "ssh-password":
       case "analytics-env":
       case "file-list":
         throw unsupportedReadRequest(PROVIDER, request);
@@ -447,12 +401,6 @@ export const createPressableClient: ProviderClientFactory = (
         // Every create mode maps to POST /sites; Pressable has no clone or
         // plain-site variant, and the Go client ignores the mode as well.
         return sendAction("sites.create", "POST", "/sites", request.body);
-      case "delete-site":
-        return sendAction(
-          "sites.delete",
-          "DELETE",
-          `/sites/${escapePath(request.siteId)}`,
-        );
       case "clear-cache": {
         const siteId = extractSiteId(request.body);
         if (siteId === "") {
@@ -475,8 +423,6 @@ export const createPressableClient: ProviderClientFactory = (
           `/sites/${escapePath(request.envId)}/domains`,
           request.body,
         );
-      case "delete-domains":
-        return deleteDomains(request.envId, request.body);
       case "run-wp-cli":
         return sendAction(
           "wp-cli.run",
@@ -484,33 +430,18 @@ export const createPressableClient: ProviderClientFactory = (
           `/sites/${escapePath(request.envId)}/wordpress/wpcli`,
           wpCliBody(request.body),
         );
-      case "reset-site":
       case "create-environment":
       case "push-environment":
-      case "delete-environment":
       case "restart-php":
       case "set-php-version":
       case "change-primary-domain":
       case "create-backup":
-      case "restore-backup":
-      case "delete-backup":
       case "update-plugin":
       case "bulk-update-plugins":
       case "update-theme":
       case "bulk-update-themes":
       case "set-denied-ips":
       case "apply-redirects":
-      case "dns-record-create":
-      case "dns-record-update":
-      case "dns-record-delete":
-      case "set-ssh-status":
-      case "set-ssh-password-status":
-      case "generate-ssh-password":
-      case "set-ssh-allowlist":
-      case "change-ssh-password-expiration":
-      case "toggle-sftp-accounts":
-      case "add-sftp-account":
-      case "remove-sftp-account":
         throw unsupportedActionRequest(PROVIDER, request);
       default:
         return assertNever(request);
@@ -739,60 +670,6 @@ function activityRequest(query: Query): ActivityRequest {
         : `/sites/${escapePath(siteId)}/logs/activity`,
     body,
   };
-}
-
-function domainIdsFromBody(body: unknown): string[] {
-  const missing = new CliError(
-    "usage_error",
-    "Pressable requires domain_id, id, or domain_ids for domains.delete.",
-    { details: { provider: PROVIDER, action: "delete-domains" } },
-  );
-  if (body === undefined || body === null) throw missing;
-  const object = objectBody(body);
-  if ("domain_ids" in object) return domainIdList(object.domain_ids);
-  if ("domain_id" in object) return [singleDomainId(object.domain_id)];
-  if ("id" in object) return [singleDomainId(object.id)];
-  throw missing;
-}
-
-function domainIdList(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    throw new CliError(
-      "usage_error",
-      "Pressable requires domain_ids to be an array.",
-      { details: { provider: PROVIDER, action: "delete-domains" } },
-    );
-  }
-  if (value.length === 0) {
-    throw new CliError(
-      "usage_error",
-      "Pressable requires at least one domain id.",
-      { details: { provider: PROVIDER, action: "delete-domains" } },
-    );
-  }
-  return value.map((entry) => singleDomainId(entry));
-}
-
-/**
- * Go renders any value with `%v` and rejects only `""` and `"<nil>"`, which lets
- * a nested object through as its Go-syntax rendering. HQ accepts a string or a
- * finite number and rejects everything else as a usage error.
- */
-function singleDomainId(value: unknown): string {
-  const rendered =
-    typeof value === "string"
-      ? value
-      : typeof value === "number" && Number.isFinite(value)
-        ? String(value)
-        : "";
-  if (rendered === "") {
-    throw new CliError(
-      "usage_error",
-      "Pressable requires a non-empty domain id.",
-      { details: { provider: PROVIDER, action: "delete-domains" } },
-    );
-  }
-  return rendered;
 }
 
 /** The site id a cache-clear body carries, under any of the accepted names. */

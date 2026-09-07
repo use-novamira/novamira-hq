@@ -436,26 +436,6 @@ test("read requests map to the documented Kinsta endpoints", async () => {
     [{ kind: "company-plugins" }, "GET /company/company-config/wp-plugins"],
     [{ kind: "company-themes" }, "GET /company/company-config/wp-themes"],
     [
-      { kind: "ssh-status", envId: "env-1" },
-      "GET /sites/environments/env-1/ssh/get-status",
-    ],
-    [
-      { kind: "ssh-allowlist", envId: "env-1" },
-      "GET /sites/environments/env-1/ssh/get-allowed-ips",
-    ],
-    [
-      { kind: "ssh-config", siteId: "site-1", envId: "env-1" },
-      "GET /sites/site-1/environments/env-1/ssh/config",
-    ],
-    [
-      { kind: "ssh-password", envId: "env-1" },
-      "GET /sites/environments/env-1/ssh/password",
-    ],
-    [
-      { kind: "sftp-accounts", envId: "env-1" },
-      "GET /sites/environments/env-1/additional-sftp-accounts",
-    ],
-    [
       { kind: "analytics-usage", siteId: "site-1", metric: "visits" },
       "GET /sites/site-1/usage/visits/this-month",
     ],
@@ -506,7 +486,7 @@ test("the capabilities read needs no network call", async () => {
   await withKinsta([], SCOPED, async ({ client, requests }) => {
     const capabilities = await client.read({ kind: "capabilities" });
     assert.equal(requests.length, 0);
-    assert.equal(capabilities.length, 55);
+    assert.equal(capabilities.length, 44);
     assert.deepEqual(capabilities[0], {
       name: "providers.validate",
       supported: true,
@@ -572,18 +552,6 @@ test("action requests map to the documented Kinsta endpoints", async () => {
       '{"company":"company-b"}',
     ],
     [
-      { kind: "delete-site", siteId: "site-1" },
-      "DELETE /sites/site-1",
-      "sites.delete",
-      "",
-    ],
-    [
-      { kind: "reset-site", siteId: "site-1", body: { confirm: true } },
-      "POST /sites/site-1/reset-site",
-      "sites.reset",
-      '{"confirm":true}',
-    ],
-    [
       {
         kind: "create-environment",
         siteId: "site-1",
@@ -611,12 +579,6 @@ test("action requests map to the documented Kinsta endpoints", async () => {
       "PUT /sites/site-1/environments",
       "envs.push",
       '{"source":"env-1"}',
-    ],
-    [
-      { kind: "delete-environment", envId: "env-1" },
-      "DELETE /sites/environments/env-1",
-      "envs.delete",
-      "",
     ],
     [
       { kind: "clear-cache", cache: "edge", body: { environment_id: "env-1" } },
@@ -649,12 +611,6 @@ test("action requests map to the documented Kinsta endpoints", async () => {
       '{"domain":"example.test"}',
     ],
     [
-      { kind: "delete-domains", envId: "env-1", body: { domains: ["d-1"] } },
-      "DELETE /sites/environments/env-1/domains",
-      "domains.delete",
-      '{"domains":["d-1"]}',
-    ],
-    [
       {
         kind: "change-primary-domain",
         envId: "env-1",
@@ -669,18 +625,6 @@ test("action requests map to the documented Kinsta endpoints", async () => {
       "POST /sites/environments/env-1/manual-backups",
       "backups.create",
       '{"tag":"pre-deploy"}',
-    ],
-    [
-      { kind: "restore-backup", targetEnvId: "env-2", body: { backup_id: 7 } },
-      "POST /sites/environments/env-2/backups/restore",
-      "backups.restore",
-      '{"backup_id":7}',
-    ],
-    [
-      { kind: "delete-backup", backupId: 42 },
-      "DELETE /sites/environments/backups/42",
-      "backups.delete",
-      "",
     ],
     [
       { kind: "update-plugin", envId: "env-1", body: { name: "akismet" } },
@@ -711,88 +655,6 @@ test("action requests map to the documented Kinsta endpoints", async () => {
       "POST /sites/environments/env-1/redirect-rules",
       "redirects.apply",
       '{"rules":[]}',
-    ],
-    [
-      { kind: "dns-record-create", domainId: "dom-1", body: { type: "A" } },
-      "POST /domains/dom-1/dns-records",
-      "dns.records.create",
-      '{"type":"A"}',
-    ],
-    [
-      { kind: "dns-record-update", domainId: "dom-1", body: { id: "r-1" } },
-      "PUT /domains/dom-1/dns-records",
-      "dns.records.update",
-      '{"id":"r-1"}',
-    ],
-    [
-      { kind: "dns-record-delete", domainId: "dom-1", body: { id: "r-1" } },
-      "DELETE /domains/dom-1/dns-records",
-      "dns.records.delete",
-      '{"id":"r-1"}',
-    ],
-    [
-      { kind: "set-ssh-status", envId: "env-1", body: { enabled: true } },
-      "POST /sites/environments/env-1/ssh/set-status",
-      "access.ssh.set-status",
-      '{"enabled":true}',
-    ],
-    [
-      {
-        kind: "set-ssh-password-status",
-        envId: "env-1",
-        body: { enabled: false },
-      },
-      "POST /sites/environments/env-1/ssh/set-password-status",
-      "access.ssh.set-password-status",
-      '{"enabled":false}',
-    ],
-    [
-      { kind: "generate-ssh-password", envId: "env-1" },
-      "POST /sites/environments/env-1/ssh/generate-password",
-      "access.ssh.generate-password",
-      "",
-    ],
-    [
-      {
-        kind: "set-ssh-allowlist",
-        envId: "env-1",
-        body: { ips: ["203.0.113.1"] },
-      },
-      "POST /sites/environments/env-1/ssh/set-allowed-ips",
-      "access.ssh.set-allowed-ips",
-      '{"ips":["203.0.113.1"]}',
-    ],
-    [
-      {
-        kind: "change-ssh-password-expiration",
-        envId: "env-1",
-        body: { days: 30 },
-      },
-      "POST /sites/environments/env-1/ssh/change-expiration-interval",
-      "access.ssh.change-expiration",
-      '{"days":30}',
-    ],
-    [
-      { kind: "toggle-sftp-accounts", envId: "env-1", body: { enabled: true } },
-      "PUT /sites/environments/env-1/additional-sftp-accounts/toggle-status",
-      "access.sftp.toggle-accounts",
-      '{"enabled":true}',
-    ],
-    [
-      {
-        kind: "add-sftp-account",
-        envId: "env-1",
-        body: { username: "deploy" },
-      },
-      "POST /sites/environments/env-1/additional-sftp-accounts",
-      "access.sftp.add-account",
-      '{"username":"deploy"}',
-    ],
-    [
-      { kind: "remove-sftp-account", sftpAccountId: "sftp-1" },
-      "DELETE /sites/environments/additional-sftp-accounts/sftp-1",
-      "access.sftp.remove-account",
-      "",
     ],
   ];
 
@@ -845,15 +707,15 @@ test("an action result falls back to the HTTP status", async () => {
       assert.equal(created.message, undefined);
 
       // An empty body parses to `null`, exactly like Go's `parseJSONBody`.
-      const deleted = await client.action({
-        kind: "delete-backup",
-        backupId: 7,
+      const second = await client.action({
+        kind: "create-backup",
+        envId: "env-1",
       });
-      assert.equal(deleted.status, 204);
-      assert.equal(deleted.raw, null);
-      assert.deepEqual(serializeActionResult(deleted), {
+      assert.equal(second.status, 204);
+      assert.equal(second.raw, null);
+      assert.deepEqual(serializeActionResult(second), {
         provider: "kinsta",
-        action: "backups.delete",
+        action: "backups.create",
         status: 204,
         raw: null,
       });
@@ -876,8 +738,8 @@ test("echoed action input secrets are redacted from successful results", async (
     SCOPED,
     async ({ client, requests }) => {
       const result = await client.action({
-        kind: "reset-site",
-        siteId: "site-1",
+        kind: "create-site",
+        mode: "wordpress",
         body: { admin_password: password },
       });
       assert.equal(requests[0].body.includes(password), true);
@@ -1017,11 +879,6 @@ test("invalid payloads and metrics fail before any request", async () => {
       }),
       { code: "usage_error" },
     );
-    await assert.rejects(
-      client.action({ kind: "delete-backup", backupId: 1.5 }),
-      { code: "usage_error" },
-    );
-
     // `objectBody` refuses a non-object create-site payload.
     await assert.rejects(
       client.action({ kind: "create-site", mode: "wordpress", body: ["nope"] }),
@@ -1141,8 +998,8 @@ test("provider failures map onto the shared taxonomy and never leak the key", as
     async ({ client, requests }) => {
       await assert.rejects(
         client.action({
-          kind: "reset-site",
-          siteId: "site-1",
+          kind: "create-site",
+          mode: "wordpress",
           body: { admin_password: password },
         }),
         (error) => {

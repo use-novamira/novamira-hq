@@ -67,7 +67,7 @@ import {
   type CredentialStore,
 } from "../../credentials/store.js";
 import { CliError } from "../../errors.js";
-import { disableSiteDeleteCapability } from "../../hosting/capabilities.js";
+import { applyHqCapabilityPolicy } from "../../hosting/capabilities.js";
 import type { HostingClientFactory } from "../../hosting/factory.js";
 import type { ProviderValidation } from "../../hosting/types.js";
 import type { ProviderFormInput } from "../signals-input.js";
@@ -89,15 +89,15 @@ export interface ProviderService {
   /** A **live provider API call**. Tests inject a registry or a mock origin. */
   validate(name: string): Promise<ProviderValidation>;
   /**
-   * The provider's capability document, with `sites.delete` forced unsupported.
+   * The provider's capability document with HQ-excluded operations omitted.
    *
    * Also a **live provider API call**. It lives here rather than in the
    * diagnostics handler so that `handlers/` never touches
    * `HostingClientFactory` directly: a handler is a pure request-to-response
    * function, and the layer that resolves a profile into a client is the
-   * services layer. The `sites.delete` rewrite is the same rule
-   * `hosting providers capabilities` applies, from the same module, so the two
-   * surfaces cannot disagree about what HQ can do.
+   * services layer. The visibility filter is the same rule `hosting providers
+   * capabilities` applies, from the same module, so the two surfaces cannot
+   * disagree about what HQ can do.
    */
   capabilities(name: string): Promise<unknown>;
   recordChecked(name: string, millis: number): void;
@@ -288,7 +288,7 @@ export function createProviderService(
     },
     capabilities: async (name) => {
       const client = await options.hosting.clientFromProfile(name);
-      return disableSiteDeleteCapability(
+      return applyHqCapabilityPolicy(
         await client.read({ kind: "capabilities" }),
       );
     },

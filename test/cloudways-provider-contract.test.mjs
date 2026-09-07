@@ -442,23 +442,6 @@ test("cloudways create site honours plain and clone modes", async () => {
   });
 });
 
-test("cloudways delete site splits server_id:app_id", async () => {
-  const routes = [
-    AUTH_ROUTE,
-    { body: JSON.stringify({ status: true }) },
-    { body: JSON.stringify({ status: true }) },
-  ];
-  await withServer(routes, async ({ baseUrl, requests }) => {
-    const client = clientFor(baseUrl);
-
-    await client.action({ kind: "delete-site", siteId: "123:456" });
-    assert.equal(requests[1].line, "DELETE /app/456?appId=456&server_id=123");
-
-    await client.action({ kind: "delete-site", siteId: "456" });
-    assert.equal(requests[2].line, "DELETE /app/456?appId=456");
-  });
-});
-
 test("cloudways clear cache uses the varnish endpoint", async () => {
   const routes = [AUTH_ROUTE, { body: JSON.stringify({ message: "queued" }) }];
   await withServer(routes, async ({ baseUrl, requests }) => {
@@ -558,7 +541,6 @@ test("cloudways domain actions send the complete alias list", async () => {
     AUTH_ROUTE,
     { body: JSON.stringify({ message: "ok" }) },
     { body: JSON.stringify({ message: "ok" }) },
-    { body: JSON.stringify({ message: "ok" }) },
   ];
   await withServer(routes, async ({ baseUrl, requests }) => {
     const client = clientFor(baseUrl);
@@ -574,17 +556,6 @@ test("cloudways domain actions send the complete alias list", async () => {
       "POST /app/manage/aliases?aliases=demo.example.com&app_id=456&domain=demo.example.com&server_id=123",
     );
 
-    const deleted = await client.action({
-      kind: "delete-domains",
-      envId: "123:456",
-      body: { aliases: "other.example.com" },
-    });
-    assert.equal(deleted.action, "domains.delete");
-    assert.equal(
-      requests[2].line,
-      "POST /app/manage/aliases?aliases=other.example.com&app_id=456&server_id=123",
-    );
-
     const primary = await client.action({
       kind: "change-primary-domain",
       envId: "123:456",
@@ -592,16 +563,15 @@ test("cloudways domain actions send the complete alias list", async () => {
     });
     assert.equal(primary.action, "domains.primary");
     assert.equal(
-      requests[3].line,
+      requests[2].line,
       "POST /app/manage/cname?aliases=demo.example.com&app_id=456&cname=demo.example.com&domain=demo.example.com&server_id=123",
     );
   });
 });
 
-test("cloudways backup actions choose the server or app endpoint", async () => {
+test("cloudways backup creation chooses the server or app endpoint", async () => {
   const routes = [
     AUTH_ROUTE,
-    { body: JSON.stringify({ message: "ok" }) },
     { body: JSON.stringify({ message: "ok" }) },
     { body: JSON.stringify({ message: "ok" }) },
   ];
@@ -624,83 +594,11 @@ test("cloudways backup actions choose the server or app endpoint", async () => {
       body: { server_id: "123" },
     });
     assert.equal(requests[2].line, "POST /server/manage/backup?server_id=123");
-
-    const restored = await client.action({
-      kind: "restore-backup",
-      targetEnvId: "123:456",
-      body: { time: "2026-01-01" },
-    });
-    assert.equal(restored.action, "backups.restore");
-    assert.equal(
-      requests[3].line,
-      "POST /app/manage/restore?app_id=456&server_id=123&time=2026-01-01",
-    );
   });
 });
 
-test("cloudways ssh and sftp access map onto the app endpoints", async () => {
-  const routes = [
-    AUTH_ROUTE,
-    { body: JSON.stringify({ status: true }) },
-    { body: JSON.stringify({ status: true }) },
-    { body: JSON.stringify({ status: true }) },
-  ];
-  await withServer(routes, async ({ baseUrl, requests }) => {
-    const client = clientFor(baseUrl);
-
-    const ssh = await client.action({
-      kind: "set-ssh-status",
-      envId: "123:456",
-      body: { is_enabled: true },
-    });
-    assert.equal(ssh.action, "access.ssh");
-    assert.equal(
-      requests[1].line,
-      "POST /app/updateAppSshPerms?app_id=456&is_enabled=1&server_id=123&update_perms_action=enable",
-    );
-
-    await client.action({
-      kind: "set-ssh-status",
-      envId: "123:456",
-      body: { enabled: "no" },
-    });
-    assert.equal(
-      requests[2].line,
-      "POST /app/updateAppSshPerms?app_id=456&enabled=no&server_id=123&update_perms_action=disable",
-    );
-
-    const sftp = await client.action({
-      kind: "add-sftp-account",
-      envId: "123:456",
-      body: { username: "deploy" },
-    });
-    assert.equal(sftp.action, "access.sftp.add");
-    assert.equal(
-      requests[3].line,
-      "POST /app/creds?app_id=456&server_id=123&username=deploy",
-    );
-  });
-});
-
-test("cloudways removes an sftp account by id", async () => {
-  const routes = [AUTH_ROUTE, { body: JSON.stringify({ status: true }) }];
-  await withServer(routes, async ({ baseUrl, requests }) => {
-    const client = clientFor(baseUrl);
-    const result = await client.action({
-      kind: "remove-sftp-account",
-      sftpAccountId: "cred 42",
-    });
-    assert.equal(result.action, "access.sftp.remove");
-    assert.equal(requests[1].line, "DELETE /app/creds/cred%2042");
-  });
-});
-
-test("cloudways environment actions map onto the staging and sync endpoints", async () => {
-  const routes = [
-    AUTH_ROUTE,
-    { body: JSON.stringify({ message: "ok" }) },
-    { body: JSON.stringify({ message: "ok" }) },
-  ];
+test("cloudways creates a staging environment", async () => {
+  const routes = [AUTH_ROUTE, { body: JSON.stringify({ message: "ok" }) }];
   await withServer(routes, async ({ baseUrl, requests }) => {
     const client = clientFor(baseUrl);
 
@@ -715,14 +613,6 @@ test("cloudways environment actions map onto the staging and sync endpoints", as
       requests[1].line,
       "POST /staging/app/cloneApp?app_id=456&server_id=123",
     );
-
-    const pushed = await client.action({
-      kind: "push-environment",
-      siteId: "123:456",
-      body: { server_id: "123", app_id: "456" },
-    });
-    assert.equal(pushed.action, "envs.push");
-    assert.equal(requests[2].line, "POST /sync/app?app_id=456&server_id=123");
   });
 });
 
@@ -730,9 +620,6 @@ test("cloudways requires server_id:app_id where the API demands both", async () 
   await withServer([AUTH_ROUTE], async ({ baseUrl, requests }) => {
     const client = clientFor(baseUrl);
 
-    await assert.rejects(client.read({ kind: "ssh-status", envId: "123" }), {
-      code: "usage_error",
-    });
     await assert.rejects(
       client.action({ kind: "restart-php", envId: "onlyserver" }),
       { code: "usage_error" },
@@ -755,14 +642,10 @@ test("cloudways requires server_id:app_id where the API demands both", async () 
   });
 });
 
-test("cloudways reads regions, ssh credentials and analytics", async () => {
+test("cloudways reads regions and analytics", async () => {
   const routes = [
     AUTH_ROUTE,
     { body: JSON.stringify({ regions: [{ id: "ams", name: "Amsterdam" }] }) },
-    { body: JSON.stringify({ ssh_perms: { enabled: true } }) },
-    { body: JSON.stringify({ app_creds: [{ id: 1, username: "master" }] }) },
-    { body: JSON.stringify({ app_creds: [] }) },
-    { body: JSON.stringify({ app_creds: [] }) },
     { body: JSON.stringify({ disk: { used: 1 } }) },
     { body: JSON.stringify({ summary: {} }) },
     { body: JSON.stringify({ detail: {} }) },
@@ -775,23 +658,8 @@ test("cloudways reads regions, ssh credentials and analytics", async () => {
     });
     assert.equal(requests[1].line, "GET /regions");
 
-    await client.read({ kind: "ssh-status", envId: "123:456" });
-    assert.equal(
-      requests[2].line,
-      "GET /app/getAppSshPerms?server_id=123&app_id=456",
-    );
-
-    await client.read({ kind: "ssh-config", siteId: "123:456", envId: "" });
-    assert.equal(requests[3].line, "GET /app/creds?server_id=123&app_id=456");
-
-    await client.read({ kind: "ssh-password", envId: "123:456" });
-    assert.equal(requests[4].line, "GET /app/creds?server_id=123&app_id=456");
-
-    await client.read({ kind: "sftp-accounts", envId: "123:456" });
-    assert.equal(requests[5].line, "GET /app/creds?server_id=123&app_id=456");
-
     await client.read({ kind: "analytics-usage", siteId: "123", metric: "" });
-    assert.equal(requests[6].line, "GET /server/123/diskUsage");
+    assert.equal(requests[2].line, "GET /server/123/diskUsage");
 
     await client.read({
       kind: "analytics-usage",
@@ -799,7 +667,7 @@ test("cloudways reads regions, ssh credentials and analytics", async () => {
       metric: "bandwidth",
     });
     assert.equal(
-      requests[7].line,
+      requests[3].line,
       "GET /app/monitor/summary?server_id=123&app_id=456&type=bandwidth",
     );
 
@@ -810,7 +678,7 @@ test("cloudways reads regions, ssh credentials and analytics", async () => {
       query: [["duration", "1d"]],
     });
     assert.equal(
-      requests[8].line,
+      requests[4].line,
       "GET /app/monitor/detail?server_id=123&app_id=456&duration=1d&target=disk",
     );
   });
@@ -843,12 +711,10 @@ test("cloudways reports its capability list", async () => {
     });
     for (const name of [
       "activity.list",
-      "sites.reset",
       "envs.create-plain",
-      "envs.delete",
+      "envs.push",
       "domains.list",
       "backups.list",
-      "backups.delete",
       "php.set-version",
       "wp.plugins.list",
       "wp.plugins.install",
@@ -871,19 +737,13 @@ test("cloudways reports its capability list", async () => {
       "sites.create",
       "sites.create-plain",
       "sites.clone",
-      "sites.delete",
       "envs.create",
       "envs.clone",
-      "envs.push",
       "domains.add",
-      "domains.delete",
       "domains.primary",
       "backups.create",
-      "backups.restore",
       "php.restart",
       "analytics.usage",
-      "access.ssh",
-      "access.sftp",
     ]) {
       assert.equal(byName.get(name).supported, true, name);
     }
@@ -912,7 +772,6 @@ test("cloudways refuses the operations it deliberately does not map", async () =
       { kind: "themes", envId: "123:456" },
       { kind: "company-plugins" },
       { kind: "company-themes" },
-      { kind: "ssh-allowlist", envId: "123:456" },
       { kind: "file-list", envId: "123:456" },
     ];
     for (const request of unsupportedReads) {
@@ -930,10 +789,8 @@ test("cloudways refuses the operations it deliberately does not map", async () =
     }
 
     const unsupportedActions = [
-      { kind: "reset-site", siteId: "1" },
-      { kind: "delete-environment", envId: "123:456" },
+      { kind: "push-environment", siteId: "123:456" },
       { kind: "set-php-version" },
-      { kind: "delete-backup", backupId: 1 },
       { kind: "update-plugin", envId: "123:456" },
       { kind: "bulk-update-plugins", envId: "123:456" },
       { kind: "update-theme", envId: "123:456" },
@@ -941,14 +798,6 @@ test("cloudways refuses the operations it deliberately does not map", async () =
       { kind: "run-wp-cli", envId: "123:456" },
       { kind: "set-denied-ips" },
       { kind: "apply-redirects", envId: "123:456" },
-      { kind: "dns-record-create", domainId: "1" },
-      { kind: "dns-record-update", domainId: "1" },
-      { kind: "dns-record-delete", domainId: "1" },
-      { kind: "set-ssh-password-status", envId: "123:456" },
-      { kind: "generate-ssh-password", envId: "123:456" },
-      { kind: "set-ssh-allowlist", envId: "123:456" },
-      { kind: "change-ssh-password-expiration", envId: "123:456" },
-      { kind: "toggle-sftp-accounts", envId: "123:456" },
     ];
     for (const request of unsupportedActions) {
       await assert.rejects(
@@ -1067,22 +916,22 @@ test("cloudways extracts a nested operation id from an action response", async (
     const client = clientFor(baseUrl);
 
     const nested = await client.action({
-      kind: "push-environment",
-      siteId: "s",
+      kind: "create-site",
+      mode: "wordpress",
       body: {},
     });
     assert.equal(nested.operationId, "9001");
 
     const numeric = await client.action({
-      kind: "push-environment",
-      siteId: "s",
+      kind: "create-site",
+      mode: "wordpress",
       body: {},
     });
     assert.equal(numeric.operationId, "4242");
 
     const message = await client.action({
-      kind: "push-environment",
-      siteId: "s",
+      kind: "create-site",
+      mode: "wordpress",
       body: {},
     });
     assert.equal(message.operationId, undefined);
@@ -1090,8 +939,8 @@ test("cloudways extracts a nested operation id from an action response", async (
 
     // An empty response body is `null`, exactly what Go's parseJSONBody yields.
     const empty = await client.action({
-      kind: "push-environment",
-      siteId: "s",
+      kind: "create-site",
+      mode: "wordpress",
       body: {},
     });
     assert.equal(empty.raw, null);
