@@ -54,15 +54,17 @@ function renderRenameControl(
   const rename = post(url(RENAME_PATH, { name, ...routeContext }), {
     include: [renameSignal],
   });
-  return html`<form class="rename-profile"${ds.signals({
-    [renameSignal]: name,
-  })}${ds.onSubmit(rename)}><input type="text"${attr(
+  return html`<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${name}`)} style="cursor: pointer">⋯</summary><details style="padding: 8px 0"><summary style="cursor: pointer">Rename</summary><form class="rename-profile" style="margin-top: 8px"${ds.signals(
+    {
+      [renameSignal]: name,
+    },
+  )}${ds.onSubmit(rename)}><input type="text"${attr(
     "aria-label",
     `New name for ${name}`,
   )}${ds.bind(renameSignal)} pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" maxlength="64" required><button class="button tiny" type="submit"${attr(
     "title",
     `novamira sites rename ${name} <new-name>`,
-  )}>Rename</button></form>`;
+  )}>Save name</button></form></details></details>`;
 }
 
 /**

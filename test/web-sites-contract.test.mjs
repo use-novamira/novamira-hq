@@ -887,7 +887,8 @@ test("16: matched CLI profiles stay in the hosting row and CLI-only sites are se
   assert.ok(markup.includes("<strong>staging</strong>"));
   assert.ok(markup.includes("<strong>staging-2</strong>"));
   assert.ok(markup.includes(">Disconnect</button>"));
-  assert.ok(markup.includes(">Rename</button>"));
+  assert.ok(markup.includes(">Rename</summary>"));
+  assert.ok(markup.includes(">Save name</button>"));
   assert.ok(markup.includes("novamira sites rename prod &lt;new-name&gt;"));
   assert.ok(markup.includes(">Remove from list</button>"));
 
