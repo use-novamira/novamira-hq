@@ -1,0 +1,41 @@
+// SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import { renderUninstallHelp } from "../dist/web/views/settings.js";
+import { renderHtml } from "../dist/web/html.js";
+
+test("uninstall help separates executable removal from optional disconnection", () => {
+  const markup = renderHtml(renderUninstallHelp());
+  for (const text of [
+    "npm uninstall -g @novamira/cli",
+    "novamira sites list --json",
+    "novamira --site PROFILE_NAME auth logout",
+    "novamira sites remove PROFILE_NAME",
+    "before uninstalling",
+    "remote revocation can fail",
+    "does not run removal commands",
+  ])
+    assert.ok(markup.includes(text), text);
+  assert.doesNotMatch(markup, /<button|data-on:|rm -rf/);
+});
+
+test("both installers disclose the independent CLI before installing it", async () => {
+  for (const path of ["install.sh", "install.ps1"]) {
+    const source = await readFile(
+      new URL(`../${path}`, import.meta.url),
+      "utf8",
+    );
+    assert.ok(source.includes("remains installed if you remove Novamira HQ"));
+    assert.ok(source.includes("npm uninstall -g @novamira/cli"));
+    const installation =
+      path === "install.sh"
+        ? 'if npm install --global --ignore-scripts "$site_package"'
+        : '& $npm @("install", "--global", "--ignore-scripts", $sitePackage)';
+    assert.ok(
+      source.indexOf("remains installed") < source.indexOf(installation),
+    );
+  }
+});

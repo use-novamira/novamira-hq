@@ -21,6 +21,7 @@
 // would outlive its window.
 
 import { spawn } from "node:child_process";
+import { Buffer } from "node:buffer";
 import { get } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -46,6 +47,7 @@ const executable =
 
 const home = await mkdtemp(join(tmpdir(), "novamira-hq-smoke-"));
 let child;
+let mcpChild;
 try {
   child = spawn(resolve(executable), ["--serve"], {
     // Piped and never written to, exactly as the window holds it.
@@ -83,8 +85,38 @@ try {
     "the dashboard server did not stop when its stdin closed",
   );
   stdout.write(`desktop-smoke: stopped with ${describeExit(code)}\n`);
+  mcpChild = spawn(resolve(executable), ["--mcp"], {
+    stdio: ["pipe", "pipe", "inherit"],
+    env: { ...env, NOVAMIRA_HQ_HOME: home, NOVAMIRA_HQ_UPDATE_CHECK: "0" },
+  });
+  const mcpCheck = verifyMcp(mcpChild);
+  mcpChild.stdin.end(
+    [
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "desktop-smoke", version: "1" },
+        },
+      },
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+      { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+    ]
+      .map((value) => JSON.stringify(value))
+      .join("\n") + "\n",
+  );
+  const tools = await withTimeout(
+    mcpCheck,
+    STARTUP_TIMEOUT_MS,
+    "the headless MCP role did not initialize",
+  );
+  stdout.write(`desktop-smoke: headless MCP initialized with ${tools} tools\n`);
 } catch (error) {
   child?.kill("SIGKILL");
+  mcpChild?.kill("SIGKILL");
   stderr.write(`desktop-smoke: ${error.message}\n`);
   exit(1);
 } finally {
@@ -92,6 +124,45 @@ try {
 }
 
 stdout.write("desktop-smoke: ok\n");
+
+/** Only initialize and tools/list; no provider tool is called. */
+function verifyMcp(process_) {
+  return new Promise((resolve_, reject) => {
+    let buffer = "";
+    process_.on("error", reject);
+    process_.stdin.on("error", reject);
+    process_.stdout.setEncoding("utf8");
+    process_.stdout.on("data", (chunk) => {
+      buffer += chunk;
+      if (Buffer.byteLength(buffer) > 262144) {
+        process_.kill("SIGKILL");
+        reject(new Error("MCP output exceeded the smoke-test limit"));
+      }
+    });
+    process_.on("close", (code) => {
+      try {
+        if (code !== 0) throw new Error("The MCP role exited unsuccessfully");
+        const replies = buffer
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line));
+        const initialized = replies.find((reply) => reply.id === 1)?.result;
+        const listed = replies.find((reply) => reply.id === 2)?.result;
+        if (
+          !initialized?.serverInfo ||
+          !Array.isArray(listed?.tools) ||
+          listed.tools.length === 0
+        )
+          throw new Error(
+            "The MCP role did not complete initialization and tool listing",
+          );
+        resolve_(listed.tools.length);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+}
 
 /** Loopback only, and the body is drained so the connection closes. */
 function request(url) {

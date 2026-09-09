@@ -3,6 +3,9 @@
 
 import type { Command } from "commander";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import type { McpLaunch } from "./mcp-connection.js";
+import { createMcpConnectionService } from "./mcp/configuration.js";
 import { createCommandHandlers } from "./cli/commands.js";
 import {
   createProgram,
@@ -50,6 +53,8 @@ import {
   type InstallRunner,
 } from "./update/index.js";
 import { VERSION } from "./version.js";
+import { HistoryStore, type HistoryChannel } from "./history/index.js";
+import { historyClient } from "./history/client.js";
 
 /**
  * The version literal moved to `src/version.ts` so `src/provisioning/` can
@@ -81,6 +86,9 @@ export interface RuntimeEnvironment extends PathEnvironment {
  * gets the real, complete provider registry.
  */
 export interface MainOverrides {
+  readonly mcpLaunch?: McpLaunch;
+  readonly distribution?: "npm" | "desktop";
+  readonly historyChannel?: HistoryChannel;
   /**
    * The provider constructors the hosting client factory may build from.
    * Defaults to `PROVIDER_REGISTRY`; a test injects a fake so that no
@@ -179,6 +187,7 @@ export async function main(
     // of the same key, and two managers behave like two processes.
     const locks = new ProfileLockManager(paths.stateDir, security);
     const store = new ConfigStore(paths.configFile, locks, security);
+    const history = new HistoryStore(paths, locks, security);
 
     // The credential store, built at most once per process and only when a
     // `stored` reference is actually resolved: constructing it probes the OS
@@ -199,6 +208,15 @@ export async function main(
     // command created; before that there is nothing to write to, and an HTTP
     // request cannot have happened yet either.
     const hosting = createHostingClientFactory({
+      decorateClient: (client, profile) =>
+        historyClient(
+          client,
+          profile,
+          history,
+          () =>
+            overrides.historyChannel ??
+            (program?.args[0] === "dashboard" ? "dashboard" : "cli"),
+        ),
       store,
       registry: overrides.registry ?? PROVIDER_REGISTRY,
       env: environment,
@@ -251,6 +269,15 @@ export async function main(
       });
 
     const handlers = createCommandHandlers({
+      distribution: overrides.distribution ?? "npm",
+      mcpConnection: createMcpConnectionService(
+        overrides.mcpLaunch ?? {
+          command: process.execPath,
+          args: [fileURLToPath(new URL("./index.js", import.meta.url)), "mcp"],
+        },
+        environment,
+      ),
+      history,
       version: VERSION,
       paths,
       store,

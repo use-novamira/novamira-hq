@@ -228,6 +228,9 @@ if [ -n "${NOVAMIRA_HQ_SKIP_SITE_CLI:-}" ]; then
   printf 'Install it later with: npm install -g %s\n' "$site_package"
 else
   printf '\nInstalling the site CLI for connected-state detection...\n'
+  printf 'Novamira CLI is an independent component and remains installed if you remove Novamira HQ.\n'
+  printf 'Optional removal later: npm uninstall -g @novamira/cli\n'
+  printf 'This does not remove WordPress plugins or guarantee cleanup of saved profiles and credentials. See HQ Settings > Uninstalling.\n'
   if npm install --global --ignore-scripts "$site_package"; then
     printf '\nThe site CLI is installed. Connect a provisioned site with:\n'
     printf '  novamira auth login <url>\n'

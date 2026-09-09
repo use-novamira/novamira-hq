@@ -69,6 +69,7 @@ import type { PlatformPaths } from "../config/paths.js";
 import type { ConfigStore } from "../config/profiles.js";
 import { asCliError, CliError } from "../errors.js";
 import type { HostingClientFactory } from "../hosting/factory.js";
+import type { HistoryStore } from "../history/index.js";
 import type { CredentialStore } from "../credentials/store.js";
 import type { HttpFetch } from "../provisioning/http.js";
 import { DASHBOARD_TOKEN_HEADER } from "./expr.js";
@@ -97,6 +98,7 @@ import {
 } from "./routes.js";
 import { streamSse } from "./sse.js";
 import { createDeployPathService } from "./services/deploy-paths.js";
+import { createDeployExecutionService } from "./services/deploy-execution.js";
 import { createProviderService } from "./services/providers.js";
 import { createSetupJobService } from "./services/setup-jobs.js";
 import { createSitesService } from "./services/sites.js";
@@ -223,6 +225,9 @@ export interface DashboardUpdates {
 }
 
 export interface DashboardServerDependencies {
+  readonly appAcknowledgement?: import("../config/app-acknowledgement.js").AppAcknowledgement;
+  readonly mcpConnection?: import("../mcp-connection.js").McpConnectionService;
+  readonly history: Pick<HistoryStore, "list">;
   readonly version: string;
   readonly paths: PlatformPaths;
   readonly store: ConfigStore;
@@ -510,6 +515,10 @@ export function createDashboardServer(
   });
 
   const deployPaths = createDeployPathService({ store: dependencies.store });
+  const deployExecution = createDeployExecutionService(
+    dependencies.store,
+    dependencies.hosting,
+  );
 
   // The job registry is process-lifetime state, like `lastChecked` and the
   // sites cache: an operator who restarts the dashboard has run nothing. It
@@ -556,6 +565,14 @@ export function createDashboardServer(
   };
 
   const table = createRouteTable({
+    history: dependencies.history,
+    ...(dependencies.appAcknowledgement
+      ? { appAcknowledgement: dependencies.appAcknowledgement }
+      : {}),
+    deployExecution,
+    ...(dependencies.mcpConnection
+      ? { mcpConnection: dependencies.mcpConnection }
+      : {}),
     loadConfigView,
     version: dependencies.version,
     doctor: dependencies.doctor,
@@ -943,6 +960,7 @@ export function createDashboardServer(
     if (shutdown !== undefined) return shutdown;
     shutdown = (async () => {
       const jobsStopped = setupJobs.shutdown();
+      const deploysStopped = deployExecution.shutdown();
       const server = httpServer;
       if (server !== undefined) {
         // Keep-alive sockets would otherwise hold `close` open until timeout.
@@ -954,6 +972,7 @@ export function createDashboardServer(
         });
       }
       await jobsStopped;
+      await deploysStopped;
     })();
     return shutdown;
   };

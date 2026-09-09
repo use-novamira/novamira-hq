@@ -125,13 +125,21 @@ function fakeClient({ sites = [], site = SITE, environments = [] } = {}) {
           provider: "kinsta",
           action:
             request.kind === "create-backup" ? "backups.create" : "envs.push",
+          operationId: request.kind,
           status: 200,
           raw: null,
         };
       return ACTION;
     },
-    async operationStatus() {
-      throw new Error("this group never polls an operation");
+    async operationStatus(operationId) {
+      return {
+        provider: "kinsta",
+        operationId,
+        status: 200,
+        done: true,
+        failed: false,
+        raw: { state: "completed" },
+      };
     },
   };
 }
@@ -819,6 +827,8 @@ test("envs push backs up the target before its granular push", async () => {
   );
   assert.equal(result.code, 0, result.stdout);
   assert.deepEqual(harnessed.client.calls, [
+    { method: "read", request: { kind: "capabilities" } },
+    { method: "listEnvironments", siteId: "site-1" },
     { method: "read", request: { kind: "capabilities" } },
     { method: "listEnvironments", siteId: "site-1" },
     {

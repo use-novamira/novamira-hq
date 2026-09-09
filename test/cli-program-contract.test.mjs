@@ -127,6 +127,7 @@ test("the command tree routes to the handler that owns each command", async () =
   const cases = [
     { argv: ["--version"], name: "version", args: ["test"] },
     { argv: ["config", "path"], name: "configPath", args: [] },
+    { argv: ["history"], name: "historyList", args: [] },
     {
       argv: ["config", "path", "--json", "--verbose", "--timeout", "500"],
       name: "configPath",

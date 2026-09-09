@@ -40,6 +40,11 @@
  */
 
 import { CliError } from "../../errors.js";
+import type { McpConfiguration } from "../../mcp-connection.js";
+import { renderMcpPage } from "./mcp.js";
+import { renderDeployConfirmation } from "./deploy-confirmation.js";
+import type { DeployConfirmation } from "../services/deploy-execution.js";
+import { html } from "../html.js";
 import type { Html } from "../html.js";
 import type { DashboardSignals } from "../signals.js";
 import {
@@ -49,6 +54,7 @@ import {
   type WarmSitesView,
 } from "./deploy-paths.js";
 import { renderDiagnosticsPage } from "./diagnostics.js";
+import { renderHistoryPage, type HistoryView } from "./history.js";
 import { renderHowToUsePage } from "./how-to-use.js";
 import { renderProvidersPage } from "./providers.js";
 import { renderSettingsPage } from "./settings.js";
@@ -57,6 +63,9 @@ import { renderSitesPage } from "./sites.js";
 import type { ConfigView, DashboardNotice, DashboardPage } from "./types.js";
 
 export interface PageModel {
+  readonly deployConfirmation?: DeployConfirmation;
+  readonly mcp?: McpConfiguration;
+  readonly history?: HistoryView;
   readonly view: ConfigView;
   readonly notice: DashboardNotice;
   /** The root-page first-run state, after checking both hosting and direct sites. */
@@ -90,6 +99,10 @@ export interface PageModel {
 /** Go's `renderMainWithSignals` switch, made exhaustive. */
 export function renderPageBody(page: DashboardPage, model: PageModel): Html {
   switch (page) {
+    case "mcp":
+      return renderMcpPage(model.view, model.mcp);
+    case "history":
+      return renderHistoryPage(model.history ?? []);
     case "providers":
       return renderProvidersPage({
         view: model.view,
@@ -102,7 +115,7 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
     case "how-to-use":
       return renderHowToUsePage();
     case "deploy-paths":
-      return renderDeployPathsPage(model.view, model.notice, model.deployPaths);
+      return html`${model.deployConfirmation ? renderDeployConfirmation(model.deployConfirmation) : false}${renderDeployPathsPage(model.view, model.notice, model.deployPaths)}`;
     case "deploy-path-new":
       return renderDeployPathNewPage(model.deployNew);
     case "novamira-setup":

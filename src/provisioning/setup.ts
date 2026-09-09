@@ -43,6 +43,7 @@
  */
 
 import { CliError, asCliError } from "../errors.js";
+import { runHostingWorkflow } from "../operation-context.js";
 import {
   wpCliResultsObservable,
   type ProviderClient,
@@ -80,6 +81,7 @@ import {
   type NormalizedSite,
 } from "./site-url.js";
 import { contextualize, runWpCliForOutput, type PollBudget } from "./wp-cli.js";
+import { inspectExistingNovamira } from "./existing.js";
 
 /* -------------------------------------------------------------------------- */
 /* Constants                                                                  */
@@ -127,7 +129,7 @@ export interface NovamiraSetupRequest {
   readonly validateSource?: boolean;
   /** Defaults to true. */
   readonly wait?: boolean;
-  /** Defaults to true. */
+  /** Explicit true enables on an existing install; otherwise preserve its state. */
   readonly aiAbilities?: boolean;
   /** Defaults to true. */
   readonly compatCheck?: boolean;
@@ -243,6 +245,15 @@ export async function provisionNovamira(
   dependencies: NovamiraSetupDependencies,
   request: NovamiraSetupRequest,
 ): Promise<NovamiraSetupResult> {
+  return runHostingWorkflow("novamira-setup", () =>
+    provisionNovamiraSteps(dependencies, request),
+  );
+}
+
+async function provisionNovamiraSteps(
+  dependencies: NovamiraSetupDependencies,
+  request: NovamiraSetupRequest,
+): Promise<NovamiraSetupResult> {
   const { client, hostingProfile, environment } = dependencies;
   const http = dependencies.fetch;
   const latestReleaseApi =
@@ -338,92 +349,102 @@ export async function provisionNovamira(
   const phpVersion = ensureNovamiraSetupPhp(phpOutput);
   report("ok", `PHP ${phpVersion} is supported.`);
 
-  // B2. The DB-backed WP-CLI preflight, including its DB_HOST hint.
-  const installLine = pluginInstallCommand(resolvedSource, {
-    ...(request.pluginVersion === undefined
-      ? {}
-      : { pluginVersion: request.pluginVersion }),
-    force: request.force ?? false,
-    // No `--activate` / `--activate-network` on the install line whenever an
-    // `ActivationPlan` exists: WP-CLI observability was asserted in Phase A and
-    // `wait` defaults true, so activation is deferred to B4/B5 where a failure
-    // is observable. The flags reappear only in the no-slug fallback above.
-    activate: inlineActivate,
-    activateNetwork: inlineNetwork,
-    ignoreRequirements: request.ignoreRequirements ?? false,
-  });
-  const installBody = wpCliCommandPayload(installLine);
+  report("info", "Inspecting existing Novamira before making changes.");
+  const existing = await inspectExistingNovamira(client, envId, budget);
 
-  if ((request.preflight ?? true) && installPreflightApplies(installBody)) {
-    report("info", "Running WP-CLI preflight.");
-    await preflightWpCli(client, envId, budget);
-    report("ok", "WP-CLI preflight passed.");
-  }
+  if (existing === undefined || request.force === true) {
+    // B2. The DB-backed WP-CLI preflight, including its DB_HOST hint.
+    const installLine = pluginInstallCommand(resolvedSource, {
+      ...(request.pluginVersion === undefined
+        ? {}
+        : { pluginVersion: request.pluginVersion }),
+      force: request.force ?? false,
+      // No `--activate` / `--activate-network` on the install line whenever an
+      // `ActivationPlan` exists: WP-CLI observability was asserted in Phase A and
+      // `wait` defaults true, so activation is deferred to B4/B5 where a failure
+      // is observable. The flags reappear only in the no-slug fallback above.
+      activate: inlineActivate,
+      activateNetwork: inlineNetwork,
+      ignoreRequirements: request.ignoreRequirements ?? false,
+    });
+    const installBody = wpCliCommandPayload(installLine);
 
-  // Both install-failure branches below ask the same question before they
-  // report: was this simply a re-run? `--force` already requested the
-  // overwrite, so suggesting it again there would be advice the operator has
-  // taken — the hint is suppressed rather than probed for.
-  const installHint = async (): Promise<string> =>
-    (request.force ?? false)
-      ? ""
-      : installFailureHint(client, envId, slug, budget);
-
-  // B3. The install itself. Go's asymmetry is preserved exactly: the async
-  // branch never inspects `result.status`, the sync branch never waits.
-  report("info", "Installing the Novamira plugin.");
-  const installResult = await client.action({
-    kind: "run-wp-cli",
-    envId,
-    body: installBody,
-  });
-  dependencies.signal?.throwIfAborted();
-  if (installResult.operationId !== undefined) {
-    if (!(request.wait ?? true)) {
-      throw new CliError(
-        "usage_error",
-        "hosting novamira setup requires --wait when the provider returns an async plugin install operation.",
-        { details: { flag: "--wait" } },
-      );
+    if ((request.preflight ?? true) && installPreflightApplies(installBody)) {
+      report("info", "Running WP-CLI preflight.");
+      await preflightWpCli(client, envId, budget);
+      report("ok", "WP-CLI preflight passed.");
     }
-    const status = await waitForOperationStatus(
-      client,
-      installResult.operationId,
-      budget,
-    );
-    if (status.failed) {
-      const operationId = redactAssociatedText(status.operationId, status);
+
+    // Both install-failure branches below ask the same question before they
+    // report: was this simply a re-run? `--force` already requested the
+    // overwrite, so suggesting it again there would be advice the operator has
+    // taken — the hint is suppressed rather than probed for.
+    const installHint = async (): Promise<string> =>
+      (request.force ?? false)
+        ? ""
+        : installFailureHint(client, envId, slug, budget);
+
+    // B3. The install itself. Go's asymmetry is preserved exactly: the async
+    // branch never inspects `result.status`, the sync branch never waits.
+    report("info", "Installing the Novamira plugin.");
+    const installResult = await client.action({
+      kind: "run-wp-cli",
+      envId,
+      body: installBody,
+    });
+    dependencies.signal?.throwIfAborted();
+    if (installResult.operationId !== undefined) {
+      if (!(request.wait ?? true)) {
+        throw new CliError(
+          "usage_error",
+          "hosting novamira setup requires --wait when the provider returns an async plugin install operation.",
+          { details: { flag: "--wait" } },
+        );
+      }
+      const status = await waitForOperationStatus(
+        client,
+        installResult.operationId,
+        budget,
+      );
+      if (status.failed) {
+        const operationId = redactAssociatedText(status.operationId, status);
+        throw new CliError(
+          "provider_error",
+          redactAssociatedText(
+            `Plugin install operation ${status.operationId} failed: ${status.message ?? "provider reported failure"}${await installHint()}`,
+            status,
+          ),
+          {
+            details: {
+              provider: status.provider,
+              operationId,
+              status: status.status,
+            },
+          },
+        );
+      }
+    } else if (installResult.status >= 400) {
       throw new CliError(
         "provider_error",
         redactAssociatedText(
-          `Plugin install operation ${status.operationId} failed: ${status.message ?? "provider reported failure"}${await installHint()}`,
-          status,
+          `Plugin install failed: provider returned status ${String(installResult.status)}: ${installResult.message ?? "request failed"}${await installHint()}`,
+          installResult,
         ),
         {
           details: {
-            provider: status.provider,
-            operationId,
-            status: status.status,
+            provider: installResult.provider,
+            status: installResult.status,
           },
         },
       );
     }
-  } else if (installResult.status >= 400) {
-    throw new CliError(
-      "provider_error",
-      redactAssociatedText(
-        `Plugin install failed: provider returned status ${String(installResult.status)}: ${installResult.message ?? "request failed"}${await installHint()}`,
-        installResult,
-      ),
-      {
-        details: {
-          provider: installResult.provider,
-          status: installResult.status,
-        },
-      },
+    report("ok", "Novamira plugin installed.");
+  } else {
+    report(
+      "ok",
+      "Compatible Novamira is already installed; preserving the plugin.",
     );
   }
-  report("ok", "Novamira plugin installed.");
 
   // B4/B5. Activation, as its own observable WP-CLI call. `installedPluginIsActive`
   // and `activatePlugin` are called separately rather than through
@@ -463,8 +484,12 @@ export async function provisionNovamira(
   // B7/B8. The AI-Abilities options. B8's host goes through `shellJoin`: a
   // hostile hostname refused by `shellQuote` is the only thing standing between
   // untrusted site metadata and a provider's shell.
-  const aiAbilities = request.aiAbilities ?? true;
-  if (aiAbilities) {
+  const enableAiAbilities =
+    existing === undefined || request.aiAbilities === true;
+  const aiAbilities =
+    enableAiAbilities ||
+    (existing.aiEnabled && existing.aiDomain === site.host);
+  if (enableAiAbilities) {
     report("info", "Enabling Novamira AI Abilities.");
     const domainCommand = shellJoin([
       "wp",
@@ -492,6 +517,12 @@ export async function provisionNovamira(
       );
     }
     report("ok", "Novamira AI Abilities enabled.");
+  } else if (!aiAbilities) {
+    warnings.push({
+      code: "ai_abilities_disabled",
+      message:
+        "AI Abilities are disabled or bound to another domain on this existing site. Both settings were left unchanged. Use --ai-abilities explicitly to enable them for the current domain.",
+    });
   }
 
   /* -- Phase C: the compatibility preflight --------------------------------- */
@@ -533,7 +564,7 @@ export async function provisionNovamira(
       minimumWordpressVersion: block.minimum_wordpress_version,
       features: block.features,
     };
-    ready = true;
+    ready = aiAbilities ? true : null;
     report(
       "ok",
       `Novamira ${block.plugin_version} satisfies the site CLI compatibility matrix.`,
@@ -570,7 +601,7 @@ export async function provisionNovamira(
     },
     aiAbilities: {
       enabled: aiAbilities,
-      domain: aiAbilities ? site.host : null,
+      domain: enableAiAbilities ? site.host : existing.aiDomain,
     },
     compatibility,
     ready,

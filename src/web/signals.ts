@@ -125,12 +125,8 @@ export interface UpdateSignals {
 }
 
 /**
- * Go's comment on the pointer field, verbatim, because the reasoning survives
- * the type change:
- *
- * > setupSignals uses a pointer so old/no-JS posts that include only the token
- * > keep the default setup behavior: AI Abilities are enabled unless the
- * > dashboard checkbox explicitly sends false.
+ * Explicit activation on existing sites defaults off. New installations are
+ * enabled by the provisioning service, independently of this checkbox.
  */
 export interface SetupSignals {
   readonly enableAiAbilities: boolean;
@@ -314,7 +310,7 @@ export function defaultDashboardSignals(
     },
     diagnostics: { profile: "" },
     updates: { loading: false, installing: false },
-    setup: { enableAiAbilities: true },
+    setup: { enableAiAbilities: false },
   };
 }
 

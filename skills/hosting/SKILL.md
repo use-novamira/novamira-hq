@@ -107,9 +107,9 @@ novamira-hq --json --profile <hosting-profile> hosting wp plugins install --env 
 novamira-hq --json --profile <hosting-profile> hosting novamira setup --env <env_id>
 ```
 
-`hosting novamira setup` blocks environments running PHP older than 8.0, installs and activates the Novamira plugin (`--source` defaults to `novamira-latest`), sets `novamira_ai_abilities_enabled` and `novamira_ai_abilities_domain` unless `--no-ai-abilities` is given, discovers the site URL with `wp option get home` unless `--url` supplies one, checks the site against the v1 compatibility matrix unless `--no-compat-check` is given, and prints the handoff below.
+`hosting novamira setup` blocks environments running PHP older than 8.0 and inspects an existing Novamira before mutation. Too-old or unreadable versions stop without replacement, even with `--force`; update explicitly first. New installations enable AI Abilities. Compatible existing installations preserve both AI Abilities options unless `--ai-abilities` is explicitly passed. This is independent of the reinstall flag. Setup discovers the site URL with `wp option get home` unless `--url` supplies one, checks public compatibility metadata unless `--no-compat-check` is given, and prints the handoff below.
 
-It **writes no credential and stores no profile**. Use `--no-ai-abilities` on production or other sensitive sites.
+It **writes no credential and stores no profile**. CLI and MCP require no app acceptance. AI Abilities permit PHP execution and filesystem/data changes; an AI may request activation without another human prompt. Connecting an existing site does not enable them. A copied site may preserve an old domain binding; use the explicit activation option only when activation on the current domain is intended.
 
 ## Handoff
 

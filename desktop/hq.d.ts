@@ -8,4 +8,15 @@
  * signature is in `src/main.ts`; the argv-in, exit-code-out shape is the whole
  * of what the shell depends on.
  */
-export function main(argv: readonly string[]): Promise<number>;
+export function main(
+  argv: readonly string[],
+  streams?: undefined,
+  environment?: undefined,
+  overrides?: {
+    readonly distribution: "desktop";
+    readonly mcpLaunch: {
+      readonly command: string;
+      readonly args: readonly string[];
+    };
+  },
+): Promise<number>;

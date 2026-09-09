@@ -137,11 +137,16 @@ export function renderSidebar(
  * configuring providers and sites.
  */
 export function renderNav(page: DashboardPage, showActive = true): Html {
-  const current = showActive ? page : undefined;
+  const current = showActive
+    ? page === "history"
+      ? "diagnostics"
+      : page
+    : undefined;
   return html`<nav${idAttr("nav")} class="nav" aria-label="Dashboard sections">${[
     navLink(current, "sites", "/sites", "Sites"),
     navLink(current, "deploy-paths", "/deploy-paths", "Deploy paths"),
     navLink(current, "providers", "/providers", "Hosting Providers"),
+    navLink(current, "mcp", "/mcp", "Connect your AI"),
     navLink(current, "how-to-use", "/how-to-use", "How to use it"),
     navLink(current, "diagnostics", "/diagnostics", "Diagnostics"),
     navLink(current, "settings", "/settings", "Settings"),

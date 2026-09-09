@@ -68,6 +68,7 @@ export type UnavailableReason =
   | "malformed_output"
   | "output_truncated"
   | "deadline_exceeded"
+  | "site_incompatible"
   | "site_unreachable";
 
 export interface ConnectionResult {
@@ -159,6 +160,8 @@ const UNAVAILABLE_HINTS: Readonly<Record<UnavailableReason, string>> = {
     "Checking connection state took too long and was stopped; try again.",
   site_unreachable:
     "The site could not be reached to confirm the connection; try again.",
+  site_incompatible:
+    "The site reports an incompatible Novamira or WordPress setup. Check the site CLI's compatibility requirements and the site's AI Abilities settings. Connecting does not reinstall Novamira or enable abilities.",
 };
 
 export function unavailableHint(reason: UnavailableReason): string {

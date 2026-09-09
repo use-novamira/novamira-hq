@@ -322,14 +322,14 @@ test("wpengine reports its capability list", async () => {
     const client = await wpEngineClient(server.baseUrl);
     const capabilities = await client.read({ kind: "capabilities" });
 
-    assert.equal(capabilities.length, 34);
+    assert.equal(capabilities.length, 33);
     assert.equal(capabilities[0].name, "providers.validate");
-    assert.equal(capabilities[33].name, "analytics.env");
+    assert.equal(capabilities[32].name, "analytics.env");
     const byName = new Map(
       capabilities.map((capability) => [capability.name, capability]),
     );
     assert.equal(byName.get("providers.validate").supported, true);
-    assert.equal(byName.get("backups.restore").supported, true);
+    assert.equal(byName.has("backups.restore"), false);
     assert.equal(byName.get("providers.validate").notes, undefined);
     assert.equal(byName.get("envs.list").supported, true);
     assert.equal(

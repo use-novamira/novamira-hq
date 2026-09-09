@@ -1,6 +1,6 @@
 # Novamira HQ Design Issues
 
-Review date: 2026-09-07
+Review date: 2026-09-09
 
 This directory records the open product and security questions found while
 reviewing the hosting and MCP surfaces. These documents describe questions and
@@ -9,13 +9,13 @@ contract. Shipped behavior remains defined by `docs/v1-contract.md`.
 
 ## Open Issues
 
-| Issue                                     | Status                            | Subject                                                                           |
-| ----------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------- |
-| [001](001-backup-restore-verification.md) | Open — safety blocker             | Proving that a safety backup completed before restore                             |
-| [002](002-mcp-ai-abilities-consent.md)    | Direction agreed — mechanics open | Human consent before MCP enables AI Abilities                                     |
-| [003](003-existing-novamira-preflight.md) | Open — design required            | Handling an existing or outdated Novamira installation without implicit overwrite |
-| [004](004-hosting-mutation-review.md)     | Open — policy review              | Classifying the remaining non-deletion hosting mutations                          |
-| [005](005-release-validation.md)          | Open — final gate                 | Provider, package, desktop, and release validation                                |
+| Issue                                     | Status                                | Subject                                                    |
+| ----------------------------------------- | ------------------------------------- | ---------------------------------------------------------- |
+| [001](001-backup-restore-verification.md) | Implemented — live validation pending | Positive safety-backup completion evidence                 |
+| [002](002-mcp-ai-abilities-consent.md)    | Implemented                           | App-only acknowledgement; no CLI/MCP acceptance gate       |
+| [003](003-existing-novamira-preflight.md) | Implemented                           | Existing-site inspection and explicit abilities activation |
+| [004](004-hosting-mutation-review.md)     | Open — policy review                  | Classifying the remaining non-deletion hosting mutations   |
+| [005](005-release-validation.md)          | Open — final gate                     | Provider, package, desktop, and release validation         |
 
 ## Decisions Already Made
 

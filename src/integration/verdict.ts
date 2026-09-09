@@ -66,6 +66,8 @@ export function verdictForStatus(status: SiteCliAuthStatus): ProfileVerdict {
     return { kind: "unavailable", reason: "malformed_output" };
   }
   const restError = status.restError;
+  if (restError === "server_unsupported")
+    return { kind: "unavailable", reason: "site_incompatible" };
   if (restError !== undefined && AUTH_ERROR_CODES.has(restError)) {
     return RECONNECT;
   }

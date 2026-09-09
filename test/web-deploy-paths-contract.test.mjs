@@ -382,7 +382,7 @@ test("2: the table renders Go's five columns, both Deploy reasons and the summar
     'class="deploy-dir-domains"',
     ">DB, files<",
     ">—<",
-    'title="Execution comes in the next phase"',
+    'title="Review the target and scope before deploying"',
     'title="This provider does not support environment push"',
     "/_dashboard/deploy-paths/remove?path=stage-to-live",
     "Remove deploy path stage-to-live?",

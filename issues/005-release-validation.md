@@ -9,24 +9,27 @@ published after the hosting-safety decisions are implemented?
 
 ## Current Local Evidence
 
-As of 2026-09-07:
+As of 2026-09-09 (working tree, not a published release):
 
-- `bun run check` passed with 965 passing tests and one Deno-dependent test
-  skipped because Deno was not installed locally.
-- `bun run pack:inspect` passed after the guarded restore work.
-- Local package acceptance first encountered an owner-mismatched npm cache and
-  then could not complete with an isolated empty cache in the restricted local
-  environment. This is not a passing acceptance result.
+- `bun run check` passed with 1000 passing tests and none skipped.
+- Deno desktop formatting, lint and type checks passed.
+- The local macOS desktop build passed; headless dashboard startup and shutdown,
+  and MCP initialization/tool listing passed without opening a window.
+- `bun run pack:inspect` and local package acceptance passed. Acceptance used an
+  isolated temporary npm cache because the normal cache has permission errors;
+  the normal cache was not modified.
 - No live provider API calls were made, by design.
-- The guarded restore commit is local and the branch is one commit ahead of its
-  tracked remote at this snapshot.
+- No commit, push, version bump, release, signing or notarization was performed.
+- Visual review in a real browser remains pending: no controllable browser was
+  available in this session. Rendering, route/token guards, app acknowledgement,
+  MCP verification and deploy execution have offline contract coverage.
 
 This snapshot is evidence for the review date only. Re-run every gate against
 the exact release commit.
 
 ## Required Validation
 
-- Resolve Issues 001–003 and update their focused contract tests.
+- Review the implementation and focused contracts for Issues 001–003.
 - Run `bun run check` from a clean worktree.
 - Run `bun run pack:inspect` and inspect the exact package contents.
 - Run `bun run package:acceptance` on Linux, macOS, and Windows in CI.

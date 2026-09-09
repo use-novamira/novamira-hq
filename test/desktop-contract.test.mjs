@@ -96,7 +96,7 @@ test("desktop shell is outside the npm package and the Node toolchain", async ()
   );
 });
 
-test("desktop shell runs HQ's own dashboard command and nothing else", () => {
+test("desktop shell runs HQ's own dashboard or MCP entry point", () => {
   for (const file of [shell, types]) {
     assert.match(file, /^\/\/ SPDX-License-Identifier: AGPL-3\.0-or-later$/m);
   }
@@ -104,12 +104,14 @@ test("desktop shell runs HQ's own dashboard command and nothing else", () => {
   assert.match(code, /new URL\("\.\.\/dist\/main\.js", import\.meta\.url\)/);
   assert.match(
     code,
-    /main\(\["dashboard", "--json", "--listen", "127\.0\.0\.1:0"\]\)/,
+    /main\(\s*\["dashboard", "--json", "--listen", "127\.0\.0\.1:0"\],/,
   );
+  assert.match(types, /export function main\([\s\S]*argv: readonly string\[\]/);
   assert.match(
-    types,
-    /export function main\(argv: readonly string\[\]\): Promise<number>;/,
+    code,
+    /new URL\("\.\.\/dist\/mcp\/main\.js", import\.meta\.url\)/,
   );
+  assert.match(code, /await mcpMain\(Deno.args.slice\(1\)\)/);
   // Re-spawns itself, never a `novamira-hq` or `node` found on PATH.
   assert.match(code, /new Deno\.Command\(Deno\.execPath\(\)/);
   assert.ok(!/"node"|"novamira-hq"|"npx"/.test(code));

@@ -38,6 +38,7 @@ function client({
         action?.(request) ?? {
           provider,
           action: request.kind,
+          operationId: request.kind,
           status: 200,
           raw: null,
         }
@@ -52,7 +53,7 @@ function client({
           status: 200,
           done: true,
           failed: false,
-          raw: null,
+          raw: { state: "completed" },
         }
       );
     },
@@ -167,6 +168,8 @@ test("a failed pre-restore safety backup prevents the restore", async () => {
     { code: "provider_error" },
   );
   assert.deepEqual(provider.calls, [
+    { kind: "capabilities" },
+    { kind: "backups", envId: "target" },
     {
       kind: "create-backup",
       envId: "target",
@@ -182,16 +185,20 @@ test("successful restore always creates a safety backup first", async () => {
   provider.calls.length = 0;
   await executeBackupRestore(provider, plan);
   assert.deepEqual(provider.calls, [
+    { kind: "capabilities" },
+    { kind: "backups", envId: "target" },
     {
       kind: "create-backup",
       envId: "target",
       body: { tag: "novamira-hq pre-restore safety backup" },
     },
+    { operationStatus: "create-backup" },
     {
       kind: "restore-backup",
       targetEnvId: "target",
       body: { backup_id: 42, notified_user_id: "user-7" },
     },
+    { operationStatus: "restore-backup" },
   ]);
 });
 
@@ -207,9 +214,12 @@ test("non-Kinsta restore ids remain opaque strings", async () => {
   });
   provider.calls.length = 0;
   await executeBackupRestore(provider, plan);
-  assert.deepEqual(provider.calls[1], {
-    kind: "restore-backup",
-    targetEnvId: "install-1",
-    body: { backup_id: "backup-uuid" },
-  });
+  assert.deepEqual(
+    provider.calls.find((call) => call.kind === "restore-backup"),
+    {
+      kind: "restore-backup",
+      targetEnvId: "install-1",
+      body: { backup_id: "backup-uuid" },
+    },
+  );
 });

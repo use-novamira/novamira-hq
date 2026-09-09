@@ -52,6 +52,128 @@ import {
   DB_HOST_LOCALHOST_HINT,
 } from "../dist/provisioning/plugin.js";
 import { PHP_VERSION_COMMAND } from "../dist/provisioning/phpcompat.js";
+import {
+  EXISTING_NOVAMIRA_COMMAND,
+  EXISTING_AI_COMMAND,
+} from "../dist/provisioning/existing.js";
+
+test("existing Novamira is preserved unless abilities activation is explicitly requested", async () => {
+  for (const enable of [false, true]) {
+    const client = fakeClient({
+      wpCli: {
+        ...happyScript(),
+        [EXISTING_NOVAMIRA_COMMAND]: sync({
+          data: {
+            result: JSON.stringify([
+              { name: "novamira", version: "1.11.1", status: "active" },
+            ]),
+          },
+        }),
+        [EXISTING_AI_COMMAND]: sync({ data: { result: "[]" } }),
+        "wp plugin status novamira": sync({
+          data: { result: "Status: Active" },
+        }),
+      },
+    });
+    const { run } = harness({ client });
+    const { envelope } = await run([
+      "setup",
+      "--env",
+      "env",
+      "--source",
+      "novamira",
+      "--url",
+      SITE_URL,
+      "--no-compat-check",
+      ...(enable ? ["--ai-abilities"] : []),
+    ]);
+    assert.equal(envelope.ok, true);
+    assert.equal(
+      client
+        .commands()
+        .some((command) => command.startsWith("wp plugin install")),
+      false,
+    );
+    assert.equal(
+      client
+        .commands()
+        .includes("wp option update novamira_ai_abilities_enabled 1"),
+      enable,
+    );
+    assert.equal(envelope.data.ai_abilities.enabled, enable);
+  }
+});
+
+test("even --force cannot implicitly replace an unsupported old Novamira", async () => {
+  const client = fakeClient({
+    wpCli: {
+      ...happyScript(),
+      [EXISTING_NOVAMIRA_COMMAND]: sync({
+        data: {
+          result: JSON.stringify([
+            { name: "novamira", version: "1.0.0", status: "active" },
+          ]),
+        },
+      }),
+    },
+  });
+  const { envelope } = await harness({ client }).run([
+    "setup",
+    "--env",
+    "env",
+    "--source",
+    "novamira",
+    "--force",
+  ]);
+  assert.equal(envelope.error.code, "server_unsupported");
+  assert.deepEqual(client.commands(), [
+    PHP_VERSION_COMMAND,
+    EXISTING_NOVAMIRA_COMMAND,
+  ]);
+});
+
+test("an existing abilities domain mismatch is reported without rewriting the setting", async () => {
+  const client = fakeClient({
+    wpCli: {
+      ...happyScript(),
+      [EXISTING_NOVAMIRA_COMMAND]: sync({
+        data: {
+          result: JSON.stringify([
+            { name: "novamira", version: "1.11.1", status: "active" },
+          ]),
+        },
+      }),
+      [EXISTING_AI_COMMAND]: sync({
+        data: {
+          result: JSON.stringify([
+            { option_name: "novamira_ai_abilities_enabled", option_value: "1" },
+            {
+              option_name: "novamira_ai_abilities_domain",
+              option_value: "other.example",
+            },
+          ]),
+        },
+      }),
+    },
+  });
+  const { envelope } = await harness({ client }).run([
+    "setup",
+    "--env",
+    "env",
+    "--source",
+    "novamira",
+    "--url",
+    SITE_URL,
+    "--no-compat-check",
+  ]);
+  assert.equal(envelope.ok, true);
+  assert.equal(envelope.data.ai_abilities.enabled, false);
+  assert.equal(envelope.data.ai_abilities.domain, "other.example");
+  assert.equal(
+    client.commands().some((command) => command.startsWith("wp option update")),
+    false,
+  );
+});
 
 /** An obvious fake. Nothing in this suite ever contacts a real provider. */
 const PLACEHOLDER = "novamira-setup-fake-credential-not-a-real-secret";
@@ -117,6 +239,10 @@ function operationStatus(operationId, overrides = {}) {
  * that asserts "these commands and no others" cannot pass by accident.
  */
 function fakeClient({ wpCli = {}, operations = {}, observable } = {}) {
+  wpCli = {
+    [EXISTING_NOVAMIRA_COMMAND]: sync({ data: { result: "[]" } }),
+    ...wpCli,
+  };
   const client = {
     provider: "kinsta",
     actionRequests: [],
@@ -513,11 +639,15 @@ test("commander applies the documented defaults at the handler boundary", async 
     "preflight",
     "validateSource",
     "wait",
-    "aiAbilities",
     "compatCheck",
   ])
     assert.equal(options[flag], true, flag);
-  for (const flag of ["force", "activateNetwork", "ignoreRequirements"])
+  for (const flag of [
+    "force",
+    "activateNetwork",
+    "ignoreRequirements",
+    "aiAbilities",
+  ])
     assert.equal(options[flag], false, flag);
   assert.equal(options.intervalSeconds, 5);
   assert.equal(options.timeoutSeconds, 300);
@@ -541,7 +671,7 @@ test("each --no- flag flips exactly its own option", async () => {
     for (const other of all)
       assert.equal(
         options[other],
-        other === field ? false : true,
+        other === field || other === "aiAbilities" ? false : true,
         `${flag} changed ${other}`,
       );
   }
@@ -600,6 +730,7 @@ test("a default run issues exactly the Phase B sequence and hands off", async ()
       // `--activate`: activation is deferred to an observable call of its own.
       assert.deepEqual(client.commands(), [
         PHP_VERSION_COMMAND,
+        EXISTING_NOVAMIRA_COMMAND,
         "wp option get siteurl",
         `wp plugin install ${zip}`,
         "wp plugin status novamira",
@@ -694,9 +825,21 @@ test("--url skips the discovery read and anchors the metadata URL", async () => 
   assert.equal(envelope.data.url, SITE_URL);
 });
 
-test("--no-ai-abilities leaves both options untouched", async () => {
+test("--no-ai-abilities preserves disabled abilities on an existing installation", async () => {
   // 85.
-  const client = fakeClient({ wpCli: happyScript() });
+  const client = fakeClient({
+    wpCli: {
+      ...happyScript(),
+      [EXISTING_NOVAMIRA_COMMAND]: sync({
+        data: {
+          result: JSON.stringify([
+            { name: "novamira", version: "1.11.1", status: "active" },
+          ]),
+        },
+      }),
+      [EXISTING_AI_COMMAND]: sync({ data: { result: "[]" } }),
+    },
+  });
   const { run } = harness({
     client,
     overrides: { fetch: servingMetadata(SITE_URL) },
@@ -713,7 +856,7 @@ test("--no-ai-abilities leaves both options untouched", async () => {
 
   assert.equal(envelope.ok, true);
   for (const command of client.commands())
-    assert.doesNotMatch(command, /novamira_ai_abilities/);
+    assert.doesNotMatch(command, /wp option update novamira_ai_abilities/);
   assert.deepEqual(envelope.data.ai_abilities, {
     enabled: false,
     domain: null,
@@ -887,6 +1030,7 @@ test("a source naming no slug is activated on the install line instead", async (
   assert.equal(envelope.ok, true);
   assert.deepEqual(client.commands(), [
     PHP_VERSION_COMMAND,
+    EXISTING_NOVAMIRA_COMMAND,
     "wp option get siteurl",
     installLine,
     "wp option get home",
@@ -1177,6 +1321,7 @@ test("a failed preflight carries the DB_HOST hint when it applies", async () => 
   // Nothing was installed.
   assert.deepEqual(client.commands(), [
     PHP_VERSION_COMMAND,
+    EXISTING_NOVAMIRA_COMMAND,
     "wp option get siteurl",
     "wp config get DB_HOST",
   ]);
@@ -1628,6 +1773,7 @@ test("setup issues no application-password command and writes no profile", async
     // picker (`wp user list --role=administrator`) are permanently gone.
     assert.deepEqual(client.commands(), [
       PHP_VERSION_COMMAND,
+      EXISTING_NOVAMIRA_COMMAND,
       "wp option get siteurl",
       "wp plugin install novamira",
       "wp plugin status novamira",
@@ -1703,6 +1849,7 @@ test("a failed install carries the already-installed hint when it applies", asyn
   // The probe ran after the install, never instead of it.
   assert.deepEqual(client.commands(), [
     PHP_VERSION_COMMAND,
+    EXISTING_NOVAMIRA_COMMAND,
     "wp option get siteurl",
     "wp plugin install novamira",
     "wp plugin is-installed novamira",

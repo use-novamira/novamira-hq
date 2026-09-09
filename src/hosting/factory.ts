@@ -111,6 +111,11 @@ export type ProviderRegistry = Readonly<
 >;
 
 export interface HostingClientFactoryOptions {
+  /** Composition-root wrapper; observes calls without changing provider APIs. */
+  readonly decorateClient?: (
+    client: ProviderClient,
+    profile: string,
+  ) => ProviderClient;
   readonly store: ConfigStore;
   readonly registry: ProviderRegistry;
   /** Defaults to a resolver over `env` with no credential store attached. */
@@ -196,8 +201,9 @@ export function createHostingClientFactory(
       options.registry,
       entry.profile.provider,
     );
+    const client = await factory(await contextFromEntry(entry, limits));
     return secretSafeProviderClient(
-      await factory(await contextFromEntry(entry, limits)),
+      options.decorateClient?.(client, entry.name) ?? client,
     );
   }
 

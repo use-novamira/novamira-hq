@@ -116,6 +116,8 @@ export type {
  * CLI; there is no separate `site-profiles` page.
  */
 export type DashboardPage =
+  | "mcp"
+  | "history"
   | "providers"
   | "sites"
   | "how-to-use"
@@ -126,6 +128,8 @@ export type DashboardPage =
   | "settings";
 
 export const DASHBOARD_PAGES: readonly DashboardPage[] = Object.freeze([
+  "mcp",
+  "history",
   "providers",
   "sites",
   "how-to-use",

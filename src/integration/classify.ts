@@ -54,6 +54,7 @@ export const OUTCOME_REASONS: Readonly<
 const ENVELOPE_REASONS: Readonly<Record<string, UnavailableReason>> = {
   usage_error: "cli_incompatible",
   site_required: "cli_failed",
+  server_unsupported: "site_incompatible",
 };
 
 /** The site CLI's `error.code` meaning "that profile is not configured here". */

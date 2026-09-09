@@ -35,7 +35,8 @@
  * - Never a shell. `spawn(command, args, { shell: false })`, an argv array, no
  *   string command line anywhere — the rule that makes an operator-controlled
  *   profile name harmless.
- * - stdin is `"ignore"`. Every invocation passes `--json`, which guarantees the
+ * - stdin is `"ignore"` for probes and profile actions; bounded JSON input for
+ *   WordPress operations uses a pipe that is closed after writing. Every invocation passes `--json`, which guarantees the
  *   child never prompts; an inherited stdin could otherwise let a child block on
  *   a terminal the dashboard does not own.
  * - Bounded output. stdout and stderr are capped and the child is killed on
@@ -50,8 +51,8 @@
  * - It never throws and never rejects. Every failure, including a synchronous
  *   `spawn` throw, is a `ChildOutcome`.
  * - Captured output lives in memory for the duration of the call and no longer.
- *   It is never written to disk, never logged, never rendered, never placed in
- *   an SSE frame, and never attached to an error.
+ *   It is never written to disk, logged, rendered in the dashboard or attached to
+ *   an error. WordPress MCP operations may return parsed, redacted data.
  */
 
 import { execFile, spawn, type ChildProcess } from "node:child_process";
@@ -66,6 +67,8 @@ export interface ChildInvocation {
   readonly maxStderrBytes: number;
   /** Shared across every child of one refresh: the overall deadline. */
   readonly signal: AbortSignal;
+  /** Bounded JSON input for a non-interactive site operation; never inherited. */
+  readonly input?: string;
 }
 
 /**
@@ -146,7 +149,11 @@ export const nodeSpawnChild: SpawnChild = (invocation) =>
         shell: false,
         windowsHide: true,
         detached: true,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: [
+          invocation.input === undefined ? "ignore" : "pipe",
+          "pipe",
+          "pipe",
+        ],
         env: invocation.env,
       });
     } catch (error: unknown) {
@@ -243,6 +250,10 @@ export const nodeSpawnChild: SpawnChild = (invocation) =>
       });
     };
 
+    if (child.stdin !== null) {
+      child.stdin.on("error", () => undefined);
+      child.stdin.end(invocation.input);
+    }
     if (child.stdout !== null) {
       child.stdout.on("data", (chunk: Buffer) => {
         stdoutBytes += chunk.byteLength;

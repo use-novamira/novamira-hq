@@ -1,59 +1,31 @@
-# 002: Require Human Consent Before MCP Enables AI Abilities
+# 002: App Acknowledgement and Explicit AI Abilities Activation
 
-Status: direction agreed — mechanics open
+Status: implemented — final product decision, 2026-09-08
 
-## Question
+## Decision
 
-How does an operator explicitly accept, before an MCP-controlled setup, that an
-agent may enable Novamira AI Abilities and therefore permit PHP execution and
-filesystem operations in WordPress?
+The initial HQ application screen explains and asks the user to accept that an
+AI may explicitly enable Novamira AI Abilities without asking again. These allow
+PHP execution and filesystem/data changes. This is app onboarding, not a
+revocable authorization, per-hosting permission, or per-site prompt.
 
-## Security Invariant
+CLI and MCP require no acceptance record and do not consult it. Their launch
+capability policy remains independent. Plan/apply is not proof of a human prompt.
+No change to the separate Novamira site CLI is part of this work.
 
-Plan/apply is not proof of human consent: the same agent can call both tools.
-Consent must be granted outside the MCP tool surface and checked before any
-provider request or WP-CLI mutation.
+## Setup behavior
 
-## Agreed Direction
+- A new installation enables abilities automatically.
+- An existing compatible installation preserves both options by default.
+- CLI --ai-abilities or MCP enableAiAbilities: true explicitly enables them and
+  binds them to the current domain. An AI can make this request autonomously.
+- --force controls reinstallation, not abilities activation.
+- An existing version below the compatibility minimum stops before mutation,
+  even with force; updating it is a separate explicit operation.
+- Dashboard Connect only invokes the site CLI login and never enables abilities.
 
-- Dashboard Connect remains unchanged. It starts `novamira auth login <url>`
-  and does not enable AI Abilities.
-- An HQ operation that enables AI Abilities requires prior human consent.
-- Consent is disabled by default, clearly describes PHP and filesystem access,
-  is revocable, and is scoped at least to a hosting profile.
-- Broad MCP access alone must not silently imply this consent.
-- MCP cannot create, widen, or renew its own consent.
-- A denied request must explain exactly which consent is missing and how the
-  operator can grant it.
-- No change to `@novamira/cli` is part of this issue.
+## Evidence
 
-## Proposed User Message
-
-> Allow agents connected through Novamira HQ MCP to enable Novamira AI
-> Abilities for this hosting profile. AI Abilities permit PHP execution and
-> filesystem operations in WordPress. While this authorization is active, an
-> agent may enable them without asking again for each setup.
-
-## Questions Still Open
-
-- Is consent stored as an owner-only HQ policy, supplied as an explicit MCP
-  launch policy, or represented by a short-lived session authorization?
-- Is profile scope sufficient, or must consent name individual environments?
-- Does consent expire at process exit, after a fixed duration, or only when the
-  operator revokes it?
-- Should `hosting_novamira_setup` always mean a full agent-ready setup, with no
-  `enableAiAbilities` choice, or should the setup tool retain an explicit mode?
-- Where should the dashboard expose grant, scope, expiry, and revocation?
-- Should the tool remain advertised when consent is absent so its refusal can
-  explain the missing authorization?
-
-## Acceptance Criteria
-
-- Omitting consent can never enable AI Abilities.
-- An agent cannot grant consent through any MCP tool.
-- The consent check happens before plugin installation, update, activation, or
-  option writes.
-- Structured MCP errors name the hosting profile and use no secrets.
-- Dashboard copy distinguishes Connect from Set up Novamira.
-- Tests prove that every access preset, including the broadest preset, behaves
-  according to the chosen explicit-consent rule.
+The app acknowledgement is versioned in private HQ state. Setup, MCP schema,
+dashboard defaults, normative contract and focused tests follow this policy.
+The earlier proposal for revocable per-profile consent is superseded.

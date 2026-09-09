@@ -59,10 +59,15 @@
 
 import { PROVIDER_KINDS } from "../config/schema.js";
 import { CliError } from "../errors.js";
+import { createMcpVerifyHandler } from "./handlers/mcp.js";
+import { createAcknowledgementHandler } from "./handlers/acknowledgement.js";
+import { renderAcknowledgement } from "./views/acknowledgement.js";
+import type { HistoryStore } from "../history/index.js";
 import { createConnectHandler } from "./handlers/connect.js";
 import {
   createDeployPathRemoveHandler,
   createDeployPathSaveHandler,
+  createDeployExecutionHandler,
 } from "./handlers/deploy-paths.js";
 import {
   createDiagnosticsCapabilitiesHandler,
@@ -136,6 +141,10 @@ export interface Route {
  * Keep it a flat list so a future batch's diff does not collide.
  */
 export interface RouteContext {
+  readonly appAcknowledgement?: import("../config/app-acknowledgement.js").AppAcknowledgement;
+  readonly deployExecution?: import("./services/deploy-execution.js").DeployExecutionService;
+  readonly mcpConnection?: import("../mcp-connection.js").McpConnectionService;
+  readonly history: Pick<HistoryStore, "list">;
   /** Reads `config.json` and projects it into the view model. */
   loadConfigView: () => Promise<ConfigView>;
   /**
@@ -256,6 +265,8 @@ const PAGE_PATHS: Readonly<Record<string, DashboardPage>> = {
   "/novamira-setup": "novamira-setup",
   "/diagnostics": "diagnostics",
   "/settings": "settings",
+  "/history": "history",
+  "/mcp": "mcp",
 };
 
 /**
@@ -375,6 +386,22 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
   const pageHandler = (page: DashboardPage): RouteHandler => {
     return async (request) => {
       const view = await context.loadConfigView();
+      if (
+        context.appAcknowledgement &&
+        !(await context.appAcknowledgement.accepted())
+      ) {
+        const signals = defaultDashboardSignals(context.token);
+        return htmlResponse(
+          renderDocument({
+            page,
+            view,
+            signals,
+            notice: EMPTY_NOTICE,
+            activeNav: false,
+            body: renderAcknowledgement(),
+          }),
+        );
+      }
       let renderedPage = page;
       let providerOnboarding = false;
       if (request.path === "/") {
@@ -410,6 +437,14 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
         notice,
         signals,
         providerOnboarding,
+        ...(renderedPage === "mcp" && context.mcpConnection
+          ? {
+              mcp: context.mcpConnection.configuration(),
+            }
+          : {}),
+        ...(renderedPage === "history"
+          ? { history: await context.history.list() }
+          : {}),
       };
       return htmlResponse(
         renderDocument({
@@ -449,6 +484,30 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
     });
   }
   routes.push(
+    {
+      method: "POST",
+      path: "/_dashboard/app/acknowledge",
+      auth: "token",
+      handler: createAcknowledgementHandler(context),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/deploy-paths/plan",
+      auth: "token",
+      handler: createDeployExecutionHandler(context, "plan"),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/deploy-paths/apply",
+      auth: "token",
+      handler: createDeployExecutionHandler(context, "apply"),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/mcp/verify",
+      auth: "token",
+      handler: createMcpVerifyHandler(context),
+    },
     {
       method: "POST",
       path: "/_dashboard/providers/save",

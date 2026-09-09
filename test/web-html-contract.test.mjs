@@ -150,6 +150,7 @@ async function dashboard() {
     paths,
     store,
     hosting: {},
+    history: { list: async () => [] },
     credentials: async () => {
       throw new Error("the conventions test must not build a credential store");
     },
@@ -199,6 +200,8 @@ async function page(server, path) {
 
 /** Every 6a page, including the two query-string variants Go's rule 5 used. */
 const CORPUS_PATHS = [
+  "/history",
+  "/mcp",
   "/",
   "/providers",
   "/providers?new=host",
@@ -1313,9 +1316,9 @@ test("37: diagnostics.profile is empty — no implicit provider selection", asyn
   assert.equal(signals.diagnostics.profile, "");
 });
 
-test("38: setup.enableAiAbilities defaults to true", async () => {
+test("38: explicit existing-site activation defaults to false", async () => {
   const signals = rootSignals(await page(await dashboard(), "/novamira-setup"));
-  assert.equal(signals.setup.enableAiAbilities, true);
+  assert.equal(signals.setup.enableAiAbilities, false);
 });
 
 test("39: the rendered data-signals round-trips to defaultDashboardSignals", async () => {

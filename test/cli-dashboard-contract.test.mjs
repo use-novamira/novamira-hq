@@ -96,6 +96,8 @@ test("implicit dashboard startup skips occupied ports", async () => {
   const opened = [];
   const successes = [];
   const dependencies = {
+    paths: { stateDir: "/test/state" },
+    security: {},
     store: { configFile: "/test/config.json" },
     io: { env: {}, stdin: undefined },
     rendererFor: () => ({

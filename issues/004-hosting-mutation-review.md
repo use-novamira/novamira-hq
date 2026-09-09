@@ -55,8 +55,8 @@ DNS mutation tool, SSH/SFTP management, or raw provider JSON input.
 - Every public mutation is classified by impact and surface.
 - High-impact operations have explicit target and scope, no implicit broad
   defaults, and actionable confirmation text.
-- MCP's standard preset contains only mutations intentionally approved for
-  unattended agent use.
+- MCP exposes all supported typed tools without launch presets; high-impact
+  mutations retain their explicit plan/apply and verified-backup guards.
 - Capability output and documentation match the final policy exactly.
 - Focused tests prove excluded provider-native operations never become public
   merely because an adapter models them internally.

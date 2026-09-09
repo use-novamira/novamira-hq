@@ -18,8 +18,16 @@ import {
 import { PROVIDER_REGISTRY } from "../hosting/providers/index.js";
 import { VERSION } from "../version.js";
 import { runMcpServer } from "./server.js";
-import { parseMcpAccess } from "./access.js";
+import { CliError } from "../errors.js";
 import { main } from "../main.js";
+import { HistoryStore } from "../history/index.js";
+import { historyClient } from "../history/client.js";
+import {
+  createSiteOperations,
+  createSiteCliResolver,
+  nodeSpawnChild,
+  nodeIsFile,
+} from "../integration/index.js";
 
 export interface McpEnvironment extends PathEnvironment, NodeJS.ProcessEnv {}
 
@@ -40,6 +48,7 @@ export async function mcpMain(
   const security = defaultFileSecurity();
   const locks = new ProfileLockManager(paths.stateDir, security);
   const store = new ConfigStore(paths.configFile, locks, security);
+  const history = new HistoryStore(paths, locks, security);
   let pendingCredentials: Promise<CredentialStore> | undefined;
   const credentialStore = (): Promise<CredentialStore> => {
     pendingCredentials ??= createCredentialStore(
@@ -49,6 +58,8 @@ export async function mcpMain(
     return pendingCredentials;
   };
   const hosting = createHostingClientFactory({
+    decorateClient: (client, profile) =>
+      historyClient(client, profile, history, () => "mcp"),
     store,
     registry: overrides.registry ?? PROVIDER_REGISTRY,
     env: environment,
@@ -62,7 +73,8 @@ export async function mcpMain(
     },
   });
 
-  const access = parseMcpAccess(argv);
+  if (argv.length > 0)
+    throw new CliError("usage_error", "MCP accepts no launch options.");
   const executeCli = async (
     commandArgv: readonly string[],
   ): Promise<{
@@ -80,6 +92,7 @@ export async function mcpMain(
       },
       environment,
       {
+        historyChannel: "mcp",
         ...(overrides.registry === undefined
           ? {}
           : { registry: overrides.registry }),
@@ -89,7 +102,22 @@ export async function mcpMain(
   };
 
   await runMcpServer(
-    { version: VERSION, store, hosting, access, executeCli },
+    {
+      version: VERSION,
+      store,
+      hosting,
+      history,
+      executeCli,
+      siteOperations: createSiteOperations({
+        resolve: createSiteCliResolver({
+          environment,
+          platform: process.platform,
+          isFile: nodeIsFile,
+        }),
+        spawn: nodeSpawnChild,
+        environment,
+      }),
+    },
     streams,
   );
 }

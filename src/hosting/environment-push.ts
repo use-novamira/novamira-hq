@@ -9,13 +9,11 @@
  */
 
 import { CliError } from "../errors.js";
+import { runHostingWorkflow } from "../operation-context.js";
 import { applyHqCapabilityPolicy } from "./capabilities.js";
 import type { ProviderClient } from "./client.js";
-import {
-  operationFailure,
-  waitForOperationStatus,
-  type WaitForOperationOptions,
-} from "./operations.js";
+import type { WaitForOperationOptions } from "./operations.js";
+import { sendGuardedAction, waitForVerifiedAction } from "./verified-action.js";
 import type {
   ActionResult,
   HostingEnvironment,
@@ -227,15 +225,7 @@ async function waitForAction(
   action: ActionResult,
   options: WaitForOperationOptions,
 ): Promise<OperationStatus | undefined> {
-  if (action.operationId === undefined || action.operationId === "")
-    return undefined;
-  const status = await waitForOperationStatus(
-    client,
-    action.operationId,
-    options,
-  );
-  if (status.failed) throw operationFailure(status);
-  return status;
+  return waitForVerifiedAction(client, action, options);
 }
 
 export async function executeEnvironmentPush(
@@ -246,22 +236,49 @@ export async function executeEnvironmentPush(
     timeoutSeconds: 300,
   },
 ): Promise<EnvironmentPushExecution> {
+  return runHostingWorkflow("environment-push", () =>
+    executePushSteps(client, plan, wait),
+  );
+}
+
+async function executePushSteps(
+  client: ProviderClient,
+  plan: EnvironmentPushPlan,
+  wait: WaitForOperationOptions,
+): Promise<EnvironmentPushExecution> {
   if (client.provider !== plan.provider)
     throw new CliError(
       "conflict",
       "The environment push plan belongs to a different provider.",
     );
-  const safetyBackup = await client.action({
-    kind: "create-backup",
-    envId: plan.target.id,
-    body: { tag: "novamira-hq pre-push safety backup" },
-  });
-  const safetyBackupStatus = await waitForAction(client, safetyBackup, wait);
-  const push = await client.action({
-    kind: "push-environment",
+  await prepareEnvironmentPush(client, {
     siteId: plan.siteId,
-    body: pushBody(plan),
+    sourceEnvironmentId: plan.source.id,
+    targetEnvironmentId: plan.target.id,
+    database: plan.database,
+    allFiles: plan.allFiles,
+    files: plan.files,
+    searchReplace: plan.searchReplace,
   });
+  const safetyBackup = await sendGuardedAction(
+    client,
+    {
+      kind: "create-backup",
+      envId: plan.target.id,
+      body: { tag: "novamira-hq pre-push safety backup" },
+    },
+    wait.signal,
+  );
+  const safetyBackupStatus = await waitForAction(client, safetyBackup, wait);
+  const push = await sendGuardedAction(
+    client,
+    {
+      kind: "push-environment",
+      siteId: plan.siteId,
+      body: pushBody(plan),
+    },
+    wait.signal,
+  );
   const pushStatus = await waitForAction(client, push, wait);
   return {
     plan,

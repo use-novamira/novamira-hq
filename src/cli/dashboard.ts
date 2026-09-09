@@ -35,6 +35,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { createAppAcknowledgement } from "../config/app-acknowledgement.js";
 import type { Command } from "commander";
 
 import { runDoctor } from "../doctor/index.js";
@@ -216,6 +217,17 @@ export function createDashboardUpdates(
   dependencies: CommandDependencies,
   overrides: DashboardCommandOverrides = {},
 ): DashboardUpdates {
+  if (dependencies.distribution === "desktop") {
+    const unavailable = (): Promise<never> => {
+      return Promise.reject(
+        new CliError(
+          "provider_unsupported",
+          "This is the standalone desktop application. Install a newer desktop release to update it; npm update only changes the separately installed CLI.",
+        ),
+      );
+    };
+    return { check: unavailable, install: unavailable };
+  }
   if (overrides.updates !== undefined) return overrides.updates;
   return {
     check: async () => {
@@ -404,6 +416,14 @@ export function createDashboardHandlers(
                 paths: dependencies.paths,
                 store: dependencies.store,
                 hosting: dependencies.hosting,
+                history: dependencies.history,
+                appAcknowledgement: createAppAcknowledgement(
+                  dependencies.paths,
+                  dependencies.security,
+                ),
+                ...(dependencies.mcpConnection
+                  ? { mcpConnection: dependencies.mcpConnection }
+                  : {}),
                 credentials: dependencies.credentials,
                 environment: io.env,
                 fetch: http,

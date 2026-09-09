@@ -1,0 +1,10 @@
+// SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import * as ds from "../datastar.js";
+import { post } from "../expr.js";
+import { html, url, type Html } from "../html.js";
+
+export function renderAcknowledgement(): Html {
+  return html`<section class="page" style="max-width: 760px; padding: 24px 0"><section class="how-to-card" style="padding: clamp(20px, 4vw, 40px); gap: 24px" aria-labelledby="acknowledgement-title"><header><span class="eyebrow">Welcome to Novamira HQ</span><h1 id="acknowledgement-title" style="font-size: clamp(28px, 4vw, 36px); line-height: 1.15; margin-top: 10px">Before you start</h1></header><section><h2>Understand the access you grant</h2><p>Novamira is powerful: AI Abilities allow agents to execute PHP and access WordPress files and data, including making changes that can lose data.</p></section><section><h2>When AI Abilities are enabled</h2><p>When you install Novamira on a new site, HQ enables AI Abilities. For an existing installation, an AI using HQ's provisioning tools can explicitly request their activation without asking you again. Simply connecting a site does not activate them.</p></section><section><h2>Protect your data</h2><p>HQ does not expose hosting deletion/reset, backup deletion, DNS mutation or SSH/SFTP access management. Environment push and backup restore can overwrite content and require a verified target safety backup. Maintain independent backups and review the access you grant your AI.</p></section><section><h2>A one-time acknowledgement</h2><p>This is a one-time explanation for the HQ application, not a per-site permission or a revocable authorization. The command line and MCP do not require this acceptance. Your AI client's own approval settings remain separate.</p></section><footer><button type="button" class="button primary"${ds.on("click", post(url("/_dashboard/app/acknowledge"), { include: [] }))}>I understand and accept</button></footer></section></section>`;
+}

@@ -501,6 +501,16 @@ export function hrefAttr(target: Url): Attr {
   return attr("href", renderUrl(target));
 }
 
+/** Fixed external documentation links; never usable for Datastar requests. */
+export function documentationHref(client: "claude" | "chatgpt"): Attr {
+  return attr(
+    "href",
+    client === "claude"
+      ? "https://modelcontextprotocol.io/docs/develop/connect-local-servers"
+      : "https://learn.chatgpt.com/docs/extend/mcp",
+  );
+}
+
 const SAFE_PATH = /^\/[A-Za-z0-9\-._~!$&'()*+,;=:@%/]*$/;
 
 /**

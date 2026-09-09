@@ -21,6 +21,7 @@ import { createHostingCommandHandlers } from "./hosting/index.js";
 import { createSkillsHandlers } from "./skills.js";
 import { createUpdateHandlers } from "./update.js";
 import type { CommandHandlers, GlobalOptions } from "./program.js";
+import { attentionEntries, type HistoryStore } from "../history/index.js";
 
 /** What a command produces; the renderer decides how it reaches the user. */
 interface CommandResult {
@@ -35,6 +36,9 @@ interface CommandResult {
 }
 
 export interface CommandDependencies {
+  readonly distribution?: "npm" | "desktop";
+  readonly mcpConnection?: import("../mcp-connection.js").McpConnectionService;
+  readonly history: HistoryStore;
   /** The version reported by `--version` and, later, by `doctor`. */
   readonly version: string;
   readonly paths: PlatformPaths;
@@ -138,6 +142,22 @@ export function createCommandHandlers(
   };
 
   return {
+    historyList: (options) =>
+      execute(options, async () => {
+        const entries = await dependencies.history.list(options.profile);
+        return {
+          data: { entries, needsAttention: attentionEntries(entries).length },
+          human:
+            entries.length === 0
+              ? "No hosting requests recorded."
+              : entries
+                  .map(
+                    (entry) =>
+                      `${entry.startedAt}  ${entry.channel}  ${entry.profile}  ${entry.action}  ${entry.environmentId ?? entry.siteId ?? "—"}  ${entry.status}${entry.operationId === undefined ? "" : `  operation=${entry.operationId}`}`,
+                  )
+                  .join("\n"),
+        };
+      }),
     // The ~100 hosting handlers, built over the same dependencies. They render
     // through `runHostingCommand`/`runLocalCommand`, which call the very
     // `rendererFor` below, so hosting and local commands share one renderer,

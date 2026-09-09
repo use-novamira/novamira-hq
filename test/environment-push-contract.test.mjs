@@ -47,6 +47,7 @@ function client({ capabilities, operationStatus, action } = {}) {
         action?.(request) ?? {
           provider: "kinsta",
           action: request.kind,
+          operationId: request.kind,
           status: 200,
           raw: null,
         }
@@ -61,7 +62,7 @@ function client({ capabilities, operationStatus, action } = {}) {
           status: 200,
           done: true,
           failed: false,
-          raw: null,
+          raw: { state: "completed" },
         }
       );
     },
@@ -153,6 +154,8 @@ test("a failed safety backup prevents the push", async () => {
     { code: "provider_error" },
   );
   assert.deepEqual(provider.calls, [
+    { kind: "capabilities" },
+    { listEnvironments: "site-1" },
     {
       kind: "create-backup",
       envId: "target",
@@ -172,11 +175,14 @@ test("a successful execution always orders backup before push", async () => {
   provider.calls.length = 0;
   await executeEnvironmentPush(provider, plan);
   assert.deepEqual(provider.calls, [
+    { kind: "capabilities" },
+    { listEnvironments: "site-1" },
     {
       kind: "create-backup",
       envId: "target",
       body: { tag: "novamira-hq pre-push safety backup" },
     },
+    { operationStatus: "create-backup" },
     {
       kind: "push-environment",
       siteId: "site-1",
@@ -190,5 +196,6 @@ test("a successful execution always orders backup before push", async () => {
         file_list: ["wp-content/uploads"],
       },
     },
+    { operationStatus: "push-environment" },
   ]);
 });

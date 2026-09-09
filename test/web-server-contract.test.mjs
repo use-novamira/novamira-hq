@@ -21,6 +21,7 @@ import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { renderHtml } from "../dist/web/html.js";
 
 import { defaultFileSecurity } from "../dist/config/file-security.js";
 import { atomicWriteFile } from "../dist/config/atomic-write.js";
@@ -41,6 +42,79 @@ import {
 
 const TOKEN = "a".repeat(64);
 const TOKEN_HEADER = "x-novamira-dashboard-token";
+
+test("app acknowledgement and MCP verification use token-protected POST routes", async () => {
+  let accepted = false;
+  let checks = 0;
+  const { server, cleanup } = await fixture({
+    appAcknowledgement: {
+      accepted: async () => accepted,
+      accept: async () => {
+        accepted = true;
+      },
+    },
+    mcpConnection: {
+      configuration: () => ({
+        claude: "{}",
+        chatgpt: "",
+        launch: { command: "test", args: [] },
+      }),
+      verify: async () => {
+        checks++;
+        return { toolCount: 11 };
+      },
+    },
+  });
+  try {
+    const initial = await server.dispatch(request("/mcp"));
+    assert.match(renderHtml(initial.body), /Before you start/);
+    for (const path of [
+      "/_dashboard/app/acknowledge",
+      "/_dashboard/mcp/verify",
+      "/_dashboard/deploy-paths/plan",
+      "/_dashboard/deploy-paths/apply",
+    ]) {
+      assert.equal((await server.dispatch(request(path))).status, 405);
+      assert.equal(
+        (await server.dispatch(request(path, { method: "POST" }))).status,
+        403,
+      );
+    }
+    assert.equal(accepted, false);
+    assert.equal(checks, 0);
+    const patches = [];
+    const stream = {
+      patchSignals() {},
+      patchElements(value) {
+        patches.push(value);
+      },
+      close() {},
+    };
+    const acknowledgement = await server.dispatch(
+      request("/_dashboard/app/acknowledge", {
+        method: "POST",
+        headers: { [TOKEN_HEADER]: TOKEN },
+      }),
+    );
+    assert.equal(acknowledgement.kind, "sse");
+    await acknowledgement.run(stream);
+    assert.equal(accepted, true);
+    assert.ok(patches.length >= 3);
+    const page = await server.dispatch(request("/mcp"));
+    assert.doesNotMatch(renderHtml(page.body), /Before you start/);
+    assert.match(renderHtml(page.body), /Claude Desktop/);
+    const check = await server.dispatch(
+      request("/_dashboard/mcp/verify", {
+        method: "POST",
+        headers: { [TOKEN_HEADER]: TOKEN },
+      }),
+    );
+    await check.run(stream);
+    assert.equal(checks, 1);
+  } finally {
+    await cleanup();
+  }
+});
 
 const CONFIG = {
   version: 1,
@@ -70,6 +144,7 @@ async function fixture(overrides = {}) {
     paths,
     store,
     hosting: {},
+    history: { list: async () => [] },
     credentials: async () => {
       throw new Error("the dashboard must not build a credential store here");
     },
@@ -913,12 +988,18 @@ const SHIPPED_ROUTES = [
   "GET /deploy-paths",
   "GET /deploy-paths/new",
   "GET /diagnostics",
+  "GET /history",
+  "GET /mcp",
   "GET /how-to-use",
   "GET /novamira-setup",
   "GET /providers",
   "GET /settings",
   "GET /sites",
   "HEAD /assets/",
+  "GET /_dashboard/mcp/verify",
+  "GET /_dashboard/app/acknowledge",
+  "GET /_dashboard/deploy-paths/plan",
+  "GET /_dashboard/deploy-paths/apply",
 ];
 
 test("the deferred-route list is empty and the shipped surface is frozen", async () => {

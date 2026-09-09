@@ -311,6 +311,15 @@ test("a failed operation is reported, not raised", async () => {
   );
 });
 
+test("HTTP 200 does not override a queued or missing operation status", async () => {
+  for (const body of ['{"status":202}', "{}", '{"status":"completed"}']) {
+    await withKinsta([{ status: 200, body }], {}, async ({ client }) => {
+      const status = await client.operationStatus("pending-operation");
+      assert.equal(status.done, false);
+    });
+  }
+});
+
 test("a site with no environments keeps both fields absent", async () => {
   await withKinsta(
     [

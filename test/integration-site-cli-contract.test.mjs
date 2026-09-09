@@ -313,7 +313,6 @@ test("any other restError is unavailable/site_unreachable", async () => {
   for (const restError of [
     "network_error",
     "rest_error",
-    "server_unsupported",
     "internal_error",
     "a_code_hq_has_never_seen",
     undefined,
@@ -328,6 +327,26 @@ test("any other restError is unavailable/site_unreachable", async () => {
     );
     assert.equal(result.state, "unavailable", String(restError));
     assert.equal(result.reason, "site_unreachable");
+  }
+});
+
+test("site incompatibility is distinct from a missing or broken CLI", async () => {
+  for (const answer of [
+    success({
+      ...AUTH_OK,
+      restReachable: false,
+      restError: "server_unsupported",
+    }),
+    failure("server_unsupported"),
+  ]) {
+    const { result } = await stateFor(
+      scripted({
+        list: exited(success([PROFILE])),
+        status: () => exited(answer),
+      }),
+    );
+    assert.equal(result.state, "unavailable");
+    assert.equal(result.reason, "site_incompatible");
   }
 });
 

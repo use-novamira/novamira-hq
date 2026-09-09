@@ -67,7 +67,9 @@ user's shell `PATH`.
 ## Boundary
 
 HQ never holds a WordPress site token, never calls a WordPress REST route on a
-configured site's behalf, and never proxies an Ability. The v1 schema has no
+configured site's behalf directly. Typed WordPress MCP tools delegate only to
+the optional site CLI through `src/integration/`; that child owns site HTTP and
+authentication. The v1 schema has no
 site profiles, HQ issues no Application Password, and HQ never reads the site
 CLI's configuration or credential storage.
 
@@ -399,8 +401,8 @@ secrets. Live provider API calls are explicitly gated and never run in CI.
 
 The command surface has exactly three top-level groups — `config`, for local HQ
 configuration and hosting profiles; `hosting`, for provider resources; and
-`skills`, for the bundled agent instructions — plus four top-level commands:
-`dashboard`, `doctor`, `update` and `mcp`. There is no `site` group and no command
+`skills`, for the bundled agent instructions — plus five top-level commands:
+`dashboard`, `doctor`, `update`, `history` and `mcp`. There is no `site` group and no command
 that reaches a configured WordPress site.
 
 `novamira-hq mcp` is the stdio MCP transport intended for AI-agent configuration
@@ -410,28 +412,35 @@ JSON-RPC responses. It supports protocol versions `2025-11-25`, `2025-06-18` and
 `2025-03-26`, the initialize lifecycle, `ping`, `tools/list` and `tools/call`, and
 advertises only the `tools` capability. It performs no background update check.
 
-The MCP launch policy defaults to `--access standard`. `--access read` selects
-`profiles-read` and `hosting-read`; `standard` adds `maintenance` and
-`provisioning`; `all` additionally selects `deploy` and `recovery`. Repeated
-`--allow <capability>` replaces the preset with an explicit allowlist, and
-repeated `--deny <capability>` removes entries afterward. The frozen capability
-names are `profiles-read`, `hosting-read`, `maintenance`, `provisioning`,
-`deploy`, and `recovery`.
+MCP exposes all supported typed tools at launch, without access presets or
+capability-selection options. Unexpected launch arguments are rejected.
 
-The typed read tools are `hosting_profiles_list`, `hosting_provider_validate`,
+The hosting typed read tools are `hosting_profiles_list`, `hosting_provider_validate`,
 `hosting_capabilities_get`, `hosting_sites_list`, `hosting_site_get`,
-`hosting_environments_list`, and `hosting_operation_get`. The typed mutations
-are `hosting_backup_create` and `hosting_novamira_setup`. The `deploy`
-capability adds `hosting_environment_push_plan` and
-`hosting_environment_push_apply`; it is intentionally absent from the default
-preset. The likewise non-default `recovery` capability adds
+`hosting_environments_list`, `hosting_operation_get`, `hosting_backups_list`, and `hosting_history_list`. The typed mutations
+are `hosting_backup_create` and `hosting_novamira_setup`. The deploy tools are `hosting_environment_push_plan` and
+`hosting_environment_push_apply`; backup recovery uses
 `hosting_backup_restore_plan` and `hosting_backup_restore_apply`. Every tool
 carries MCP read-only and destructive annotations.
 
+WordPress tools are `wordpress_sites_list`, `wordpress_doctor`,
+`wordpress_discover`, `wordpress_describe`, `wordpress_skill`, and `wordpress_run`.
+They invoke fixed public Novamira CLI grammar, not HQ site HTTP. Each site-scoped
+call requires an explicit CLI profile. Discovery, relevant site skills and live
+schema inspection precede execution. Run uses `--fresh --input -`, sends bounded
+JSON over stdin, and forwards `--yes` only for an explicit `approveDestructive: true`.
+That boolean is a CLI confirmation, not proof of human consent. The calling agent
+must obtain task-level authorization and verify changes with a read-only Ability.
+There is no automatic retry on ambiguous execution. Child output is bounded;
+only parsed, redacted data leaves integration, marked untrusted. Raw stdout,
+stderr and remote error text never enter logs, dashboard or history. These
+operations do not install the CLI, reinstall the plugin, or enable AI Abilities.
+Missing CLI and incompatible/unconnected sites have actionable failures without
+disabling hosting. The hosting journal does not record these WordPress calls.
+
 There is no generic CLI/argv bridge. MCP cannot mutate HQ configuration,
 self-update, invoke arbitrary provider WP-CLI, manage domains or DNS, or manage
-SSH/SFTP access. A tool not selected at launch is neither advertised nor
-callable by name. Credentials still come only from configured references, never
+SSH/SFTP access. Unknown tools are neither advertised nor callable by name. Credentials still come only from configured references, never
 an MCP credential argument.
 
 Environment push is a two-call transaction. The plan call requires different
@@ -442,8 +451,9 @@ provider advertises both `envs.push` and `backups.create`, resolves both
 environment IDs under the named site, and returns a session-local random
 confirmation ID expiring after five minutes. Apply consumes that ID before any
 provider request, so it is one-use even after failure; it creates a backup of the
-target and waits for its successful completion when the provider returns an
-operation ID, then performs and likewise awaits the push.
+target and requires a verifiable operation ID and positive completion evidence,
+then performs and likewise awaits the push. Apply revalidates provider support
+and environment membership. Missing or synthetic evidence stops the workflow.
 
 Backup restore is another two-call transaction. Plan requires the target
 environment, a non-empty backup id, and an explicit `allContent: true`; Kinsta
@@ -616,9 +626,12 @@ are not implemented by their HQ adapters.
 `--backup-id`, `--all-content`, and the global `--yes`; Kinsta additionally
 requires `--notified-user-id`. Before mutation it verifies list/create/restore
 support and finds the id in that environment's catalog. It then creates and
-waits for a fresh safety backup, restores all content, and waits for the restore
-when the provider exposes an operation id. The guarded workflow is advertised
-by Kinsta, Pantheon, Rocket.net, and WP Engine.
+waits for a fresh safety backup, restores all content, and requires verified
+completion of the restore. Missing operation IDs, synthetic statuses and unknown
+outcomes stop the workflow with a non-retryable error: verify at the provider
+before repeating. Apply revalidates the backup catalog before mutation. The
+guarded workflow is advertised by Kinsta, Pantheon and Rocket.net. WP Engine
+does not advertise it until its backup resource has genuine completion polling.
 
 Read commands render the provider response unchanged under `data`; action
 commands render the provider's action result; `hosting providers capabilities`
@@ -668,7 +681,7 @@ profile, and creates no WordPress user.
 | `--preflight` / `--no-preflight` | boolean | `true` |
 | `--validate-source` / `--no-validate-source` | boolean | `true` |
 | `--wait` / `--no-wait` | boolean | `true` |
-| `--ai-abilities` / `--no-ai-abilities` | boolean | `true` |
+| `--ai-abilities` / `--no-ai-abilities` | boolean | `false` (explicit enable on an existing installation) |
 | `--compat-check` / `--no-compat-check` | boolean | `true` |
 | `--interval-seconds <seconds>` | positive integer | `5` |
 | `--timeout-seconds <seconds>` | unsigned integer | `300` |
@@ -692,18 +705,33 @@ activation state, and the site URL — a supplied `--url` must normalize, and
 `--source` is resolved and, unless `--no-validate-source`, HEAD-checked before
 the provider is touched.
 
-The environment then runs these WP-CLI commands, in this order:
+After the PHP check, fixed read-only commands inspect Novamira's installed
+version and activation state (`wp plugin list --name=novamira
+--fields=name,status,version --format=json`) and, when installed, its two AI
+Abilities options (`wp option list --search='novamira_ai_abilities_*'
+--fields=option_name,option_value --format=json`). Invalid or older versions stop
+before mutation, including under `--force`. The minimum plugin version is the
+shared `MINIMUM_NOVAMIRA_VERSION` constant. Updating an old plugin is a separate
+explicit action, never an implicit part of setup.
+
+The remaining sequence is:
 
 | # | Command | Skipped when |
 | --- | --- | --- |
 | 1 | `wp eval 'echo PHP_VERSION;'` | never |
-| 2 | `wp option get siteurl` | `--no-preflight` |
-| 3 | `wp plugin install <resolved source>` | never |
+| 2 | `wp option get siteurl` | `--no-preflight`, or a preserved existing installation |
+| 3 | `wp plugin install <resolved source>` | a compatible installation exists and `--force` was not requested |
 | 4 | `wp plugin status <slug>` | no activation is requested, or the source names no slug |
 | 5 | `wp plugin activate <slug>` | as 4, and when 4 reports the plugin already active |
 | 6 | `wp option get home` | `--url` was given |
-| 7 | `wp option update novamira_ai_abilities_enabled 1` | `--no-ai-abilities` |
-| 8 | `wp option update novamira_ai_abilities_domain <host>` | `--no-ai-abilities` |
+| 7 | `wp option update novamira_ai_abilities_enabled 1` | existing installation without explicit `--ai-abilities` |
+| 8 | `wp option update novamira_ai_abilities_domain <host>` | existing installation without explicit `--ai-abilities` |
+
+New installations always enable AI Abilities. Existing installations preserve
+both options by default; `--ai-abilities` explicitly enables them and binds them
+to the current domain. `--force` is not that option. Connecting a site does not
+change either setting. CLI and MCP require no app acceptance, and MCP may pass
+`enableAiAbilities: true` without an additional human-confirmation gate.
 
 Step 1 always precedes step 3. The minimum is **PHP 8.0**; a lower major is
 `server_unsupported` and the gate exists to prevent a doomed mutation, so a
@@ -869,8 +897,10 @@ metadata and all of it is redacted like every other diagnostic.
 `compatibility.status` is `"supported"` or `"skipped"`; a failing check never
 produces a success envelope, so no other value can appear. When it is
 `"skipped"`, every other `compatibility` field is `null`, `plugin.version` is
-`null`, and `ready` is `null`; otherwise `ready` is `true`. `ai_abilities.domain`
-is `null` under `--no-ai-abilities`. `next_step.command` is argv a caller may
+`null`, and `ready` is `null`; otherwise `ready` is `true` only when AI Abilities
+are effectively enabled for the current domain, and `null` with an activation
+warning otherwise. Preserved `ai_abilities.domain` reports the existing binding,
+including a mismatching domain; HQ never silently rewrites it. `next_step.command` is argv a caller may
 spawn with no shell and `next_step.command_line` is the same command as one
 string; both are generated from one value so they cannot drift, and the command
 carries no `--name` and no `--no-open` because profile naming belongs to the
@@ -981,6 +1011,12 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 | `/deploy-paths/new` | GET | no |
 | `/novamira-setup` | GET | no |
 | `/diagnostics` | GET | no |
+| `/history` | GET | no |
+| `/mcp` | GET | no |
+| `/_dashboard/mcp/verify` | POST | yes |
+| `/_dashboard/app/acknowledge` | POST | yes |
+| `/_dashboard/deploy-paths/plan` | POST | yes |
+| `/_dashboard/deploy-paths/apply` | POST | yes |
 | `/settings` | GET | no |
 | `/_dashboard/providers/save` | POST | yes |
 | `/_dashboard/providers/remove` | POST | yes |
@@ -1069,8 +1105,9 @@ hosting APIs.
 
 `/_dashboard/setup/start` takes `?profile=` and `?env=`, plus the optional
 display values `?site=` and `?envname=` the Sites page's link already carries.
-It reads one signal subtree, `setup`; an absent `setup.enableAiAbilities` means
-**enabled**, and only an explicit `false` disables. It mints a job, runs
+It reads one signal subtree, `setup`; `setup.enableAiAbilities` defaults to
+**false**, preserving existing settings. Selecting it requests activation on an
+existing installation; new installations always enable abilities. It mints a job, runs
 `hosting novamira setup`'s provisioning service — the same code path the command
 uses, and therefore the same refusals, the same PHP gate and the same
 compatibility preflight — detached from the request, and repaints the page with
@@ -1182,8 +1219,10 @@ form to itself and no page reloads.
   installer itself.
 - **Deploy paths** (`/deploy-paths`, `/deploy-paths/new`) — the configured paths
   with their resolved environment names and domains, and the creation form.
-  Execution is not part of v1; the Deploy button renders disabled and says so.
-  Neither page issues a provider call: both read the warm inventory only.
+  Deploy prepares a five-minute, one-use confirmation showing source, target
+  and positive scope. Apply rejects changed paths and uses the shared verified
+  safety-backup/push workflow. Neither page load issues a provider call: both
+  read the warm inventory only; explicit Plan and Apply actions contact providers.
 - **Novamira Setup** (`/novamira-setup`) — the target panel, the AI-Abilities
   toggle and Start button, the live event log, and, when a run has finished, what
   landed on the site plus the `novamira auth login` handoff. `?job=<id>` reopens
@@ -1240,6 +1279,12 @@ matching profile holds a usable credential and its REST surface is reachable),
 expired credential, or an authentication error), and `unavailable` (the site CLI
 is missing or incompatible, a child timed out, its output was malformed, or
 reachability could not be established). A profile alone is never a connection.
+
+An explicit site-CLI `server_unsupported` code is classified as
+`site_incompatible`, not as a broken CLI or generic network failure. The fixed
+hint points to site compatibility and AI Abilities settings without exposing
+child output or guessing which specific requirement failed. Connect still makes
+no hosting mutation and never installs a plugin or enables abilities.
 
 Detection runs `novamira --json --quiet --timeout <ms> sites list` once, matches
 normalized origins against hosting environments, and then runs
@@ -1345,7 +1390,10 @@ redacted stderr diagnostic per non-passing check.
 `@novamira/cli`'s grammar so an operator learns it once. There is no `upgrade`
 alias and no `update check` / `update install` subcommand.
 
-Distribution is **npm only**. The published version is read from the npm
+This updater applies to the **npm distribution only**. The standalone desktop
+app refuses these dashboard update actions with an explanatory message before
+any registry read or package-manager spawn; updating its separate binary requires
+a newer desktop release. The published npm version is read from the npm
 registry's dist-tag endpoint for `@novamira/hq` — one anonymous `GET` over
 HTTPS, carrying `Accept` and nothing else: no cookie, no `Authorization`, no npm
 token, and **no profile, credential, provider or telemetry data**. Redirects are
@@ -1389,3 +1437,54 @@ handler blocks until the listener stops; the command was `doctor --offline`; or
 stderr is not a terminal. The last is the one that matters most in practice: HQ
 is an agent-facing tool, and a scripted or piped invocation performs no network
 work its caller did not ask for.
+
+## Connect your AI and app acknowledgement
+
+`/mcp` renders Claude Desktop JSON and ChatGPT Desktop TOML using the actual
+executable path, fixed argv, and only HQ path overrides. It never copies provider
+credentials, modifies a client's files, or registers skills. `?access=` selects
+read/standard/all for the generated configuration; standard is the default.
+Selection does not alter an existing client process. Save/merge the configuration
+and restart the client. Profiles follow HQ configuration dynamically, with no
+per-profile permission switches; configured credentials are not validation.
+
+The token-protected POST `/_dashboard/mcp/verify` spawns the configured local
+entry point and sends only initialize, initialized and tools/list. Output is
+bounded to 256 KiB and startup to ten seconds. Failure output is not displayed.
+Success proves local startup only, not an external client connection or working
+provider credentials. The desktop's `--mcp` role calls the existing `mcpMain`
+without importing webview or depending on a running dashboard.
+
+The dashboard shows an initial explanation of PHP/filesystem/data access and
+autonomous AI Abilities activation. POST `/_dashboard/app/acknowledge` records
+version 1 and acceptedAt in the owner-only state/app-acknowledgement.json, resolved
+through config/paths.ts. This is application onboarding, not an authorization
+checked by CLI/MCP, not per hosting, and not revocable. Connecting a site does
+not activate abilities; explicit setup may. No WordPress site token is stored.
+
+## Local hosting history
+
+The dashboard exposes Hosting history from Diagnostics, not as a main navigation
+item. The history page highlights Diagnostics and links back to it. Both pages
+explicitly exclude WordPress CLI operations, including those delegated by HQ MCP.
+
+`history [--profile <name>]`, `hosting_history_list`, and `/history`
+share state/hosting-history.json. Reads are local and never poll or replay a
+provider mutation. Actions record intent before dispatch, and atomic writes are
+serialized across processes. Records contain IDs, channel, target, safe scope,
+timestamps and error codes; never commands, PHP, payloads, credentials or raw
+provider output. Setup, push and restore child requests share a workflow ID and
+separate running/succeeded/failed workflow outcome. A workflow failure never
+claims earlier requests were undone. A crashed workflow remains unresolved.
+
+Request states distinguish accepted from succeeded, failed and needs_verification.
+Only positive provider evidence marks an operation completed. Last observed is
+not continuous monitoring; refresh only reads disk. Attention uses recorded
+uncertainty/failure and gives a provider-check next step. A newer successful
+equivalent action supersedes an older failure notice, not its historical record.
+
+Retention is bounded to 500 records and evicts terminal work only. It never
+silently drops unresolved requests: when all slots are unresolved, another
+mutation fails before dispatch with an actionable conflict. Corrupt or unsafe
+history also fails closed. A post-dispatch persistence failure instructs the
+operator to verify at the provider before retrying.

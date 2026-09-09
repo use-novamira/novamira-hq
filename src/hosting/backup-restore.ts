@@ -11,13 +11,11 @@
  */
 
 import { CliError } from "../errors.js";
+import { runHostingWorkflow } from "../operation-context.js";
 import { applyHqCapabilityPolicy } from "./capabilities.js";
 import type { ProviderClient } from "./client.js";
-import {
-  operationFailure,
-  waitForOperationStatus,
-  type WaitForOperationOptions,
-} from "./operations.js";
+import type { WaitForOperationOptions } from "./operations.js";
+import { sendGuardedAction, waitForVerifiedAction } from "./verified-action.js";
 import type {
   ActionResult,
   OperationStatus,
@@ -208,15 +206,7 @@ async function waitForAction(
   action: ActionResult,
   options: WaitForOperationOptions,
 ): Promise<OperationStatus | undefined> {
-  if (action.operationId === undefined || action.operationId === "")
-    return undefined;
-  const status = await waitForOperationStatus(
-    client,
-    action.operationId,
-    options,
-  );
-  if (status.failed) throw operationFailure(status);
-  return status;
+  return waitForVerifiedAction(client, action, options);
 }
 
 function restoreBody(
@@ -255,23 +245,49 @@ export async function executeBackupRestore(
     timeoutSeconds: 300,
   },
 ): Promise<BackupRestoreExecution> {
+  return runHostingWorkflow("backup-restore", () =>
+    executeRestoreSteps(client, plan, wait),
+  );
+}
+
+async function executeRestoreSteps(
+  client: ProviderClient,
+  plan: BackupRestorePlan,
+  wait: WaitForOperationOptions,
+): Promise<BackupRestoreExecution> {
   if (client.provider !== plan.provider)
     throw new CliError(
       "conflict",
       "The backup restore plan belongs to a different provider.",
     );
 
-  const safetyBackup = await client.action({
-    kind: "create-backup",
-    envId: plan.targetEnvironmentId,
-    body: { tag: "novamira-hq pre-restore safety backup" },
+  await prepareBackupRestore(client, {
+    targetEnvironmentId: plan.targetEnvironmentId,
+    backupId: plan.backupId,
+    allContent: true,
+    ...(plan.notifiedUserId === undefined
+      ? {}
+      : { notifiedUserId: plan.notifiedUserId }),
   });
+  const safetyBackup = await sendGuardedAction(
+    client,
+    {
+      kind: "create-backup",
+      envId: plan.targetEnvironmentId,
+      body: { tag: "novamira-hq pre-restore safety backup" },
+    },
+    wait.signal,
+  );
   const safetyBackupStatus = await waitForAction(client, safetyBackup, wait);
-  const restore = await client.action({
-    kind: "restore-backup",
-    targetEnvId: plan.targetEnvironmentId,
-    body: restoreBody(plan),
-  });
+  const restore = await sendGuardedAction(
+    client,
+    {
+      kind: "restore-backup",
+      targetEnvId: plan.targetEnvironmentId,
+      body: restoreBody(plan),
+    },
+    wait.signal,
+  );
   const restoreStatus = await waitForAction(client, restore, wait);
   return {
     plan,

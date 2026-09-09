@@ -549,7 +549,8 @@ class KinstaClient implements ProviderClient {
       provider: PROVIDER,
       operationId,
       status,
-      done: response.status === 200 || status === 200,
+      // The operation payload, not transport success, proves completion.
+      done: response.status === 200 && reported === 200,
       failed: response.status === 500 || status >= 500,
       ...(message === undefined ? {} : { message }),
       raw,

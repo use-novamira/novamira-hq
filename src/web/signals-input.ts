@@ -239,15 +239,8 @@ export function parseDiagnostics(
 /* -------------------------------------------------------------------------- */
 
 /**
- * Go's comment on the pointer field, whose reasoning survives the type change:
- *
- * > setupSignals uses a pointer so old/no-JS posts that include only the token
- * > keep the default setup behavior: AI Abilities are enabled unless the
- * > dashboard checkbox explicitly sends false.
- *
- * So the rendered signal is a plain `boolean` defaulted to `true`, and the
- * *parsed* one defaults to `true` as well: absent means "keep the default,
- * enabled", and only an explicit `false` disables.
+ * Absent means no explicit request to enable abilities on an existing site.
+ * New installations are enabled by the provisioning service, not this parser.
  */
 export interface SetupInput {
   readonly enableAiAbilities: boolean;
@@ -260,7 +253,7 @@ export function parseSetup(
     enableAiAbilities: boolean(
       subtree(signals, "setup"),
       "enableAiAbilities",
-      true,
+      false,
     ),
   };
 }

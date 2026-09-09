@@ -11,8 +11,9 @@ deletion, DNS writes, and SSH/SFTP credential management are deliberately
 outside HQ's surface and provider adapters. Backup restoration is available only
 through a guarded recovery workflow that first creates a new safety backup.
 
-HQ stops there. It never holds a WordPress site token, never calls a WordPress
-REST route on a configured site's behalf, and never proxies an Ability. Once a
+HQ never holds a WordPress site token or calls authenticated site REST directly.
+Its MCP can also delegate WordPress tasks to the optional `novamira` CLI, which
+owns authentication and site requests. Once a
 site is provisioned, agents talk to it through the separate
 [`@novamira/cli`](https://github.com/use-novamira/novamira-cli) tool.
 
@@ -32,7 +33,7 @@ diagnostics, the eight provider clients, the whole `config` and `hosting`
 command line, the provisioning flow behind `hosting novamira setup`, the bundled
 agent skills behind `skills`, the local installation report behind `doctor`,
 npm-only self-update behind `update`, the two installer scripts, and the local
-dashboard — all seven pages, including Diagnostics, which runs the same report
+dashboard — including Diagnostics, which runs the same report
 `doctor` does, and Settings, which carries the update card.
 
 One thing is deliberately _not_ frozen: the markup inside a dashboard page,
@@ -207,7 +208,12 @@ What it does:
   authorizing it on the computer, to opening the AI agent selected during HQ's
   installation. HQ prepares the connection; the AI work happens in the agent.
 - **Deploy paths** — create and remove the environment-to-environment paths.
-  Running one is not part of this release.
+  Deploy shows a source/target/scope confirmation, verifies a target safety
+  backup, then pushes. A changed or reused confirmation is refused.
+- **Connect your AI** — copy Claude Desktop or ChatGPT Desktop configuration,
+  select launch capabilities and verify local MCP startup without provider calls.
+- **History** — local requests and correlated workflows across CLI, dashboard
+  and MCP, with observed outcomes and next steps for unverified work.
 - **Novamira Setup** — install and activate the plugin on an environment with
   live progress, then print the `novamira auth login` command that connects your
   agent. It runs the same code path as
@@ -300,8 +306,11 @@ novamira-hq --profile kinsta hosting novamira setup --env <env-id>
 
 The plugin source defaults to `novamira-latest`, which resolves to the newest
 published release. The site URL is discovered from the site's own `home` option
-unless `--url` overrides it; `--no-ai-abilities` leaves the two options
-untouched, and `--no-compat-check` skips the verification and says so in the
+unless `--url` overrides it. New installs enable AI Abilities. Existing compatible
+installs are preserved by default, including their AI Abilities settings; pass
+`--ai-abilities` explicitly to enable them on an existing site. An old or
+unverifiable installation stops before mutation, even with `--force`: update it
+separately. `--no-compat-check` skips the public metadata verification and says so in the
 output. A site that cannot run the plugin — PHP below 8.0, WordPress below 6.9,
 a plugin build older than 1.11.1, a missing server feature — fails the command
 with `server_unsupported` and names the check that failed, rather than reporting
@@ -333,6 +342,30 @@ Connect action require it.
 
 ## MCP server
 
+In the dashboard, open **Connect your AI** for installation-specific
+configurations for Claude Desktop and ChatGPT Desktop. Copying a configuration
+does not connect the client: merge it without overwriting other servers and
+restart that client. The local verification button checks initialization and
+tool listing, not provider credentials or the external client's connection.
+Client instructions follow the [MCP local-server guide](https://modelcontextprotocol.io/docs/develop/connect-local-servers)
+and [ChatGPT Desktop MCP documentation](https://learn.chatgpt.com/docs/extend/mcp).
+
+The standalone desktop executable also accepts `--mcp` and launches the same MCP
+server without a window. The client starts its own process, so HQ's dashboard
+need not remain open. Its copied configuration does not require a separate HQ
+CLI installation. Provider secrets are never copied; environment-based secrets
+must be available to the AI client, which may not inherit your terminal's env.
+
+The application's initial acknowledgement explains that AI agents may explicitly
+enable AI Abilities on an existing site without asking again. It is not a
+per-hosting permission, has no revocation switch, and is not required by CLI or
+MCP. New plugin installations enable abilities automatically; existing
+installations preserve them unless explicitly requested.
+
+Native desktop updates require installing a newer desktop release. The npm
+updater only updates a separately installed CLI and is unavailable in the
+standalone app.
+
 HQ can be configured as a local stdio MCP server in AI agents. The server writes
 only newline-delimited JSON-RPC messages to stdout and performs no background
 update check. Configure the package directly through `npx`:
@@ -349,19 +382,8 @@ update check. Configure the package directly through `npx`:
 ```
 
 MCP exposes a deliberately smaller, typed operational surface rather than a
-generic CLI bridge. The default `standard` preset includes provider reads,
-backup creation, and Novamira provisioning; environment push and backup restore
-require the separate `deploy` and `recovery` capabilities:
-
-```sh
-npx -y @novamira/hq mcp --access read
-npx -y @novamira/hq mcp --allow hosting-read --allow provisioning
-npx -y @novamira/hq mcp --access all
-```
-
-`--allow` is repeatable and, when present, replaces the preset. `--deny` is
-repeatable and removes capabilities from it. Capabilities are `profiles-read`,
-`hosting-read`, `maintenance`, `provisioning`, `deploy`, and `recovery`. Typed tools cover
+generic CLI bridge. All supported MCP tools are available at launch; there are no access presets.
+Run `npx -y @novamira/hq mcp`. Typed tools cover
 profile and hosting inventory, provider validation, operation status, backup
 creation and guarded restoration, Novamira setup, and environment push. There is
 no arbitrary argv tool, no configuration mutation, no self-update, no provider
@@ -381,7 +403,28 @@ Backup restore is also two-step. `hosting_backup_restore_plan` requires an
 explicit target environment, a backup ID from that environment's catalog, and
 `allContent: true`. `hosting_backup_restore_apply` consumes its five-minute
 one-use confirmation and creates and waits for a fresh safety backup before
-restoring. The `recovery` capability is not included in the default preset.
+restoring.
+
+The same MCP also exposes WordPress site listing, doctor, discovery, site-skill
+loading, Ability description and execution through the optional `novamira` CLI.
+Choose a site explicitly, inspect the live schema, authorize the task and verify
+changes. No raw argv, local file input, direct authenticated site HTTP or automatic
+retry is exposed. Site content is untrusted. WordPress calls are not included in
+the hosting History page.
+
+## Removing the separate site CLI
+
+Removing Novamira HQ does not uninstall `@novamira/cli` or the WordPress plugins
+on your sites. Keep the CLI if other agents use it. For a global npm installation,
+remove it with `npm uninstall -g @novamira/cli`. This removes the executable, not
+necessarily saved profiles or credentials. Before uninstalling, optionally list
+profiles with `novamira sites list --json`, then for each intended profile run
+`novamira --site PROFILE_NAME auth logout` and `novamira sites remove PROFILE_NAME`.
+Logout attempts remote revocation; check its result. These commands disconnect
+other agents using that profile, but do not delete the WordPress site. They are
+not a complete cleanup of local files or authorizations on other devices.
+Settings → Uninstalling contains the same instructions; HQ never runs them
+automatically. Remove unused MCP entries in your AI client separately.
 
 ## Agent skills
 

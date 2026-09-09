@@ -101,7 +101,7 @@ export interface SetupJobSnapshot {
 export interface SetupJobStartInput {
   readonly profile: string;
   readonly envId: string;
-  /** `setup.enableAiAbilities`; absent in the posted signals means `true`. */
+  /** Explicit activation on an existing installation; new installs enable it. */
   readonly aiAbilities: boolean;
 }
 

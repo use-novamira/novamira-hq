@@ -107,8 +107,15 @@ async function harness(root, options = {}) {
         ? defaultActionResult(request)
         : options.action(request);
     },
-    async operationStatus() {
-      throw new Error("unused");
+    async operationStatus(operationId) {
+      return {
+        provider: "kinsta",
+        operationId,
+        status: 200,
+        done: true,
+        failed: false,
+        raw: { state: "completed" },
+      };
     },
   };
 
@@ -587,6 +594,7 @@ test("backup restore requires explicit overwrite approval and creates a safety b
       action: (request) => ({
         provider: "kinsta",
         action: request.kind,
+        operationId: request.kind,
         status: 200,
         raw: null,
       }),
@@ -618,6 +626,8 @@ test("backup restore requires explicit overwrite approval and creates a safety b
     const restored = await run(state, [...argv, "--yes"]);
     assert.equal(restored.code, 0, `${restored.stderr}\n${restored.stdout}`);
     assert.deepEqual(restored.requests, [
+      { kind: "capabilities" },
+      { kind: "backups", envId: "env-1" },
       { kind: "capabilities" },
       { kind: "backups", envId: "env-1" },
       {

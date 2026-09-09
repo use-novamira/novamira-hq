@@ -51,6 +51,45 @@
 
 import { asRecord } from "../json.js";
 import { isSiteProfileName } from "../site-profiles.js";
+import type { SiteOperation } from "./operations.js";
+
+/** Fixed public CLI grammar; operation input travels only on stdin. */
+export function siteOperationArgs(operation: SiteOperation): readonly string[] {
+  const base = [
+    "--json",
+    "--quiet",
+    "--timeout",
+    "30000",
+    "--max-output",
+    "1048576",
+  ];
+  if (operation.kind === "list") return [...base, "sites", "list"];
+  base.push("--site", operation.site);
+  switch (operation.kind) {
+    case "doctor":
+      return [...base, "doctor"];
+    case "discover":
+      return [...base, "discover"];
+    case "describe":
+      return [...base, "describe", operation.ability];
+    case "skill":
+      return [...base, "skill", "get", operation.slug];
+    case "run":
+      return [
+        ...base,
+        ...(operation.approveDestructive ? ["--yes"] : []),
+        "run",
+        operation.ability,
+        "--fresh",
+        "--input",
+        "-",
+      ];
+    default: {
+      const exhaustive: never = operation;
+      return exhaustive;
+    }
+  }
+}
 
 /* -------------------------------------------------------------------------- */
 /* argv and the child environment                                             */

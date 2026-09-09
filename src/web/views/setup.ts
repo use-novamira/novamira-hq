@@ -60,15 +60,7 @@ import type { ErrorCode } from "../../errors.js";
 import type { NovamiraSetupResult } from "../../provisioning/index.js";
 import * as ds from "../datastar.js";
 import { getStream, post } from "../expr.js";
-import {
-  classAttr,
-  flagAttr,
-  hrefAttr,
-  html,
-  idAttr,
-  url,
-  type Html,
-} from "../html.js";
+import { classAttr, hrefAttr, html, idAttr, url, type Html } from "../html.js";
 import type {
   SetupJobEvent,
   SetupJobFailure,
@@ -237,7 +229,7 @@ function renderTargetPanel(view: SetupView, status: SetupDisplayStatus): Html {
  * command that connects the agent.
  */
 const SETUP_DESCRIPTION =
-  "This checks for PHP 8.0 or newer, installs and activates the Novamira plugin on this environment, enables Novamira AI Abilities, and verifies the site against the Novamira compatibility matrix. Connecting your agent is a separate step: run the printed";
+  "This checks compatibility before changing the plugin. New installations enable AI Abilities; existing installations keep their current setting unless you select the option below. An outdated installation requires an explicit update. Connecting your agent is a separate step: run the printed";
 
 const AI_ABILITIES_WARNING =
   "When enabled, AI agents can execute PHP code and perform filesystem operations on this site. Use AI Abilities only on development or staging sites with a current backup.";
@@ -259,9 +251,7 @@ function renderActionPanel(view: SetupView): Html {
   );
   return html`<section class="panel action-panel"><p class="field-help">${SETUP_DESCRIPTION} <code>novamira auth login</code> command with the Novamira site CLI.</p><label class="toggle setup-ai-toggle"><input type="checkbox"${ds.bind(
     "setup.enableAiAbilities",
-  )}${flagAttr(
-    "checked",
-  )}><span>Enable AI Abilities after setup</span></label><p class="field-help setup-warning"><strong>Security note:</strong> ${AI_ABILITIES_WARNING}</p><button class="button primary" type="button"${ds.on(
+  )}><span>Also enable AI Abilities on an existing installation</span></label><p class="field-help setup-warning"><strong>Security note:</strong> ${AI_ABILITIES_WARNING}</p><button class="button primary" type="button"${ds.on(
     "click",
     action,
   )}>Start Setup</button></section>`;
@@ -353,7 +343,11 @@ function renderSetupResult(result: NovamiraSetupResult): Html {
     )}`,
   )}${dlField("Compatibility", compatibility)}${dlField(
     "Ready",
-    result.ready === true ? "yes" : "not checked",
+    result.ready === true
+      ? "yes"
+      : result.compatibility.status === "supported"
+        ? "AI Abilities are not enabled for this domain"
+        : "not checked",
   )}</dl>${result.warnings.map(
     (warning) => html`<div class="notice warn">${warning.message}</div>`,
   )}<p class="field-help">Connect your agent with the Novamira site CLI:</p><pre class="code-output">${

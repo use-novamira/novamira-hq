@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { Readable } from "node:stream";
 import test from "node:test";
-import { parseMcpAccess, runMcpServer } from "../dist/mcp/index.js";
+import { runMcpServer } from "../dist/mcp/index.js";
 
 function request(id, method, params) {
   return JSON.stringify({
@@ -16,7 +16,13 @@ function request(id, method, params) {
 }
 
 function actionResult(action) {
-  return { provider: "kinsta", action, status: 200, raw: null };
+  return {
+    provider: "kinsta",
+    action,
+    status: 200,
+    operationId: action,
+    raw: null,
+  };
 }
 
 async function session(lines, overrides = {}) {
@@ -78,7 +84,7 @@ async function session(lines, overrides = {}) {
       status: 200,
       done: true,
       failed: false,
-      raw: null,
+      raw: { state: "completed" },
     }),
     action: async (value) => {
       calls.push(value);
@@ -113,7 +119,10 @@ async function session(lines, overrides = {}) {
           return client;
         },
       },
-      access: overrides.access ?? parseMcpAccess([]),
+      history: { list: async () => [] },
+      ...(overrides.siteOperations
+        ? { siteOperations: overrides.siteOperations }
+        : {}),
       executeCli: async (argv) => {
         calls.push(argv);
         return (
@@ -160,7 +169,52 @@ const initialized = JSON.stringify({
   method: "notifications/initialized",
 });
 
-test("MCP negotiates lifecycle and exposes the standard typed surface", async () => {
+test("WordPress MCP delegates structured operations to the optional site CLI", async () => {
+  const seen = [];
+  const { messages } = await session(
+    [
+      initialize,
+      initialized,
+      request(2, "tools/call", {
+        name: "wordpress_run",
+        arguments: {
+          site: "example",
+          ability: "novamira/test",
+          input: { value: 1 },
+        },
+      }),
+      request(3, "tools/call", {
+        name: "wordpress_run",
+        arguments: {
+          site: "example",
+          ability: "novamira/test",
+          input: {},
+          approveDestructive: "yes",
+        },
+      }),
+    ],
+    {
+      siteOperations: {
+        execute: async (operation) => {
+          seen.push(operation);
+          return { done: true };
+        },
+      },
+    },
+  );
+  assert.deepEqual(seen, [
+    {
+      kind: "run",
+      site: "example",
+      ability: "novamira/test",
+      input: { value: 1 },
+      approveDestructive: false,
+    },
+  ]);
+  assert.equal(messages[2].result.isError, true);
+});
+
+test("MCP negotiates lifecycle and exposes the complete typed surface", async () => {
   const { messages } = await session([
     initialize,
     initialized,
@@ -176,6 +230,13 @@ test("MCP negotiates lifecycle and exposes the standard typed surface", async ()
   assert.deepEqual(
     tools.map((tool) => tool.name),
     [
+      "wordpress_sites_list",
+      "wordpress_doctor",
+      "wordpress_discover",
+      "wordpress_describe",
+      "wordpress_skill",
+      "wordpress_run",
+      "hosting_history_list",
       "hosting_profiles_list",
       "hosting_provider_validate",
       "hosting_capabilities_get",
@@ -183,67 +244,32 @@ test("MCP negotiates lifecycle and exposes the standard typed surface", async ()
       "hosting_site_get",
       "hosting_environments_list",
       "hosting_operation_get",
+      "hosting_backups_list",
       "hosting_backup_create",
       "hosting_novamira_setup",
+      "hosting_environment_push_plan",
+      "hosting_environment_push_apply",
+      "hosting_backup_restore_plan",
+      "hosting_backup_restore_apply",
     ],
   );
   assert.ok(
     tools.every((tool) => tool.inputSchema.additionalProperties === false),
   );
-  assert.ok(tools.every((tool) => tool.annotations.openWorldHint === true));
+  assert.ok(
+    tools.every(
+      (tool) =>
+        tool.annotations.openWorldHint ===
+        (tool.name !== "hosting_history_list"),
+    ),
+  );
   assert.equal(
     tools.some((tool) => tool.name === "novamira_hq_cli"),
     false,
   );
 });
 
-test("read access exposes only profile and provider reads", async () => {
-  assert.deepEqual(
-    [...parseMcpAccess([]).capabilities],
-    ["profiles-read", "hosting-read", "maintenance", "provisioning"],
-  );
-  const policy = parseMcpAccess(["--access", "read"]);
-  const { messages } = await session(
-    [initialize, initialized, request(2, "tools/list", {})],
-    { access: policy },
-  );
-  assert.deepEqual(
-    messages[1].result.tools.map((tool) => tool.name),
-    [
-      "hosting_profiles_list",
-      "hosting_provider_validate",
-      "hosting_capabilities_get",
-      "hosting_sites_list",
-      "hosting_site_get",
-      "hosting_environments_list",
-      "hosting_operation_get",
-    ],
-  );
-  assert.ok(
-    messages[1].result.tools.every(
-      (tool) => tool.annotations.readOnlyHint === true,
-    ),
-  );
-});
-
-test("--allow replaces the preset and --deny removes one capability", () => {
-  assert.deepEqual(
-    [...parseMcpAccess(["--access", "all", "--deny", "deploy"]).capabilities],
-    [
-      "profiles-read",
-      "hosting-read",
-      "maintenance",
-      "provisioning",
-      "recovery",
-    ],
-  );
-  assert.deepEqual(
-    [...parseMcpAccess(["--allow", "deploy"]).capabilities],
-    ["deploy"],
-  );
-});
-
-test("recovery is non-default and restores through a one-use guarded plan", async () => {
+test("recovery is available by default and restores through a one-use guarded plan", async () => {
   const standard = await session([
     initialize,
     initialized,
@@ -253,7 +279,7 @@ test("recovery is non-default and restores through a one-use guarded plan", asyn
     standard.messages[1].result.tools.some((tool) =>
       tool.name.startsWith("hosting_backup_restore_"),
     ),
-    false,
+    true,
   );
 
   const { messages, calls } = await session(
@@ -280,7 +306,6 @@ test("recovery is non-default and restores through a one-use guarded plan", asyn
       }),
     ],
     {
-      access: parseMcpAccess(["--allow", "recovery"]),
       createRestoreConfirmationId: () => "restore-confirmation-id",
     },
   );
@@ -296,6 +321,8 @@ test("recovery is non-default and restores through a one-use guarded plan", asyn
   );
   assert.deepEqual(calls, [
     "production",
+    { kind: "capabilities" },
+    { kind: "backups", envId: "env-target" },
     { kind: "capabilities" },
     { kind: "backups", envId: "env-target" },
     {
@@ -374,7 +401,6 @@ test("maintenance and provisioning are fixed typed mutations", async () => {
       "env-target",
       "--url",
       "https://example.test",
-      "--no-ai-abilities",
     ],
   ]);
   assert.equal(messages[1].result.isError, undefined);
@@ -382,7 +408,6 @@ test("maintenance and provisioning are fixed typed mutations", async () => {
 });
 
 test("deploy uses a one-use plan and backs up the target before push", async () => {
-  const access = parseMcpAccess(["--allow", "deploy"]);
   const { messages, calls } = await session(
     [
       initialize,
@@ -408,7 +433,7 @@ test("deploy uses a one-use plan and backs up the target before push", async () 
         arguments: { confirmationId: "fixed-confirmation-id" },
       }),
     ],
-    { access, createPushConfirmationId: () => "fixed-confirmation-id" },
+    { createPushConfirmationId: () => "fixed-confirmation-id" },
   );
   const planned = JSON.parse(messages[1].result.content[0].text);
   assert.equal(planned.confirmationId, "fixed-confirmation-id");
@@ -421,6 +446,8 @@ test("deploy uses a one-use plan and backs up the target before push", async () 
   );
   assert.deepEqual(calls, [
     "production",
+    { kind: "capabilities" },
+    { listEnvironments: "site-1" },
     { kind: "capabilities" },
     { listEnvironments: "site-1" },
     {
@@ -459,7 +486,7 @@ test("deploy rejects an empty implicit scope before any mutation", async () => {
         },
       }),
     ],
-    { access: parseMcpAccess(["--allow", "deploy"]) },
+    {},
   );
   assert.equal(messages[1].result.isError, true);
   assert.equal(
@@ -469,7 +496,7 @@ test("deploy rejects an empty implicit scope before any mutation", async () => {
   assert.deepEqual(calls, ["production"]);
 });
 
-test("generic and non-authorized tools are not callable even by name", async () => {
+test("generic and unknown tools are not callable even by name", async () => {
   const { messages, calls } = await session(
     [
       initialize,
@@ -479,11 +506,11 @@ test("generic and non-authorized tools are not callable even by name", async () 
         arguments: { argv: ["hosting", "backups", "delete", "42"] },
       }),
       request(3, "tools/call", {
-        name: "hosting_backup_create",
-        arguments: { profile: "production", environmentId: "env-target" },
+        name: "unknown_tool",
+        arguments: {},
       }),
     ],
-    { access: parseMcpAccess(["--access", "read"]) },
+    {},
   );
   assert.deepEqual(messages[1].error, {
     code: -32602,

@@ -36,7 +36,13 @@ interface DashboardEnvelope {
   readonly error?: { readonly message?: unknown };
 }
 
-if (Deno.args[0] === SERVE_FLAG) {
+if (Deno.args[0] === "--mcp") {
+  const specifier = new URL("../dist/mcp/main.js", import.meta.url).href;
+  const { mcpMain } = (await import(specifier)) as {
+    mcpMain(argv: readonly string[]): Promise<void>;
+  };
+  await mcpMain(Deno.args.slice(1));
+} else if (Deno.args[0] === SERVE_FLAG) {
   await serve();
 } else {
   Deno.exit(await window());
@@ -52,7 +58,15 @@ async function serve(): Promise<void> {
   // the specifier resolvable inside a compiled executable.
   const specifier = new URL("../dist/main.js", import.meta.url).href;
   const { main } = (await import(specifier)) as typeof import("./hq.d.ts");
-  const code = await main(["dashboard", "--json", "--listen", "127.0.0.1:0"]);
+  const code = await main(
+    ["dashboard", "--json", "--listen", "127.0.0.1:0"],
+    undefined,
+    undefined,
+    {
+      distribution: "desktop",
+      mcpLaunch: { command: Deno.execPath(), args: [...serverArgs(), "--mcp"] },
+    },
+  );
   Deno.exit(code);
 }
 

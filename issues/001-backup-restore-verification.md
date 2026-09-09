@@ -1,6 +1,6 @@
 # 001: Verify Backup Completion Before Restore
 
-Status: open — safety blocker
+Status: implemented — offline contracts; live validation remains in issue 005
 
 ## Question
 
@@ -9,16 +9,16 @@ safety backup is complete, and what must HQ do when that evidence is missing?
 
 ## Current Behavior
 
-`src/hosting/backup-restore.ts` creates a safety backup and polls it when the
-adapter returns an operation id. If the id is absent, the common workflow
-currently continues without proving completion.
+The shared verified-action helper requires an operation ID and real terminal
+success evidence before push or restore. Missing IDs, synthetic raw-null statuses,
+provider errors and uncertain outcomes stop the workflow; they never trigger an
+automatic replay. Apply revalidates the plan before mutation. Kinsta's polling
+requires its operation payload to say status 200, not merely HTTP success.
 
-WP Engine is a special problem: its adapter treats generic operation status as
-immediately complete even when the returned backup resource may still be in a
-requested state. The current implementation therefore cannot guarantee the
-documented ordering "completed safety backup, then restore" for WP Engine.
+WP Engine no longer advertises guarded restore because its generic operation
+status cannot prove safety-backup completion. No replacement shortcut was added.
 
-## Proposed Direction
+## Implemented Direction
 
 1. Revalidate the target environment and selected backup at apply time.
 2. Create the target safety backup.
@@ -31,11 +31,10 @@ documented ordering "completed safety backup, then restore" for WP Engine.
    cannot be verified, report an indeterminate non-retryable result rather than
    submitting the same restore again.
 
-Kinsta, Pantheon, and Rocket.net already expose operation identifiers through
-their adapters. Their guarded restore path should require those identifiers,
-not treat them as optional.
+Kinsta, Pantheon, and Rocket.net expose operation identifiers through their
+adapters. Their guarded restore path requires those identifiers.
 
-WP Engine should stop advertising guarded restore until its backup resource can
+WP Engine must remain absent from guarded restore until its backup resource can
 be polled to a terminal successful state. Re-enable it only with a focused
 adapter implementation and fixture-backed tests.
 
@@ -44,8 +43,8 @@ adapter implementation and fixture-backed tests.
 - Which exact WP Engine backup states are terminal and successful?
 - Is a backup-specific read endpoint available, or must the adapter poll and
   search the environment backup catalog?
-- Should restore completion use a dedicated `indeterminate` outcome in the
-  public result, or a non-retryable provider error with mutation metadata?
+- Indeterminate completion is a non-retryable error with mutation metadata;
+  no new public success state was introduced.
 - Which sanitized real-provider fixtures can be committed without exposing
   customer or credential data?
 

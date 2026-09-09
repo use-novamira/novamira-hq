@@ -170,7 +170,6 @@ export function deployPushesSummary(path: DeployPathView): string {
   return parts.length === 0 ? "—" : parts.join(", ");
 }
 
-const DEPLOY_LATER_TITLE = "Execution comes in the next phase";
 const DEPLOY_UNSUPPORTED_TITLE =
   "This provider does not support environment push";
 
@@ -187,11 +186,11 @@ function renderDeployPathRow(path: DeployPathView): Html {
     path.targetEnvName
   }</span>${domains}</div></td><td>${deployPushesSummary(
     path,
-  )}</td><td class="actions"><button class="button link" type="button"${flagAttr(
-    "disabled",
-  )}${attr(
+  )}</td><td class="actions"><button class="button link" type="button"${path.supported ? false : flagAttr("disabled")}${ds.on("click", post(url("/_dashboard/deploy-paths/plan", { path: path.name }), { include: [] }))}${attr(
     "title",
-    path.supported ? DEPLOY_LATER_TITLE : DEPLOY_UNSUPPORTED_TITLE,
+    path.supported
+      ? "Review the target and scope before deploying"
+      : DEPLOY_UNSUPPORTED_TITLE,
   )}>Deploy</button><button class="button link" type="button"${ds.on(
     "click",
     confirmThen(

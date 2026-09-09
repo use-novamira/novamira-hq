@@ -18,12 +18,14 @@ executed. The port is complete — every module named below exists — so treat
 ## Boundary rule
 
 > HQ never holds a WordPress site token, never calls a WordPress REST route on a
-> configured site's behalf, and never proxies an Ability.
+> configured site's behalf directly. WordPress MCP tools delegate to the optional
+> Novamira CLI exclusively through `src/integration/`.
 
-HQ's job ends at provisioning: create and operate hosting resources, install and
-configure the plugin, then hand off. There is no `site/` package, no Application
+HQ operates hosting resources and provisions the plugin. Its MCP also delegates
+site discovery, diagnostics, skills, schema inspection and Ability execution to
+the site CLI, which alone owns authentication and site HTTP. There is no `site/` package, no Application
 Passwords, and no `site_profiles` in the schema. Do not add a code path that
-reintroduces site access.
+reintroduces direct site access or credential storage.
 
 The one exception is bounded: `hosting novamira setup` issues a single
 `GET {siteUrl}/.well-known/oauth-protected-resource`, the public unauthenticated
@@ -44,12 +46,11 @@ explicit positive scope, validates distinct source/target environments, requires
 provider support for both push and backup creation, and creates and waits for a
 target safety backup before pushing. MCP exposes only typed tools; it has no
 generic CLI/argv bridge. MCP push is a two-step plan/apply flow using a
-short-lived, session-local, one-use confirmation ID, and `deploy` is not in the
-default MCP capability preset.
+short-lived, session-local, one-use confirmation ID. All supported typed MCP
+tools are exposed at launch; there are no access presets.
 
 Backup restore is the recovery-only exception. The CLI requires `--yes` plus an
-explicit full-content acknowledgement; MCP exposes it only behind the
-non-default `recovery` capability and a short-lived, session-local, one-use
+explicit full-content acknowledgement; MCP requires a short-lived, session-local, one-use
 plan/apply confirmation. Both surfaces verify the backup in the target
 environment's catalog and create and wait for a fresh target safety backup
 before restoring. Neither accepts provider-native JSON for restore, and backup

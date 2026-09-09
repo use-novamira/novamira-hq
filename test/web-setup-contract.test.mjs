@@ -36,6 +36,7 @@ import { ConfigStore } from "../dist/config/profiles.js";
 import { createHostingClientFactory } from "../dist/hosting/factory.js";
 import { PROTECTED_RESOURCE_PATH } from "../dist/provisioning/compatibility.js";
 import { PHP_VERSION_COMMAND } from "../dist/provisioning/phpcompat.js";
+import { EXISTING_NOVAMIRA_COMMAND } from "../dist/provisioning/existing.js";
 import { NOVAMIRA_LATEST_RELEASE_API } from "../dist/provisioning/plugin.js";
 import {
   createDashboardServer,
@@ -62,6 +63,7 @@ test.after(async () => {
 
 /** WP-CLI stdout for one command line; anything unscripted answers empty. */
 function wpAnswer(command, phpVersion) {
+  if (command === EXISTING_NOVAMIRA_COMMAND) return "[]";
   if (command === PHP_VERSION_COMMAND) return phpVersion;
   if (command === "wp option get siteurl") return SITE_URL;
   if (command === "wp option get home") return SITE_URL;
@@ -392,7 +394,7 @@ test("1: the page is an empty state without a target and a work panel with one",
   for (const want of [
     'id="setup-work"',
     'data-bind="setup.enableAiAbilities"',
-    "checked",
+    "Also enable AI Abilities on an existing installation",
     "Security note:",
     "When enabled, AI agents can execute PHP code",
     ">Start Setup</button>",
@@ -458,6 +460,7 @@ test("3: start runs provisionNovamira, records the job and repaints the page", a
   // will be.
   assert.deepEqual(client.commands, [
     PHP_VERSION_COMMAND,
+    EXISTING_NOVAMIRA_COMMAND,
     "wp option get siteurl",
     `wp plugin install ${ZIP_URL}`,
     "wp plugin status novamira",
@@ -661,7 +664,7 @@ test("3g: dashboard close cancels and awaits setup jobs", async () => {
   assert.deepEqual(client.commands, [PHP_VERSION_COMMAND]);
 });
 
-test("4: enableAiAbilities false disables it; an absent subtree keeps it on", async () => {
+test("4: new installs enable abilities even without an existing-site activation request", async () => {
   const off = await fixture({ setupPollMs: 1 });
   const started = await sse(
     off.server,
@@ -671,7 +674,9 @@ test("4: enableAiAbilities false disables it; an absent subtree keeps it on", as
   );
   await drain(off.server, jobIdFrom(started.recorder));
   assert.ok(
-    !off.client.commands.some((command) => command.includes("ai_abilities")),
+    off.client.commands.includes(
+      "wp option update novamira_ai_abilities_enabled 1",
+    ),
   );
 
   const on = await fixture({ setupPollMs: 1 });

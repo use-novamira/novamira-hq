@@ -155,6 +155,9 @@ if (-not [string]::IsNullOrWhiteSpace($skipSiteCli)) {
   Write-Output "Install it later with: npm install -g $sitePackage"
 } else {
   Write-Output "`nInstalling the site CLI for connected-state detection..."
+  Write-Output "Novamira CLI is an independent component and remains installed if you remove Novamira HQ."
+  Write-Output "Optional removal later: npm uninstall -g @novamira/cli"
+  Write-Output "This does not remove WordPress plugins or guarantee cleanup of saved profiles and credentials. See HQ Settings > Uninstalling."
   $siteCliInstalled = $false
   try {
     & $npm @("install", "--global", "--ignore-scripts", $sitePackage)

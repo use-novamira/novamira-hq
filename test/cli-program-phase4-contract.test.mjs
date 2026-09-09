@@ -32,6 +32,7 @@ const CREDENTIAL_ENV = "KINSTA_API_KEY";
  * silently loses a subcommand, or gains one, fails here first.
  */
 const COMMAND_SURFACE = {
+  history: [],
   // The local dashboard. A top-level command, like Go's, and deliberately
   // without a `--timeout`: the name is reserved tree-wide and a server that
   // runs until the operator stops it has no operation deadline to set.

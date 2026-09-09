@@ -120,3 +120,9 @@ export {
   type ChildOutcomeKind,
   type SpawnChild,
 } from "./spawn.js";
+
+export {
+  createSiteOperations,
+  type SiteOperation,
+  type SiteOperations,
+} from "./operations.js";

@@ -432,11 +432,6 @@ function capabilities(): ProviderCapability[] {
       true,
       `uses POST /installs/{install_id}/backups; ${NOTE_NATIVE_JSON}`,
     ],
-    [
-      "backups.restore",
-      true,
-      "uses POST /installs/{install_id}/backups/{backup_id}/restore",
-    ],
     ["cache.clear", true, "uses POST /installs/{install_id}/purge_cache"],
     ["php.restart", false, NOTE_UNSUPPORTED],
     ["php.set-version", false, NOTE_NOT_MAPPED],

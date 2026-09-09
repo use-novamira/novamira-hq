@@ -31,7 +31,8 @@
  * and routes the `code` to `onDiagnostic`. `details` reach nothing.
  */
 
-import { asCliError } from "../../errors.js";
+import { asCliError, CliError } from "../../errors.js";
+import type { DeployConfirmation } from "../services/deploy-execution.js";
 import type { JsonValue } from "../expr.js";
 import { patchPage } from "../patch.js";
 import { readSignals, type DashboardRequest } from "../request.js";
@@ -64,6 +65,7 @@ async function patchDeployPathsPage(
   stream: SseStream,
   notice: DashboardNotice,
   signals?: Readonly<Record<string, JsonValue>>,
+  confirmation?: DeployConfirmation,
 ): Promise<void> {
   const view = await context.loadConfigView();
   const warm = context.sites.warm(ALL_PROFILES_SENTINEL, true);
@@ -71,6 +73,7 @@ async function patchDeployPathsPage(
     page: "deploy-paths",
     notice,
     model: {
+      ...(confirmation ? { deployConfirmation: confirmation } : {}),
       view,
       notice,
       signals: defaultDashboardSignals(context.token, {
@@ -87,6 +90,56 @@ async function patchDeployPathsPage(
 
 function danger(message: string): DashboardNotice {
   return { level: "danger", message };
+}
+
+export function createDeployExecutionHandler(
+  context: RouteContext,
+  action: "plan" | "apply",
+): RouteHandler {
+  return (request) => ({
+    kind: "sse",
+    run: async (stream) => {
+      try {
+        await readSignals(request);
+        if (!context.deployExecution)
+          throw new CliError(
+            "provider_unsupported",
+            "Deploy execution is unavailable.",
+          );
+        if (action === "plan") {
+          const confirmation = await context.deployExecution.plan(
+            pathParameter(request),
+          );
+          await patchDeployPathsPage(
+            context,
+            stream,
+            {
+              level: "warn",
+              message: "Review the target and scope before confirming.",
+            },
+            undefined,
+            confirmation,
+          );
+        } else {
+          await context.deployExecution.apply(
+            request.query.get("confirmation") ?? "",
+          );
+          await patchDeployPathsPage(context, stream, {
+            level: "ok",
+            message:
+              "Safety backup and deploy completed according to the provider.",
+          });
+        }
+      } catch (error) {
+        await patchDeployPathsPage(
+          context,
+          stream,
+          danger(asCliError(error).message),
+        );
+      }
+      stream.close();
+    },
+  });
 }
 
 /* -------------------------------------------------------------------------- */

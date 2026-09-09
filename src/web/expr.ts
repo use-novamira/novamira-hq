@@ -78,6 +78,13 @@ export type JsonValue =
  */
 export const DASHBOARD_TOKEN_HEADER = "X-Novamira-Dashboard-Token";
 
+/** Clipboard payload is always a literal, never executable source. */
+export function copyText(value: string): Expr {
+  return makeExpr(
+    `navigator.clipboard.writeText(${jsString(value).source}).then(() => alert('Configuration copied. Restart your AI client after saving it.'), () => alert('Clipboard unavailable. Select and copy the configuration below.'))`,
+  );
+}
+
 const EXPR_FORM = Symbol("novamira.web.expr");
 
 interface ExprNode {

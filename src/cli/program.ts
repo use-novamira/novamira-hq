@@ -67,6 +67,7 @@ export interface CommandHandlers
     UpdateHandlers {
   version(version: string, options: GlobalOptions): void | Promise<void>;
   configPath(options: GlobalOptions): void | Promise<void>;
+  historyList(options: GlobalOptions): void | Promise<void>;
 }
 
 function positiveInteger(value: string): number {
@@ -125,6 +126,15 @@ export function createProgram(
     .description("print the resolved HQ configuration and state paths")
     .action(async (...values: unknown[]) =>
       handlers.configPath(optionsFor(values)),
+    );
+
+  program
+    .command("history")
+    .description(
+      "read local hosting request history; never polls or replays actions",
+    )
+    .action(async (...values: unknown[]) =>
+      handlers.historyList(optionsFor(values)),
     );
 
   // The hosting command tree: the `hosting` parent and every group under it,

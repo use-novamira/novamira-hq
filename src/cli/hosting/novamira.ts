@@ -149,7 +149,9 @@ function setupRequest(
     preflight: options.preflight ?? true,
     validateSource: options.validateSource ?? true,
     wait: options.wait ?? true,
-    aiAbilities: options.aiAbilities ?? true,
+    ...(options.aiAbilities === undefined
+      ? {}
+      : { aiAbilities: options.aiAbilities }),
     compatCheck: options.compatCheck ?? true,
     intervalSeconds: options.intervalSeconds ?? DEFAULT_POLL_INTERVAL_SECONDS,
     timeoutSeconds: options.timeoutSeconds ?? DEFAULT_POLL_TIMEOUT_SECONDS,
@@ -264,12 +266,12 @@ export function registerNovamiraCommands(
     // them into "Ability".
     .option(
       "--ai-abilities",
-      "enable the Novamira AI Abilities options after install",
-      true,
+      "explicitly enable AI Abilities on an existing installation (new installs enable automatically)",
+      false,
     )
     .option(
       "--no-ai-abilities",
-      "leave the Novamira AI Abilities options untouched (recommended for production sites)",
+      "preserve AI Abilities on an existing installation",
     )
     .option(
       "--compat-check",
