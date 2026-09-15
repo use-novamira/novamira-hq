@@ -128,11 +128,8 @@ const NO_DOMAIN_TITLE =
 /**
  * `/sites`.
  *
- * The page renders **no site data**, and Go's did not either: the toolbar's
- * `data-init` fires the `@get` the moment the page mounts and the answer arrives
- * as a patch. That is why this renderer takes only the config view — there is no
- * `SitesView` on `PageModel`, because a page-level model would have to be filled
- * with something, and the honest something is "nothing yet".
+ * The page renders the latest process-local snapshot immediately, then refreshes
+ * in the background on mount. Existing rows remain visible during refresh.
  *
  * The result is one unified inventory. Hosting environments come from provider
  * APIs; profiles from `novamira sites list` are attached to matching environment
@@ -142,7 +139,11 @@ const NO_DOMAIN_TITLE =
  * `token` or `providerForm`: a `@get`'s filtered signals are serialized into
  * `?datastar=…`, and `expr.get` refuses both outright.
  */
-export function renderSitesPage(view: ConfigView, cliFormOpen = false): Html {
+export function renderSitesPage(
+  view: ConfigView,
+  cliFormOpen = false,
+  snapshot?: import("../services/sites.js").SitesResult,
+): Html {
   if (cliFormOpen) {
     return html`<section class="page"><header class="page-head"><div><h1>New site</h1><p>Connect a site directly using its URL.</p></div><a class="button secondary"${hrefAttr(
       url("/sites"),
@@ -179,7 +180,7 @@ export function renderSitesPage(view: ConfigView, cliFormOpen = false): Html {
   )}</select></label><button class="button secondary" type="submit">Refresh</button><div${idAttr(
     "sites-status",
   )} class="sites-status">${renderSitesStatus(
-    null,
+    snapshot?.storedAt ?? null,
   )}</div></form><div class="seg" role="group" aria-label="Novamira status"><button type="button" class="seg-btn on"${ds.sitesFilterStatus(
     "all",
   )}>All</button><button type="button" class="seg-btn"${ds.sitesFilterStatus(
@@ -190,9 +191,7 @@ export function renderSitesPage(view: ConfigView, cliFormOpen = false): Html {
     "without",
   )}>Needs attention <span class="seg-count"${ds.sitesFilterCount(
     "without",
-  )}>0</span></button></div><div${idAttr(
-    "sites-result",
-  )} class="results empty">Loading sites...</div></section>`;
+  )}>0</span></button></div>${snapshot ? renderSitesResult({ ...snapshot, notice: { level: "neutral", message: "" } }) : html`<div${idAttr("sites-result")} class="results empty">Loading sites…</div>`}</section>`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -282,6 +281,21 @@ function renderSiteGroup(group: SiteGroup, view: SitesResultView): Html {
   const head = html`<div class="group-head"><div><h2>${group.profile}</h2><p>${providerLabel(
     group.provider,
   )}</p></div>`;
+  if (group.stale) {
+    return html`<section class="provider-sites">${head}<span class="pill warn">API unavailable</span></div>${renderNotice(
+      {
+        level: "warn",
+        message:
+          `Could not refresh this hosting provider. Showing its last known sites; this does not mean the sites are offline. ${group.error ?? ""}`.trim(),
+      },
+    )}${
+      group.sites.length === 0
+        ? html`<div class="empty">No sites were present in the last successful response.</div>`
+        : html`<div class="site-grid">${group.sites.map((site) =>
+            renderSiteItem(group, site, view),
+          )}</div>`
+    }</section>`;
+  }
   if (group.error !== undefined && group.error !== "") {
     return html`<section class="provider-sites">${head}<span class="pill danger">error</span></div><div class="empty error">${group.error}</div></section>`;
   }

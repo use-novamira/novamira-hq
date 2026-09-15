@@ -62,7 +62,7 @@ import {
   type ConnectionResult,
   type ConnectionSnapshot,
 } from "../../connection-state.js";
-import { asCliError } from "../../errors.js";
+import { asCliError, CliError } from "../../errors.js";
 import type { HostingClientFactory } from "../../hosting/factory.js";
 import type { HostingEnvironment, HostingSite } from "../../hosting/types.js";
 import type {
@@ -81,6 +81,8 @@ export interface SiteGroup {
   readonly sites: readonly HostingSite[];
   /** A message, never a `CliError`: `details` must not reach a rendered page. */
   readonly error?: string;
+  /** True when `sites` is the last successful listing after this provider failed. */
+  readonly stale?: boolean;
 }
 
 export interface SitesResult {
@@ -132,6 +134,11 @@ export interface SitesListOptions {
 }
 
 export interface SitesService {
+  snapshot(profile: string, includeEnvs: boolean): SitesResult | undefined;
+  verifyConnections(
+    profile: string,
+    includeEnvs: boolean,
+  ): Promise<SitesResult>;
   /** List, from the cache when it is warm and `refresh` is false. */
   list(options: SitesListOptions): Promise<SitesResult>;
   /** The warm cache only — never triggers a provider call. */
@@ -247,6 +254,7 @@ export function displayLabel(
 export function createSitesService(options: SitesServiceOptions): SitesService {
   const ttlMs = options.ttlMs ?? SITES_CACHE_TTL_MS;
   const cache = new Map<string, CacheEntry>();
+  const snapshots = new Map<string, SitesResult>();
   const inFlight = new Map<number, Map<string, Promise<CacheEntry>>>();
   let generation = 0;
 
@@ -273,29 +281,52 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
   const loadGroups = async (
     profile: string,
     includeEnvs: boolean,
-  ): Promise<readonly SiteGroup[]> => {
+    previousGroups: readonly SiteGroup[],
+  ): Promise<{
+    readonly groups: readonly SiteGroup[];
+    readonly usedSnapshot: boolean;
+  }> => {
     if (profile === ALL_PROFILES_SENTINEL) {
       // Sequential, as Go's loop was: a dashboard that fans out across twelve
       // provider APIs at once is how an operator finds their rate limit.
       const groups: SiteGroup[] = [];
+      const previousByProfile = new Map(
+        previousGroups.map((group) => [group.profile, group]),
+      );
+      let usedSnapshot = false;
       for (const entry of await options.store.listHostingProfiles()) {
         try {
           groups.push(await loadGroup(entry, includeEnvs));
         } catch (error) {
-          groups.push({
-            profile: entry.name,
-            provider: entry.profile.provider,
-            sites: [],
-            error: asCliError(error).message,
-          });
+          const previous = previousByProfile.get(entry.name);
+          if (previous?.provider === entry.profile.provider) {
+            usedSnapshot = true;
+            groups.push({
+              profile: entry.name,
+              provider: entry.profile.provider,
+              sites: previous.sites,
+              error: asCliError(error).message,
+              stale: true,
+            });
+          } else {
+            groups.push({
+              profile: entry.name,
+              provider: entry.profile.provider,
+              sites: [],
+              error: asCliError(error).message,
+            });
+          }
         }
       }
-      return groups;
+      return { groups, usedSnapshot };
     }
     // One named profile: a failure has nothing left to render, so it propagates
     // and becomes the page-level notice (Go, `server.go:1458-1460`).
     const entry = await options.store.requireHostingProfile(profile);
-    return [await loadGroup(entry, includeEnvs)];
+    return {
+      groups: [await loadGroup(entry, includeEnvs)],
+      usedSnapshot: false,
+    };
   };
 
   /** Fill the cache, collapsing concurrent loads of one key into one round. */
@@ -311,12 +342,24 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
     const pending = generationWork.get(key);
     if (pending !== undefined) return pending;
     const started = (async (): Promise<CacheEntry> => {
-      const groups = await loadGroups(profile, includeEnvs);
-      const storedAt = options.now();
+      const previous = snapshots.get(key);
+      const loaded = await loadGroups(
+        profile,
+        includeEnvs,
+        previous?.groups ?? [],
+      );
+      const refreshedAt = options.now();
+      // The page-level timestamp is deliberately conservative: if even one
+      // provider used its last-known listing, the inventory as a whole is no
+      // newer than the snapshot that supplied it. Healthy providers still get
+      // their fresh groups and the failed provider is retried on manual refresh.
+      const storedAt = loaded.usedSnapshot
+        ? (previous?.storedAt ?? refreshedAt)
+        : refreshedAt;
       const entry: CacheEntry = {
-        groups,
+        groups: loaded.groups,
         storedAt,
-        expiresAt: storedAt + ttlMs,
+        expiresAt: refreshedAt + ttlMs,
       };
       if (startedGeneration === generation) cache.set(key, entry);
       return entry;
@@ -411,6 +454,31 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
     read(cacheKey(ALL_PROFILES_SENTINEL, true));
 
   return {
+    snapshot: (profile, includeEnvs) =>
+      snapshots.get(cacheKey(profile, includeEnvs)),
+    verifyConnections: async (profile, includeEnvs) => {
+      const key = cacheKey(profile, includeEnvs);
+      const previous = snapshots.get(key);
+      const startedGeneration = generation;
+      const inventory = await refreshInventory(previous?.groups ?? []);
+      if (generation !== startedGeneration || snapshots.get(key) !== previous)
+        throw new CliError(
+          "conflict",
+          "Inventory changed during the connection check. Check connections again.",
+        );
+      const result: SitesResult = {
+        profile,
+        includeEnvs,
+        cached: true,
+        storedAt: previous?.storedAt ?? null,
+        expiresAt: previous?.expiresAt ?? 0,
+        groups: previous?.groups ?? [],
+        connections: inventory.connections,
+        siteProfiles: inventory.profiles,
+      };
+      snapshots.set(key, result);
+      return result;
+    },
     list: async (request) => {
       const key = cacheKey(request.profile, request.includeEnvs);
       for (;;) {
@@ -433,13 +501,15 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
         if (startedGeneration !== generation) continue;
         const inventory = await refreshInventory(entry.groups);
         if (startedGeneration !== generation || read(key) !== entry) continue;
-        return resultFrom(
+        const result = resultFrom(
           request.profile,
           request.includeEnvs,
           entry,
           warmEntry !== undefined,
           inventory,
         );
+        snapshots.set(key, result);
+        return result;
       }
     },
 
@@ -470,13 +540,16 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
         if (entry === undefined) return undefined;
         const inventory = await refreshInventory(entry.groups);
         if (startedGeneration !== generation || read(key) !== entry) continue;
-        return resultFrom(profile, includeEnvs, entry, true, inventory);
+        const result = resultFrom(profile, includeEnvs, entry, true, inventory);
+        snapshots.set(key, result);
+        return result;
       }
     },
 
     invalidate: () => {
       generation += 1;
       cache.clear();
+      snapshots.clear();
     },
 
     envResolver: () => {

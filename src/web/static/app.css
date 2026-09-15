@@ -894,7 +894,7 @@ td.actions .button.link:hover {
 
 .provider-sites {
   display: grid;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -1275,6 +1275,28 @@ dd {
 .site-state { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .cli-profile-actions { display: inline-flex; align-items: center; gap: 6px; }
 .cli-profile-actions strong { font-size: 12px; }
+.profile-menu { position: relative; display: inline-block; }
+.profile-menu > summary { cursor: pointer; list-style: none; }
+.profile-menu > summary::-webkit-details-marker { display: none; }
+.profile-menu > summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.profile-menu:not([open]) > .profile-menu-popover { display: none; }
+.profile-menu-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  gap: 8px;
+  width: min(280px, calc(100vw - 48px));
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.profile-menu-label { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.profile-menu-popover .rename-profile { margin: 0; }
+.profile-menu-action { justify-content: flex-start; width: 100%; }
 .cli-sites .site-grid {
   display: grid;
   grid-template-columns: minmax(240px, 0.9fr) minmax(360px, 1.6fr) minmax(510px, auto);

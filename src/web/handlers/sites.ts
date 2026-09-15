@@ -152,7 +152,14 @@ export function createSitesHandler(context: RouteContext): RouteHandler {
       };
       try {
         options = siteRequestOptions(request);
-        const result = await context.sites.list(options);
+        const result = parseBoolean(request.query.get("cached"))
+          ? context.sites.snapshot(options.profile, options.includeEnvs)
+          : parseBoolean(request.query.get("connections_only"))
+            ? await context.sites.verifyConnections(
+                options.profile,
+                options.includeEnvs,
+              )
+            : await context.sites.list(options);
         patchSites(stream, options, result, EMPTY_NOTICE);
       } catch (error) {
         const cliError = asCliError(error);
@@ -160,9 +167,15 @@ export function createSitesHandler(context: RouteContext): RouteHandler {
           path: "/_dashboard/sites",
           code: cliError.code,
         });
-        patchSites(stream, options, undefined, {
+        const cached = context.sites.snapshot(
+          options.profile,
+          options.includeEnvs,
+        );
+        patchSites(stream, options, cached, {
           level: "danger",
-          message: cliError.message,
+          message: cached
+            ? `Refresh failed. Showing previously loaded sites. ${cliError.message}`
+            : cliError.message,
         });
       }
       stream.close();

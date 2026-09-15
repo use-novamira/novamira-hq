@@ -36,6 +36,7 @@ import { createHostingClientFactory } from "../dist/hosting/factory.js";
 import {
   createDashboardServer,
   createSitesService,
+  renderSitesResult,
 } from "../dist/web/index.js";
 
 const TOKEN = "f".repeat(64);
@@ -381,7 +382,7 @@ function sitesRequest(query = "include_envs=true") {
 /* 1-3: the static page                                                       */
 /* -------------------------------------------------------------------------- */
 
-test("1: the toolbar loads on mount, reloads on change and refreshes on submit", async () => {
+test("1: the toolbar refreshes in background on mount and offers one Refresh action", async () => {
   const { server } = await fixture();
   const markup = await page(server, "/sites");
   for (const want of [
@@ -391,7 +392,6 @@ test("1: the toolbar loads on mount, reloads on change and refreshes on submit",
     // already-escaped attribute value cannot be re-interpreted after the HTML
     // parser un-escapes it.
     "include_envs=true\\u0026refresh=true",
-    "data-init=",
     "data-on:change=",
     "data-on:submit__prevent=",
     ">Refresh</button>",
@@ -401,6 +401,9 @@ test("1: the toolbar loads on mount, reloads on change and refreshes on submit",
     ">prod (Kinsta)<",
   ])
     assert.ok(markup.includes(want), want);
+  assert.ok(markup.includes("data-init="));
+  assert.ok(!markup.includes("Update hosting inventory"));
+  assert.ok(!markup.includes(">Check connections</button>"));
   // Go's controls that HQ deletes: the site form, the manual load button and
   // the environments checkbox (the toolbar always asks for environments).
   for (const gone of [
@@ -511,6 +514,125 @@ test("5c: a failing provider is a group error, and the others still render", asy
   // The message reaches the page; `details` never does, because a notice
   // bypasses `failureEnvelope`'s redaction entirely.
   assert.ok(!recorder.body.includes("api.pantheon.invalid"));
+});
+
+test("5c-2: one offline provider keeps its last sites while healthy providers refresh", async () => {
+  let now = NOW;
+  let round = 1;
+  const inventoryQueries = [];
+  const service = createSitesService({
+    store: {
+      listHostingProfiles: async () => [
+        { name: "prod", profile: CONFIG.hostingProfiles.prod },
+        { name: "plain", profile: CONFIG.hostingProfiles.plain },
+      ],
+    },
+    hosting: {
+      clientFromEntry: async (entry) => ({
+        listSites: async () => {
+          if (entry.name === "plain" && round === 2) {
+            throw new CliError("network_error", "Pantheon API unavailable.");
+          }
+          return [serviceSite(`${entry.name}-${round}`)];
+        },
+      }),
+    },
+    integration: {
+      siteInventory: async (queries) => {
+        inventoryQueries.push(queries);
+        return emptyInventory();
+      },
+    },
+    now: () => now,
+  });
+
+  const first = await service.list({
+    profile: "__all__",
+    includeEnvs: true,
+    refresh: true,
+  });
+  assert.equal(first.storedAt, NOW);
+
+  now += 60_000;
+  round = 2;
+  const refreshed = await service.list({
+    profile: "__all__",
+    includeEnvs: true,
+    refresh: true,
+  });
+  const healthy = refreshed.groups.find((group) => group.profile === "prod");
+  const offline = refreshed.groups.find((group) => group.profile === "plain");
+
+  assert.equal(healthy.sites[0].displayName, "prod-2");
+  assert.equal(healthy.error, undefined);
+  assert.equal(offline.sites[0].displayName, "plain-1");
+  assert.equal(offline.stale, true);
+  assert.equal(offline.error, "Pantheon API unavailable.");
+  assert.equal(
+    refreshed.storedAt,
+    NOW,
+    "the page timestamp does not claim the retained provider data is fresh",
+  );
+  assert.ok(
+    inventoryQueries
+      .at(-1)
+      .some((query) => query.key === "plain/shared/shared-env"),
+    "CLI connection checks still include the retained environment",
+  );
+  assert.equal(service.snapshot("__all__", true), refreshed);
+
+  const markup = renderSitesResult({
+    ...refreshed,
+    notice: { level: "neutral", message: "" },
+  }).markup;
+  assert.ok(markup.includes("plain-1"));
+  assert.ok(markup.includes("API unavailable"));
+  assert.ok(markup.includes("does not mean the sites are offline"));
+  assert.ok(markup.includes("prod-2"));
+});
+
+test("cached snapshots survive TTL without provider calls and connection checks are separate", async () => {
+  let calls = 0;
+  let checks = 0;
+  let now = NOW;
+  const service = createSitesService({
+    store: {
+      listHostingProfiles: async () => [
+        { name: "prod", profile: CONFIG.hostingProfiles.prod },
+      ],
+    },
+    hosting: {
+      clientFromEntry: async () => ({
+        listSites: async () => {
+          calls++;
+          return [serviceSite("Saved")];
+        },
+      }),
+    },
+    integration: {
+      siteInventory: async () => {
+        checks++;
+        return emptyInventory();
+      },
+    },
+    now: () => now,
+  });
+  assert.equal(service.snapshot("__all__", true), undefined);
+  await service.verifyConnections("__all__", true);
+  assert.equal(calls, 0);
+  await service.list({ profile: "__all__", includeEnvs: true, refresh: true });
+  now += 600000;
+  const before = checks;
+  assert.equal(
+    service.snapshot("__all__", true).groups[0].sites[0].displayName,
+    "Saved",
+  );
+  assert.equal(checks, before);
+  await service.verifyConnections("__all__", true);
+  assert.equal(calls, 1);
+  assert.equal(checks, before + 1);
+  service.invalidate();
+  assert.equal(service.snapshot("__all__", true), undefined);
 });
 
 test("5d: invalidation supersedes an older in-flight provider load", async () => {
@@ -887,7 +1009,7 @@ test("16: matched CLI profiles stay in the hosting row and CLI-only sites are se
   assert.ok(markup.includes("<strong>staging</strong>"));
   assert.ok(markup.includes("<strong>staging-2</strong>"));
   assert.ok(markup.includes(">Disconnect</button>"));
-  assert.ok(markup.includes(">Rename</summary>"));
+  assert.ok(markup.includes('<span class="profile-menu-label">Rename</span>'));
   assert.ok(markup.includes(">Save name</button>"));
   assert.ok(markup.includes("novamira sites rename prod &lt;new-name&gt;"));
   assert.ok(markup.includes(">Remove from list</button>"));

@@ -46,15 +46,17 @@ const LOGOUT_PATH = "/_dashboard/site-profiles/logout";
 const RENAME_PATH = "/_dashboard/site-profiles/rename";
 const REMOVE_PATH = "/_dashboard/site-profiles/remove";
 
-function renderRenameControl(
+function renderProfileMenu(
   name: string,
   routeContext: Readonly<Record<string, string | boolean>>,
+  logout: Expr,
+  remove: Expr,
 ): Html {
   const renameSignal = siteProfileRenameSignal(name);
   const rename = post(url(RENAME_PATH, { name, ...routeContext }), {
     include: [renameSignal],
   });
-  return html`<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${name}`)} style="cursor: pointer">⋯</summary><details style="padding: 8px 0"><summary style="cursor: pointer">Rename</summary><form class="rename-profile" style="margin-top: 8px"${ds.signals(
+  return html`<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${name}`)}>⋯</summary><div class="profile-menu-popover"><span class="profile-menu-label">Rename</span><form class="rename-profile"${ds.signals(
     {
       [renameSignal]: name,
     },
@@ -64,7 +66,13 @@ function renderRenameControl(
   )}${ds.bind(renameSignal)} pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" maxlength="64" required><button class="button tiny" type="submit"${attr(
     "title",
     `novamira sites rename ${name} <new-name>`,
-  )}>Save name</button></form></details></details>`;
+  )}>Save name</button></form><button class="button tiny quiet profile-menu-action" type="button"${attr(
+    "title",
+    `novamira --site ${name} auth logout`,
+  )}${ds.on("click", logout)}>Disconnect</button><button class="button tiny danger quiet profile-menu-action" type="button"${attr(
+    "title",
+    `novamira sites remove ${name}`,
+  )}${ds.on("click", remove)}>Remove from list</button></div></details>`;
 }
 
 /**
@@ -156,16 +164,12 @@ export function renderSiteProfileRow(
     )}><strong class="cli-site-name">${row.name}</strong><small class="cli-site-url">${row.siteUrl}</small><div class="site-state">${renderConnectionControl(
       row,
       connect,
-    )}${renderRenameControl(
+    )}${renderProfileMenu(
       row.name,
       routeContext,
-    )}<button class="button tiny quiet" type="button"${attr(
-      "title",
-      `novamira --site ${row.name} auth logout`,
-    )}${ds.on("click", logout)}>Disconnect</button><button class="button tiny danger quiet" type="button"${attr(
-      "title",
-      `novamira sites remove ${row.name}`,
-    )}${ds.on("click", remove)}>Remove from list</button></div></article>`;
+      logout,
+      remove,
+    )}</div></article>`;
   }
 
   return html`<article><div><strong>${row.name}</strong><small>${row.siteUrl}${
@@ -175,16 +179,12 @@ export function renderSiteProfileRow(
   }</small></div><div class="env-actions">${renderConnectionControl(
     row,
     connect,
-  )}${renderRenameControl(
+  )}${renderProfileMenu(
     row.name,
     routeContext,
-  )}<button class="button tiny" type="button"${attr(
-    "title",
-    `novamira --site ${row.name} auth logout`,
-  )}${ds.on("click", logout)}>Disconnect</button><button class="button tiny danger" type="button"${attr(
-    "title",
-    `novamira sites remove ${row.name}`,
-  )}${ds.on("click", remove)}>Remove from list</button></div></article>`;
+    logout,
+    remove,
+  )}</div></article>`;
 }
 
 /** Actions for a CLI profile already represented by a hosting environment row. */
@@ -213,23 +213,14 @@ export function renderSiteProfileActions(
       include: [],
     }),
   );
-  return html`<span class="cli-profile-actions"><strong>${row.name}</strong>${renderRenameControl(
-    row.name,
-    routeContext,
-  )}${
+  return html`<span class="cli-profile-actions"><strong>${row.name}</strong>${
     row.state === "connected"
       ? false
       : html`<button${classAttr(
           row.state === "reconnect_required" ? "status-action" : "button",
           row.state === "reconnect_required" ? "warn" : "tiny",
         )} type="button"${ds.on("click", reconnect)}>Reconnect</button>`
-  }<button class="button tiny" type="button"${ds.on(
-    "click",
-    logout,
-  )}>Disconnect</button><button class="button tiny danger" type="button"${ds.on(
-    "click",
-    remove,
-  )}>Remove from list</button></span>`;
+  }${renderProfileMenu(row.name, routeContext, logout, remove)}</span>`;
 }
 
 /**

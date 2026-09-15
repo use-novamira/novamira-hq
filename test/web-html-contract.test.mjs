@@ -213,6 +213,8 @@ const CORPUS_PATHS = [
   "/novamira-setup?profile=dev&env=env-1",
   "/diagnostics",
   "/settings",
+  "/settings?tab=updates",
+  "/settings?tab=uninstall",
 ];
 
 let corpusCache;
@@ -1096,7 +1098,11 @@ test("29: every routed page carries main, nav and toast", async () => {
       path: "/diagnostics",
       ids: ["main", "nav", "toast", "diagnostics-output"],
     },
-    { path: "/settings", ids: ["main", "nav", "toast", "updates-card"] },
+    { path: "/settings", ids: ["main", "nav", "toast"] },
+    {
+      path: "/settings?tab=updates",
+      ids: ["main", "nav", "toast", "updates-card"],
+    },
     { path: "/how-to-use", ids: ["main", "nav", "toast"] },
   ];
   for (const entry of pages) {

@@ -314,6 +314,12 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
     page: DashboardPage,
     request: DashboardRequest,
   ): Partial<PageModel> => {
+    if (page === "settings") {
+      const tab = request.query.get("tab");
+      return {
+        settingsTab: tab === "updates" || tab === "uninstall" ? tab : "general",
+      };
+    }
     if (page === "deploy-paths") {
       const warm = context.sites.warm(ALL_PROFILES_SENTINEL, true);
       return {
@@ -431,7 +437,12 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
       // overwritten by one, and so the notice reaching the toast and the notice
       // reaching the body are one value.
       const notice = extras.notice ?? EMPTY_NOTICE;
+      const sitesSnapshot =
+        renderedPage === "sites"
+          ? context.sites.snapshot(ALL_PROFILES_SENTINEL, true)
+          : undefined;
       const model: PageModel = {
+        ...(sitesSnapshot ? { sitesSnapshot } : {}),
         ...extras,
         view,
         notice,

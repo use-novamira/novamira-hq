@@ -31,12 +31,7 @@
  * that owns it, rather than typed as `unknown` here: a field typed loosely
  * enough to be filled in later is a field a handler can fill in wrongly today.
  *
- * **The Sites page has no model field, and that is deliberate.** Go's
- * `renderSitesPage` rendered no site data either: the toolbar's `data-init`
- * fires a `@get` on mount and the unified hosting and site-CLI inventory arrives
- * as a patch into `#sites-result`. A `sites?: SitesView` here would have to be
- * filled with something on every page render, and the honest something is
- * "nothing yet", which the page already says out loud.
+ * Sites may receive a process-local snapshot; rendering never refreshes it.
  */
 
 import { CliError } from "../../errors.js";
@@ -57,12 +52,15 @@ import { renderDiagnosticsPage } from "./diagnostics.js";
 import { renderHistoryPage, type HistoryView } from "./history.js";
 import { renderHowToUsePage } from "./how-to-use.js";
 import { renderProvidersPage } from "./providers.js";
-import { renderSettingsPage } from "./settings.js";
+import { renderSettingsPage, type SettingsTab } from "./settings.js";
 import { renderSetupPage, type SetupView } from "./setup.js";
+import type { SitesResult } from "../services/sites.js";
 import { renderSitesPage } from "./sites.js";
 import type { ConfigView, DashboardNotice, DashboardPage } from "./types.js";
 
 export interface PageModel {
+  readonly settingsTab?: SettingsTab;
+  readonly sitesSnapshot?: SitesResult;
   readonly deployConfirmation?: DeployConfirmation;
   readonly mcp?: McpConfiguration;
   readonly history?: HistoryView;
@@ -111,7 +109,11 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
         formOpen: model.signals.providerForm.open,
       });
     case "sites":
-      return renderSitesPage(model.view, model.signals.cliSites.open);
+      return renderSitesPage(
+        model.view,
+        model.signals.cliSites.open,
+        model.sitesSnapshot,
+      );
     case "how-to-use":
       return renderHowToUsePage();
     case "deploy-paths":
@@ -123,7 +125,7 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
     case "diagnostics":
       return renderDiagnosticsPage(model.view);
     case "settings":
-      return renderSettingsPage(model.view);
+      return renderSettingsPage(model.view, undefined, model.settingsTab);
     default: {
       const unexpected: never = page;
       throw new CliError(

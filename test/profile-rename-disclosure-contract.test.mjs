@@ -9,7 +9,7 @@ import {
   renderSiteProfileActions,
 } from "../dist/web/views/site-profiles.js";
 
-test("profile rename is hidden behind closed actions and Rename disclosures", () => {
+test("profile rename and destructive actions are hidden in one closed menu", () => {
   const row = {
     name: "example",
     siteUrl: "https://example.com",
@@ -24,9 +24,21 @@ test("profile rename is hidden behind closed actions and Rename disclosures", ()
     const markup = renderHtml(view);
     assert.match(markup, /<details class="profile-menu">/);
     assert.match(markup, /More actions for example/);
-    assert.match(markup, /<summary[^>]*>Rename<\/summary><form/);
+    assert.match(markup, /<div class="profile-menu-popover">/);
+    assert.match(
+      markup,
+      /<span class="profile-menu-label">Rename<\/span><form/,
+    );
     assert.match(markup, /Save name/);
+    assert.match(markup, />Disconnect<\/button>/);
+    assert.match(markup, />Remove from list<\/button>/);
     assert.doesNotMatch(markup, /<details[^>]*\sopen(?:\s|=|>)/);
     assert.match(markup, /site-profiles\/rename/);
+    const menuStart = markup.indexOf('<details class="profile-menu">');
+    const menuEnd = markup.indexOf("</details>", menuStart);
+    assert.ok(menuStart >= 0 && menuEnd > menuStart);
+    const menu = markup.slice(menuStart, menuEnd);
+    assert.match(menu, />Disconnect<\/button>/);
+    assert.match(menu, />Remove from list<\/button>/);
   }
 });

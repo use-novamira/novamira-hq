@@ -58,7 +58,15 @@
 
 import * as ds from "../datastar.js";
 import { confirmThen, get, or, post, signal } from "../expr.js";
-import { classAttr, html, idAttr, url, type Html } from "../html.js";
+import {
+  attr,
+  hrefAttr,
+  classAttr,
+  html,
+  idAttr,
+  url,
+  type Html,
+} from "../html.js";
 import type { ConfigView } from "./types.js";
 
 /**
@@ -181,13 +189,14 @@ export function renderUpdateCard(view: UpdateCardView): Html {
  * second exists so a test — and any future handler that wants to repaint the
  * whole page with a known result — can supply a filled card.
  */
+export type SettingsTab = "general" | "updates" | "uninstall";
+
 export function renderSettingsPage(
   view: ConfigView,
   card: UpdateCardView = initialUpdateCardView(view.version),
+  tab: SettingsTab = "general",
 ): Html {
-  return html`<section class="page"><header class="page-head"><div><h1>Settings</h1></div></header>${renderUpdateCard(
-    card,
-  )}<section class="panel"><div class="panel-head"><div><h2>Configuration file</h2><p>Where Novamira HQ stores your hosting profiles and deploy paths. Read-only for now — not editable from the dashboard yet.</p></div></div><dl class="details-list"><div><dt>Path</dt><dd><code>${view.configFile}</code></dd></div></dl></section>${renderUninstallHelp()}</section>`;
+  return html`<section class="page"><header class="page-head"><div><h1>Settings</h1></div></header><nav aria-label="Settings sections" style="display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 12px">${(["general", "updates", "uninstall"] as const).map((key) => html`<a${classAttr("button", key === tab ? "primary" : "secondary")}${hrefAttr(url("/settings", { tab: key }))}${key === tab ? attr("aria-current", "page") : false}>${{ general: "General", updates: "Updates", uninstall: "Uninstalling" }[key]}</a>`)}</nav>${tab === "updates" ? renderUpdateCard(card) : tab === "uninstall" ? renderUninstallHelp() : html`<section class="panel"><div class="panel-head"><div><h2>Configuration file</h2><p>Where Novamira HQ stores your hosting profiles and deploy paths. Read-only for now — not editable from the dashboard yet.</p></div></div><dl class="details-list"><div><dt>Path</dt><dd><code>${view.configFile}</code></dd></div></dl></section>`}</section>`;
 }
 
 /** Instructions only: no uninstall command or credential action is executed. */

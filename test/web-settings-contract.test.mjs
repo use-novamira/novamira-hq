@@ -198,9 +198,28 @@ async function page(server, path) {
 /* 1-3: the page and its wiring                                               */
 /* -------------------------------------------------------------------------- */
 
+test("Settings tabs isolate updates and uninstall instructions", async () => {
+  const { server } = await fixture();
+  for (const path of [
+    "/settings",
+    "/settings?tab=general",
+    "/settings?tab=invalid",
+  ]) {
+    const markup = await page(server, path);
+    assert.ok(markup.includes("Configuration file"));
+    assert.ok(!markup.includes('id="updates-card"'));
+    assert.ok(!markup.includes("npm uninstall"));
+    assert.ok(markup.includes('aria-current="page"'));
+  }
+  const uninstall = await page(server, "/settings?tab=uninstall");
+  assert.ok(uninstall.includes("npm uninstall -g @novamira/cli"));
+  assert.ok(!uninstall.includes('id="updates-card"'));
+  assert.ok(!uninstall.includes("Configuration file"));
+});
+
 test("1: the page renders the catalogued card and its self-check", async () => {
   const { server } = await fixture();
-  const markup = await page(server, "/settings");
+  const markup = await page(server, "/settings?tab=updates");
 
   assert.ok(
     SSE_PATCH_FRAGMENTS.some(
@@ -231,11 +250,8 @@ test("1: the page renders the catalogued card and its self-check", async () => {
 
 test("2: every data- attribute comes from a helper, and no link leaves the origin", async () => {
   const { server } = await fixture();
-  const markup = await page(server, "/settings");
-  const card = markup.slice(
-    markup.indexOf('id="updates-card"'),
-    markup.indexOf("Configuration file"),
-  );
+  const markup = await page(server, "/settings?tab=updates");
+  const card = markup.slice(markup.indexOf('id="updates-card"'), markup.length);
 
   const names = [...card.matchAll(/\s(data-[a-z:_-]+)="/g)].map(
     (match) => match[1],
