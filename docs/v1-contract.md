@@ -83,6 +83,11 @@ authentication is dropped from the preflight rather than fetched.
 
 ## Global options
 
+Settings uses three URL-addressable tabs on the existing `/settings` route:
+`tab=general` (the default and fallback), `tab=updates`, and `tab=uninstall`.
+Only the Updates tab renders the update card and its automatic check. General
+shows local configuration information; Uninstalling shows instructions only.
+
 Global options are `--profile <name>`, `--json`, `--quiet`, `--verbose`,
 `--no-color`, `--yes`, `--timeout <ms>`, `--version`, and `--help`. `NO_COLOR`
 has the same color-disabling effect as `--no-color`.
@@ -607,10 +612,12 @@ Other defaults fixed by v1: `--wp-language` is `en_US`, `hosting activity list`
 always sends `--limit` (10) and `--offset` (0), `hosting analytics env
 --time-span` is `7_days` and the `diskspace` metric sends `time_zone` `00:00`
 when none is given, and `hosting wp plugins install --source novamira-latest`
-resolves to the newest published Novamira plugin zip. `hosting novamira setup
---source` **defaults** to `novamira-latest`; `hosting wp plugins install
---source` has no default and must be given. `hosting activity list --api-key`
-names a provider-side API key **identifier**, never a key value.
+resolves locally to the sole canonical download endpoint
+`https://license.dynamic.ooo/api/novamira/download`. HQ performs no GitHub
+release lookup. `hosting novamira setup --source` **defaults** to
+`novamira-latest`; `hosting wp plugins install --source` has no default and must
+be given. `hosting activity list --api-key` names a provider-side API key
+**identifier**, never a key value.
 
 `hosting envs push` has no `--from-json` escape hatch and no implicit scope. It
 requires `--site`, `--source-env`, `--target-env`, and at least one of `--db`,
@@ -703,7 +710,10 @@ non-empty, the provider must expose WP-CLI output — otherwise
 `provider_unsupported`, because HQ reads back the PHP version, the plugin's
 activation state, and the site URL — a supplied `--url` must normalize, and
 `--source` is resolved and, unless `--no-validate-source`, HEAD-checked before
-the provider is touched.
+the provider is touched. The canonical endpoint does not implement HEAD, so its
+documented `405 Method Not Allowed` is inconclusive and accepted; the provider
+then receives that exact canonical URL. HQ follows no download redirect itself,
+and every redirect observed during source validation is an error.
 
 After the PHP check, fixed read-only commands inspect Novamira's installed
 version and activation state (`wp plugin list --name=novamira
@@ -841,9 +851,8 @@ is constructed. HQ never reads the site CLI's own
 | `--env` missing, a site URL HQ refuses, `--no-wait` against an install the provider answered asynchronously | `usage_error` |
 | the provider cannot expose WP-CLI output | `provider_unsupported` |
 | PHP major below 8, or any compatibility check failing | `server_unsupported` |
-| the release API or a remote `--source` unreachable, and compatibility metadata still unreachable after its retries | `network_error`, retryable |
-| the release metadata is unparseable | `schema_validation_failed` |
-| the release carries no Novamira zip, or a remote `--source` is not downloadable | `not_found` |
+| the canonical download endpoint or another remote `--source` unreachable, and compatibility metadata still unreachable after its retries | `network_error`, retryable |
+| a remote `--source` is not downloadable | `not_found` |
 | a WP-CLI command, the install, the activation, or an option write that the provider reports failed | `provider_error` |
 | an operation that outlives `--timeout-seconds`, or a compatibility attempt deadline that expires on every attempt | `timeout`, retryable |
 
@@ -865,7 +874,7 @@ metadata and all of it is redacted like every other diagnostic.
   "url": "https://example.com",
   "plugin": {
     "slug": "novamira",
-    "source": "https://github.com/use-novamira/novamira/releases/download/v1.11.1/novamira-1.11.1.zip",
+    "source": "https://license.dynamic.ooo/api/novamira/download",
     "version": "1.11.1",
     "activated": true,
     "network_activated": false
@@ -1201,7 +1210,8 @@ form to itself and no page reloads.
 - **Sites** (`/sites`) — one unified inventory. Hosting environments remain
   grouped by hosting profile. A site-CLI profile whose origin matches an
   environment is represented only on that environment row, with its credential
-  state and Reconnect, Rename, Sign out and Remove controls. Profiles that match no
+  state and Reconnect control. Rename, Disconnect and Remove from list are
+  secondary actions inside one closed per-profile menu. Profiles that match no
   hosting environment appear once in a final **CLI only** group. The integration
   performs the one origin comparison and returns both the profile listing and
   the connection snapshot from the same `sites list` round, so the web layer
@@ -1467,6 +1477,17 @@ not activate abilities; explicit setup may. No WordPress site token is stored.
 The dashboard exposes Hosting history from Diagnostics, not as a main navigation
 item. The history page highlights Diagnostics and links back to it. Both pages
 explicitly exclude WordPress CLI operations, including those delegated by HQ MCP.
+
+Sites renders its latest process-local snapshot immediately and refreshes in the
+background on mount, without clearing existing rows. One Refresh button forces
+an update. Automatic loads reuse the five-minute provider cache while refreshing
+CLI connection state. Provider failures are isolated by hosting profile: healthy
+profiles update, while a failed profile retains its last successful site listing
+with a local warning that API failure does not establish site downtime. CLI
+connection checks still run for those retained environments. The page timestamp
+remains conservatively anchored to the older snapshot while any provider listing
+is retained. Snapshots can outlive the provider cache and are cleared on
+configuration invalidation or process restart. They never authorize mutations.
 
 `history [--profile <name>]`, `hosting_history_list`, and `/history`
 share state/hosting-history.json. Reads are local and never poll or replay a

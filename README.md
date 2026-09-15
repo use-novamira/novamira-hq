@@ -304,8 +304,9 @@ matrix the site CLI enforces:
 novamira-hq --profile kinsta hosting novamira setup --env <env-id>
 ```
 
-The plugin source defaults to `novamira-latest`, which resolves to the newest
-published release. The site URL is discovered from the site's own `home` option
+The plugin source defaults to `novamira-latest`, which resolves locally to
+`https://license.dynamic.ooo/api/novamira/download`; HQ performs no GitHub
+release lookup. The site URL is discovered from the site's own `home` option
 unless `--url` overrides it. New installs enable AI Abilities. Existing compatible
 installs are preserved by default, including their AI Abilities settings; pass
 `--ai-abilities` explicitly to enable them on an existing site. An old or

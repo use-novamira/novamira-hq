@@ -99,8 +99,10 @@ session.
 
 Completed with a single-request compatibility probe that never retries or
 follows redirects, while retaining its total deadline and streamed body limit.
-Plugin release lookup and remote-source validation now use explicit deadlines
-and manual redirects; release metadata is streamed with a fixed size ceiling.
+`novamira-latest` now resolves locally to the sole canonical
+`https://license.dynamic.ooo/api/novamira/download` endpoint, with no release
+lookup. Remote-source validation uses an explicit deadline and manual redirect
+policy.
 
 ## Session 6: Secret-Safe Provider Output (Done)
 
