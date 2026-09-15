@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Saved-push upsert and remove, and the two validation rules the form cannot
+ * Saved-push upsert and remove, and the validation rules the form cannot
  * express.
  *
  * **What the Go did.** `upsertSavedPush` (`server.go:779-800`) checked the
@@ -15,7 +15,7 @@
  *
  * **What HQ does instead.** `ConfigStore` owns the locking, the atomic write and
  * the owner-only permissions, so this module is exactly what Go's method had
- * left once those were taken away: two validations and a call. Removing a push
+ * left once those were taken away: validation and a call. Removing a push
  * uses `removeSavedPush`, which raises `not_found` when the entry is absent —
  * the operator clicked a row, so the row must have existed, and reporting
  * "removed" for something that was not there hides a real disagreement between
@@ -62,6 +62,18 @@ export function createPushService(options: PushServiceOptions): PushService {
         throw new CliError(
           "usage_error",
           "source and target environments must differ.",
+        );
+      }
+      if (!input.pushDb && !input.pushFiles) {
+        throw new CliError(
+          "usage_error",
+          "Choose Database, All files, or both before saving the push.",
+        );
+      }
+      if (input.searchReplace && !input.pushDb) {
+        throw new CliError(
+          "usage_error",
+          "Search and replace URLs requires Database.",
         );
       }
       const name = validateSavedPushName(input.name);

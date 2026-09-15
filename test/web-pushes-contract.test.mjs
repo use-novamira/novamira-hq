@@ -308,7 +308,7 @@ async function warmCache(server) {
 /* 1: the status line                                                         */
 /* -------------------------------------------------------------------------- */
 
-test("1: the empty page explains why, with Go's four sentences", async () => {
+test("1: the empty page exposes the next useful action for every state", async () => {
   const line = async (server) => unescapeHtml(await page(server, "/pushes"));
 
   const none = await fixture({ hostingProfiles: {} });
@@ -319,7 +319,7 @@ test("1: the empty page explains why, with Go's four sentences", async () => {
   );
   assert.ok(
     (await line(none.server)).includes(
-      'href="/providers">Open the Hosting Providers page',
+      'href="/providers">Connect a hosting provider',
     ),
   );
 
@@ -339,16 +339,23 @@ test("1: the empty page explains why, with Go's four sentences", async () => {
       "You have a push-capable host: prod (Kinsta). Open the Hosting Sites page",
     ),
   );
+  assert.ok((await line(cold.server)).includes("Load sites to continue"));
+  assert.ok((await line(cold.server)).includes(">Load hosting sites</a>"));
   assert.equal(cold.listCalls.length, 0, "a page render lists no sites");
 
   // Warm cache with an eligible site.
   const warm = await fixture();
   await warmCache(warm.server);
+  const warmMarkup = await line(warm.server);
+  assert.ok(warmMarkup.includes("Choose a site"));
+  assert.ok(warmMarkup.includes("Multi Site"));
+  assert.ok(warmMarkup.includes("multi.example.com · prod (Kinsta)"));
   assert.ok(
-    (await line(warm.server)).includes(
-      "You're ready — open the Hosting Sites page and expand one of your 1 site(s)",
+    warmMarkup.includes(
+      'href="/pushes/new?profile=prod&site=s1">Configure push',
     ),
   );
+  assert.ok(!warmMarkup.includes("expand one of your"));
 
   // Warm cache, no site with more than one environment.
   const single = await fixture({ kinstaSites: [KINSTA_SITES[1]] });
@@ -472,16 +479,22 @@ test("4: the form renders with the cached environments and highlights Push", asy
   const markup = await page(server, "/pushes/new?profile=prod&site=s1");
   assert.equal(listCalls.length, before, "the form reads the warm cache only");
   for (const want of [
+    "Configure push",
     'data-bind="pushForm.name"',
     'data-bind="pushForm.sourceEnvId"',
     'data-bind="pushForm.targetEnvId"',
     'data-bind="pushForm.pushDb"',
     'data-bind="pushForm.pushFiles"',
     'data-bind="pushForm.searchReplace"',
-    '<option value="env-a">env-a display</option>',
+    '<option value="" disabled>Choose source environment</option>',
+    '<option value="" disabled>Choose target environment</option>',
+    '<option value="env-a">env-a display — staging.example.com</option>',
+    ">All files<",
+    "Search and replace URLs",
+    "Choose at least one.",
     "/_dashboard/pushes/save",
     ">Save push</button>",
-    "Push changes between two environments of Multi Site.",
+    "Choose what moves between two environments of Multi Site.",
     'class="nav-link active" href="/pushes"',
   ])
     assert.ok(markup.includes(want), want);
@@ -524,9 +537,13 @@ test("4b: the form resolves a duplicate site id only within its requested profil
 
   const beta = await page(server, "/pushes/new?profile=beta&site=shared");
   assert.ok(
-    beta.includes("Push changes between two environments of Beta Site."),
+    beta.includes("Choose what moves between two environments of Beta Site."),
   );
-  assert.ok(beta.includes('<option value="source">Beta Source</option>'));
+  assert.ok(
+    beta.includes(
+      '<option value="source">Beta Source — source.example.com</option>',
+    ),
+  );
   assert.ok(!beta.includes("Alpha Source"));
 
   const missing = await page(server, "/pushes/new?profile=gamma&site=shared");
@@ -590,11 +607,19 @@ test("6: save persists the eleven fields, resets the form and repaints the page"
   assert.ok(recorder.find("main").markup.includes('class="main main-pushes"'));
 });
 
-test("6b: an incomplete or self-targeting form is a danger notice and no write", async () => {
+test("6b: an invalid form is a danger notice and no write", async () => {
   for (const [form, sentence] of [
     [{ ...VALID_FORM, name: "" }, "are all required"],
     [{ ...VALID_FORM, siteId: "" }, "are all required"],
     [{ ...VALID_FORM, targetEnvId: "env-a" }, "must differ"],
+    [
+      { ...VALID_FORM, pushDb: false, pushFiles: false, searchReplace: false },
+      "Choose Database, All files, or both",
+    ],
+    [
+      { ...VALID_FORM, pushDb: false, pushFiles: true, searchReplace: true },
+      "requires Database",
+    ],
     [{ ...VALID_FORM, name: "not a name" }, "Push name must use"],
   ]) {
     const { server, store } = await fixture();

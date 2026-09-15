@@ -46,7 +46,16 @@
 
 import type { HostingEnvironment } from "../../hosting/types.js";
 import * as ds from "../datastar.js";
-import { confirmThen, jsString, post, seq, set } from "../expr.js";
+import {
+  confirmThen,
+  jsBoolean,
+  jsString,
+  not,
+  post,
+  seq,
+  set,
+  signal,
+} from "../expr.js";
 import {
   attr,
   classAttr,
@@ -128,7 +137,7 @@ export function pushesStatusLine(
       }
     }
     if (eligible > 0) {
-      return `You're ready — open the Hosting Sites page and expand one of your ${String(eligible)} site(s) with more than one environment, then use Add push.`;
+      return `Choose one of the ${String(eligible)} available site(s) below to configure a push.`;
     }
     return `Your push-capable host(s) ${capable.join(", ")} have no site with more than one environment yet, so there's nothing to push between.`;
   }
@@ -146,15 +155,60 @@ export function renderPushesPage(
 ): Html {
   const flash = notice.message === "" ? false : renderNotice(notice);
   if (view.pushes.length === 0) {
+    const eligibleSites = warm.groups.flatMap((group) =>
+      environmentPushSupported(group.provider)
+        ? group.sites.flatMap((site) => {
+            const environments = site.environments ?? [];
+            return environments.length > 1
+              ? [
+                  {
+                    profile: group.profile,
+                    provider: providerLabelFor(group.provider),
+                    siteId: site.id,
+                    label: displayLabel(site.displayName, site.name, site.id),
+                    domain: site.primaryDomain ?? "",
+                    environmentCount: environments.length,
+                  },
+                ]
+              : [];
+          })
+        : [],
+    );
+    if (eligibleSites.length > 0) {
+      return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Create a reusable push between two environments of the same site.</p></div></header>${flash}<section class="panel"><div class="panel-head"><div><h2>Choose a site</h2><p>Select the site whose environments you want to push between.</p></div></div><div class="compact-list">${eligibleSites.map(
+        (site) =>
+          html`<article><div><strong>${site.label}</strong><small>${
+            site.domain === "" ? false : `${site.domain} · `
+          }${site.profile} (${site.provider}) · ${String(
+            site.environmentCount,
+          )} environments</small></div><a class="button primary"${hrefAttr(
+            url("/pushes/new", {
+              profile: site.profile,
+              site: site.siteId,
+            }),
+          )}>Configure push</a></article>`,
+      )}</div></section></section>`;
+    }
     const hasHostingProvider = view.profiles.length > 0;
-    return html`<section class="page"><header class="page-head"><div><h1>Push</h1></div></header>${flash}<div class="empty empty-block"><p>Push changes between two environments of the same site — for example staging → live. This requires a host that supports environment push and a site with more than one environment.</p><p>${pushesStatusLine(
+    const needsSiteLoad =
+      !warm.cacheWarm &&
+      view.profiles.some((profile) =>
+        environmentPushSupported(profile.provider),
+      );
+    return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Create a reusable push between two environments of the same site.</p></div></header>${flash}<div class="empty empty-block"><h2>${
+      needsSiteLoad ? "Load sites to continue" : "No sites available for push"
+    }</h2><p>${pushesStatusLine(
       view.profiles,
       warm,
     )}</p><a class="button primary"${hrefAttr(
       url(hasHostingProvider ? "/sites" : "/providers"),
-    )}>Open the ${
-      hasHostingProvider ? "Hosting Sites" : "Hosting Providers"
-    } page</a></div></section>`;
+    )}>${
+      hasHostingProvider
+        ? needsSiteLoad
+          ? "Load hosting sites"
+          : "Review hosting sites"
+        : "Connect a hosting provider"
+    }</a></div></section>`;
   }
   return html`<section class="page"><header class="page-head"><div><h1>Push</h1></div></header>${flash}<section class="panel"><div class="table-wrap"><table><thead><tr><th>Name</th><th>Site</th><th>Direction</th><th>Pushes</th><th></th></tr></thead><tbody>${view.pushes.map(
     (push) => renderPushRow(push),
@@ -227,10 +281,10 @@ const EMPTY_PUSH_NEW: PushNewView = Object.freeze({
 });
 
 export function renderPushNewPage(view: PushNewView = EMPTY_PUSH_NEW): Html {
-  const head = html`<header class="page-head"><div><h1>New push</h1>${
+  const head = html`<header class="page-head"><div><h1>Configure push</h1>${
     view.siteLabel === ""
       ? false
-      : html`<p class="lede">Push changes between two environments of ${view.siteLabel}.</p>`
+      : html`<p class="lede">Choose what moves between two environments of ${view.siteLabel}.</p>`
   }</div><a class="button secondary"${hrefAttr(
     url("/sites"),
   )}>Back to Sites</a></header>`;
@@ -254,27 +308,33 @@ export function renderPushNewPage(view: PushNewView = EMPTY_PUSH_NEW): Html {
   return html`<section class="page">${head}<form${classAttr(
     "panel",
     "form-panel",
+    "push-form",
   )}${ds.onSubmit(
     submit,
-  )}><div class="form-grid"><label><span>Push name</span><input${idAttr(
-    "push-name",
-  )} type="text"${ds.bind(
-    "pushForm.name",
-  )} placeholder="staging-to-live" required></label>${renderEnvSelect(
-    "Source environment",
+  )}><div class="panel-head"><div><h2>Direction</h2><p>Select exactly where the content comes from and where it goes.</p></div></div><div class="form-grid push-direction">${renderEnvSelect(
+    "From",
     "pushForm.sourceEnvId",
     view.envs,
   )}${renderEnvSelect(
-    "Target environment",
+    "To",
     "pushForm.targetEnvId",
     view.envs,
-  )}</div><div class="check-row"><label><input type="checkbox"${ds.bind(
+  )}</div><fieldset class="push-scope"><legend>Content to push</legend><p class="field-help">Choose at least one. The selected content can overwrite the target environment when this push is run.</p><div class="push-scope-options"><label><input type="checkbox"${ds.bind(
     "pushForm.pushDb",
-  )}> Database</label><label><input type="checkbox"${ds.bind(
+  )}${ds.on(
+    "change",
+    set("pushForm.searchReplace", jsBoolean(false)),
+  )}><span><strong>Database</strong><small>Push the source database to the target.</small></span></label><label><input type="checkbox"${ds.bind(
     "pushForm.pushFiles",
-  )}> Files</label><label><input type="checkbox"${ds.bind(
+  )}><span><strong>All files</strong><small>Push all source files to the target.</small></span></label><label><input type="checkbox"${ds.bind(
     "pushForm.searchReplace",
-  )}> Search-replace</label></div><div class="button-row"><button class="button primary" type="submit">Save push</button><a class="button secondary"${hrefAttr(
+  )}${ds.attrs({
+    disabled: not(signal("pushForm.pushDb")),
+  })}><span><strong>Search and replace URLs</strong><small>Available when Database is selected.</small></span></label></div></fieldset><div class="form-grid push-name"><label><span>Saved push name</span><input${idAttr(
+    "push-name",
+  )} type="text"${ds.bind(
+    "pushForm.name",
+  )} placeholder="staging-to-live" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" maxlength="64" autocomplete="off" required><small class="field-help">Use this name to find and run the push later. Letters, numbers, dots, dashes, and underscores only.</small></label></div><div class="button-row"><button class="button primary" type="submit">Save push</button><a class="button secondary"${hrefAttr(
     url("/sites"),
   )}>Cancel</a></div></form></section>`;
 }
@@ -285,12 +345,20 @@ function renderEnvSelect(
   path: "pushForm.sourceEnvId" | "pushForm.targetEnvId",
   envs: readonly HostingEnvironment[],
 ): Html {
-  return html`<label><span>${label}</span><select${ds.bind(path)}>${envs.map(
-    (env) =>
-      html`<option${attr("value", env.id)}>${displayLabel(
-        env.displayName,
-        env.name,
-        env.id,
-      )}</option>`,
+  const placeholder =
+    path === "pushForm.sourceEnvId"
+      ? "Choose source environment"
+      : "Choose target environment";
+  return html`<label><span>${label}</span><select${ds.bind(
+    path,
+  )} required><option value="" disabled>${placeholder}</option>${envs.map(
+    (env) => {
+      const name = displayLabel(env.displayName, env.name, env.id);
+      const optionLabel =
+        env.primaryDomain === undefined || env.primaryDomain === name
+          ? name
+          : `${name} — ${env.primaryDomain}`;
+      return html`<option${attr("value", env.id)}>${optionLabel}</option>`;
+    },
   )}</select></label>`;
 }

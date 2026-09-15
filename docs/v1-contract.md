@@ -1236,7 +1236,9 @@ form to itself and no page reloads.
   different agent; the dashboard does not spawn that interactive third-party
   installer itself.
 - **Push** (`/pushes`, `/pushes/new`) — the saved environment pushes
-  with their resolved environment names and domains, and the creation form.
+  with their resolved environment names and domains. When none are saved, the
+  page lists the warm inventory's eligible sites with direct Configure push
+  actions; the form then collects direction, positive scope and saved name.
   Push prepares a five-minute, one-use confirmation showing source, target
   and positive scope. Apply rejects changed pushes and invokes only the provider's
   native push operation; it does not create a separate backup. Neither page load
