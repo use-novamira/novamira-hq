@@ -110,10 +110,7 @@ select {
 }
 
 .new-button {
-  /* Go rendered this as a <button>, which is inline-block, so `width` and
-     `min-height` applied. HQ's New menu has one entry and is therefore a plain
-     <a>, which is inline unless it is told otherwise: without a display the
-     sidebar's only primary action would shrink to a padded gold text link. */
+  /* Keep the sidebar's primary Connect action full width. */
   display: flex;
   align-items: center;
   justify-content: center;

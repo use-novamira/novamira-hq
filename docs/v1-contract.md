@@ -1215,10 +1215,13 @@ form to itself and no page reloads.
   hosting environment appear once in a final **CLI only** group. The integration
   performs the one origin comparison and returns both the profile listing and
   the connection snapshot from the same `sites list` round, so the web layer
-  neither compares domains nor duplicates entries. The New menu offers both a
-  hosting account and a CLI site; the latter accepts a URL and an optional custom
-  profile name. CLI actions reread only the warm hosting inventory and never
-  trigger provider calls.
+  neither compares domains nor duplicates entries. The global **Connect** menu
+  follows the navigation's Sites-first order: **Site by URL** connects an
+  existing Novamira site, while **Hosting account** connects a provider and
+  discovers its sites. “New site” is reserved for future provider-side site
+  creation. The direct-site action accepts a URL and an optional custom profile
+  name. CLI actions reread only the warm hosting inventory and never trigger
+  provider calls.
 - **How to use it** (`/how-to-use`) — the three-step handoff: prepare a site
   through a hosting provider or by URL, authorize it until it is Connected, then
   open the AI agent selected during HQ installation. The page states explicitly

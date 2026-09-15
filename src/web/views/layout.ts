@@ -100,7 +100,7 @@ ${renderToast(input.notice)}
 }
 
 /**
- * The sidebar: brand, the one "New" action, the nav, and the version pill.
+ * The sidebar: brand, the one "Connect" action, the nav, and the version pill.
  *
  * `view` is taken whole rather than as a version string so that 6b can put the
  * profile and deploy-path counts back without changing the signature.
@@ -117,13 +117,13 @@ export function renderSidebar(
   )}><button class="button primary new-button" type="button" aria-haspopup="menu"${ds.on(
     "click",
     toggle("sites.newMenuOpen"),
-  )}>+ New</button><div${classAttr(
+  )}>Connect</button><div${classAttr(
     "new-pop",
   )}${ds.classes({ open: signal("sites.newMenuOpen") })} role="menu"><a${hrefAttr(
-    url("/providers", { new: "host" }),
-  )}><strong>Hosting provider</strong><span>Connect an existing account</span></a><a${hrefAttr(
     url("/sites", { new: "cli" }),
-  )}><strong>Site</strong><span>Add using its URL</span></a></div></div>${renderNav(page, activeNav)}<div class="sidebar-foot"><div class="sidebar-legal"><span>Novamira HQ v${view.version}</span><span>© 2026 Ovation S.r.l.</span><span>AGPL-3.0-or-later</span></div></div></aside>`;
+  )}><strong>Site by URL</strong><span>Connect an existing Novamira site</span></a><a${hrefAttr(
+    url("/providers", { new: "host" }),
+  )}><strong>Hosting account</strong><span>Connect an account and discover its sites</span></a></div></div>${renderNav(page, activeNav)}<div class="sidebar-foot"><div class="sidebar-legal"><span>Novamira HQ v${view.version}</span><span>© 2026 Ovation S.r.l.</span><span>AGPL-3.0-or-later</span></div></div></aside>`;
 }
 
 /**

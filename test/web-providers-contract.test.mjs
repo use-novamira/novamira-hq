@@ -281,8 +281,12 @@ test("1: only an empty root shows onboarding; Providers remains a section", asyn
   assert.ok(markup.includes("Welcome to Novamira HQ"));
   assert.ok(markup.includes("Your site. Your AI."));
   assert.ok(markup.includes("Nothing in between."));
-  assert.ok(markup.includes("Connect a hosting provider"));
-  assert.ok(markup.includes("Add a site by URL"));
+  assert.ok(markup.includes("Connect a hosting account"));
+  assert.ok(markup.includes("Connect a site by URL"));
+  assert.ok(
+    markup.indexOf("Connect a site by URL") <
+      markup.indexOf("Connect a hosting account"),
+  );
   assert.ok(markup.includes('href="/sites?new=cli"'));
   assert.ok(markup.includes('id="provider-flash"'));
   assert.ok(!markup.includes("nav-link active"));
@@ -337,7 +341,7 @@ test("2: with profiles the form renders Go's four fields and no others", async (
   const { server } = await fixture({ config: PROFILE_CONFIG });
   const markup = await page(server, "/providers");
   for (const want of [
-    ">Add Profile</button>",
+    ">Connect hosting account</button>",
     'data-class="{open: $providerForm.open}"',
     "Profile name",
     ">Credential</span>",

@@ -97,7 +97,8 @@ async function patchProvidersPage(
       view,
       notice,
       // The re-rendered form is closed: the mutation succeeded, or it failed
-      // and the operator reopens it from Add Profile or Edit. `data-class` then
+      // and the operator reopens it from Connect hosting account or Edit.
+      // `data-class` then
       // follows `$providerForm.open`, which the client still owns.
       signals: defaultDashboardSignals(context.token, {
         firstProviderKind: PROVIDER_KINDS[0],

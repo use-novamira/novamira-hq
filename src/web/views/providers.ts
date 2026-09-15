@@ -190,7 +190,8 @@ const FIRST_PROVIDER_KIND: string = PROVIDER_KINDS[0];
  * Go's `resetProviderFormExpression` (`views.go:545-558`).
  *
  * `open` is a parameter because the same reset serves two buttons with opposite
- * intent: **Add Profile** resets *and opens*, **Cancel** resets *and closes*.
+ * intent: **Connect hosting account** resets *and opens*, **Cancel** resets and
+ * closes.
  */
 function resetProviderForm(open: boolean): Expr {
   return seq(
@@ -264,7 +265,7 @@ export function renderProvidersPage(model: ProvidersPageModel): Html {
   return html`<section class="page"><header class="page-head"><div><h1>Hosting Providers</h1></div><div class="toolbar inline-toolbar"><button class="button primary" type="button"${ds.on(
     "click",
     addProfile,
-  )}>Add Profile</button><a class="button secondary"${hrefAttr(
+  )}>Connect hosting account</button><a class="button secondary"${hrefAttr(
     url("/providers"),
   )}>Refresh</a></div></header>${renderProviderFlash(
     model.notice,
@@ -285,12 +286,12 @@ function renderOnboarding(model: ProvidersPageModel): Html {
   );
   return html`<section class="page onboarding"><header class="page-head"><div><span class="eyebrow">Welcome to Novamira HQ</span><h1>Your site. Your AI.<br>Nothing in between.</h1><p class="lede">Manage your hosting environments and prepare sites for Novamira. Choose how you want to start.</p></div></header>${renderProviderFlash(
     model.notice,
-  )}<div class="onboard-cards"><button class="onboard-card feat" type="button"${ds.on(
+  )}<div class="onboard-cards"><a class="onboard-card feat"${hrefAttr(
+    url("/sites", { new: "cli" }),
+  )}><span class="kicker">Existing site</span><h2>Connect a site by URL</h2><p>Connect a site directly when Novamira is already installed and you know its URL.</p><span class="button primary">Connect a site by URL</span></a><button class="onboard-card" type="button"${ds.on(
     "click",
     openForm,
-  )}><span class="kicker">Hosting account</span><h2>Connect a hosting provider</h2><p>Discover sites and environments from an existing account with a provider supported by Novamira HQ.</p><span class="button primary">Connect a hosting provider</span></button><a class="onboard-card"${hrefAttr(
-    url("/sites", { new: "cli" }),
-  )}><span class="kicker">Site URL</span><h2>Add a site by URL</h2><p>Add a site directly when Novamira is already installed and you know its URL.</p><span class="button primary">Add a site by URL</span></a></div>${renderProviderForm(
+  )}><span class="kicker">Hosting account</span><h2>Connect a hosting account</h2><p>Discover sites and environments from an existing account with a provider supported by Novamira HQ.</p><span class="button primary">Connect a hosting account</span></button></div>${renderProviderForm(
     model.formOpen,
   )}</section>`;
 }
@@ -322,7 +323,7 @@ export function renderProviderForm(open: boolean): Html {
     open && "open",
   )}${ds.classes({ open: signal("providerForm.open") })}${ds.onSubmit(
     action,
-  )}><div class="panel-head"><div><h2>Connect a hosting provider</h2><p>Tip: You can also ask your agent to configure a new provider.</p></div></div><div class="form-grid"><label><span>Profile name</span><input${idAttr(
+  )}><div class="panel-head"><div><h2>Connect a hosting account</h2><p>Choose its provider so HQ can discover the account's sites and environments. You can also ask your agent to configure it.</p></div></div><div class="form-grid"><label><span>Profile name</span><input${idAttr(
     "profile",
   )} type="text"${ds.bind("providerForm.profile")} required></label><label><span>Provider</span><select${idAttr(
     "provider",

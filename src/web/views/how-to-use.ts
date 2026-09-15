@@ -6,7 +6,7 @@
 import { hrefAttr, html, url, type Html } from "../html.js";
 
 export function renderHowToUsePage(): Html {
-  return html`<section class="page"><header class="page-head"><div><h1>How to use it</h1><p>Prepare your sites in Novamira HQ, then work with them from your AI agent.</p></div></header><section class="how-to-card" aria-label="Novamira workflow"><ol class="how-to-steps"><li><span class="how-to-number">1</span><div><strong>Prepare a site</strong><p>Connect a hosting provider to discover its sites, or add an existing Novamira site directly by URL. Run Setup Novamira where needed.</p><div class="how-to-actions"><a class="button secondary"${hrefAttr(
+  return html`<section class="page"><header class="page-head"><div><h1>How to use it</h1><p>Prepare your sites in Novamira HQ, then work with them from your AI agent.</p></div></header><section class="how-to-card" aria-label="Novamira workflow"><ol class="how-to-steps"><li><span class="how-to-number">1</span><div><strong>Prepare a site</strong><p>Connect an existing Novamira site directly by URL, or connect a hosting account to discover its sites. Run Setup Novamira where needed.</p><div class="how-to-actions"><a class="button secondary"${hrefAttr(
     url("/providers", { new: "host" }),
   )}>Connect hosting</a><a class="button secondary"${hrefAttr(
     url("/sites", { new: "cli" }),

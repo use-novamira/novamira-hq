@@ -145,7 +145,7 @@ export function renderSitesPage(
   snapshot?: import("../services/sites.js").SitesResult,
 ): Html {
   if (cliFormOpen) {
-    return html`<section class="page"><header class="page-head"><div><h1>New site</h1><p>Connect a site directly using its URL.</p></div><a class="button secondary"${hrefAttr(
+    return html`<section class="page"><header class="page-head"><div><h1>Connect site by URL</h1><p>Connect an existing Novamira site directly, without adding a hosting account.</p></div><a class="button secondary"${hrefAttr(
       url("/sites"),
     )}>Back to Sites</a></header>${renderConnectForm(
       true,

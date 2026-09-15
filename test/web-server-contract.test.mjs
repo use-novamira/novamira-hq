@@ -485,17 +485,23 @@ test("How to use it explains the complete handoff and links to both entry paths"
   }
 });
 
-test("the sidebar New menu offers hosting and CLI sites", async () => {
+test("the sidebar Connect menu puts an existing site before a hosting account", async () => {
   const { server, cleanup } = await fixture();
   try {
     const markup = (await server.dispatch(request("/providers"))).body.markup;
     // Go rendered a <button>, which is inline-block; HQ renders an <a>, which is
     // inline. The pair that keeps it a full-width 38px button is this element
     // plus `.new-button`'s `display` in app.css, so pin both together.
-    assert.ok(markup.includes(">+ New</button>"));
+    assert.ok(markup.includes(">Connect</button>"));
     assert.ok(markup.includes('class="new-pop"'));
     assert.ok(markup.includes('href="/providers?new=host"'));
     assert.ok(markup.includes('href="/sites?new=cli"'));
+    assert.ok(markup.includes("Connect an existing Novamira site"));
+    assert.ok(markup.includes("Connect an account and discover its sites"));
+    assert.ok(
+      markup.indexOf('href="/sites?new=cli"') <
+        markup.indexOf('href="/providers?new=host"'),
+    );
     const css = await readFile(
       new URL("../src/web/static/app.css", import.meta.url),
       "utf8",
