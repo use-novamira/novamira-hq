@@ -1277,10 +1277,11 @@ test("34: signals.token is the server's token", async () => {
 
 test("35: ?new=host opens the provider form; ?new=site opens nothing", async () => {
   const server = await dashboard();
-  assert.equal(
-    rootSignals(await page(server, "/providers?new=host")).providerForm.open,
-    true,
-  );
+  const hostSignals = rootSignals(
+    await page(server, "/providers?new=host"),
+  ).providerForm;
+  assert.equal(hostSignals.open, true);
+  assert.equal(hostSignals.detailsOpen, false);
   assert.equal(
     rootSignals(await page(server, "/providers")).providerForm.open,
     false,

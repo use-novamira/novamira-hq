@@ -60,6 +60,8 @@ export const ALL_PROFILES_SENTINEL = "__all__";
 
 export interface ProviderFormSignals {
   readonly open: boolean;
+  /** False while choosing a provider; true while entering account details. */
+  readonly detailsOpen: boolean;
   readonly profile: string;
   readonly provider: string;
   readonly credentialEnv: string;
@@ -246,6 +248,7 @@ export function defaultProviderFormSignals(
 ): ProviderFormSignals {
   return {
     open: false,
+    detailsOpen: false,
     profile: "",
     provider: firstProviderKind ?? "",
     credentialEnv: "",

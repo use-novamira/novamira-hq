@@ -33,6 +33,7 @@ import { ConfigStore } from "../dist/config/profiles.js";
 import { credentialId } from "../dist/credentials/store.js";
 import { createHostingClientFactory } from "../dist/hosting/factory.js";
 import { createDashboardServer } from "../dist/web/index.js";
+import { shuffledProviderKinds } from "../dist/web/views/providers.js";
 import { connCellId } from "../dist/web/patches.js";
 
 const TOKEN = "d".repeat(64);
@@ -337,12 +338,22 @@ test("1: only an empty root shows onboarding; Providers remains a section", asyn
   assert.ok(!populatedRoot.includes('class="page onboarding"'));
 });
 
-test("2: with profiles the form renders Go's four fields and no others", async () => {
+test("2: the form chooses a provider before requesting account details", async () => {
   const { server } = await fixture({ config: PROFILE_CONFIG });
   const markup = await page(server, "/providers");
   for (const want of [
     ">Connect hosting account</button>",
     'data-class="{open: $providerForm.open}"',
+    "Step 1 of 2",
+    "Choose your hosting provider",
+    ">Kinsta</strong>",
+    ">Cloudways</strong>",
+    "Step 2 of 2",
+    "Change provider",
+    'data-class="{hidden: $providerForm.detailsOpen}"',
+    'data-class="{hidden: !$providerForm.detailsOpen}"',
+    "$providerForm.detailsOpen = true",
+    "$providerForm.provider = &quot;kinsta&quot;",
     "Profile name",
     ">Credential</span>",
     "Company or account ID",
@@ -351,6 +362,10 @@ test("2: with profiles the form renders Go's four fields and no others", async (
     ">Cancel</button>",
     'data-bind="providerForm.companyId"',
     'autocomplete="new-password"',
+    "Stored on this device",
+    "operating system's credential store",
+    "owner-only local file",
+    "not encrypted by Novamira HQ",
   ])
     assert.ok(markup.includes(want), want);
   // Fields Go never had. `force` is set by Edit alone.
@@ -362,6 +377,21 @@ test("2: with profiles the form renders Go's four fields and no others", async (
     "providerForm.apiBaseURL",
   ])
     assert.ok(!markup.includes(gone), gone);
+});
+
+test("2b: provider choices can be shuffled without favoring the catalog order", () => {
+  const shuffled = shuffledProviderKinds(() => 0);
+  assert.deepEqual([...shuffled].sort(), [
+    "cloudways",
+    "hostinger",
+    "instawp",
+    "kinsta",
+    "pantheon",
+    "pressable",
+    "rocketnet",
+    "wpengine",
+  ]);
+  assert.notEqual(shuffled[0], "kinsta");
 });
 
 test("3: the table has Go's four columns and no invented ones", async () => {
@@ -465,6 +495,8 @@ test("6: a posted credential reaches the store and nothing else, ever", async ()
   assert.equal(recorder.signals[0].providerForm.credentialValue, "");
   assert.equal(recorder.signals[0].providerForm.profile, "");
   assert.equal(recorder.signals[0].providerForm.provider, "kinsta");
+  assert.equal(recorder.signals[0].providerForm.detailsOpen, false);
+  assert.equal(recorder.signals[0].providerForm.detailsOpen, false);
   assert.ok(recorder.find("toast").markup.includes("Provider profile saved."));
   assert.ok(recorder.closed);
 

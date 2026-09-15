@@ -55,7 +55,9 @@
  * is the form subtree, in the request body.
  */
 
-import { PROVIDER_KINDS } from "../../config/schema.js";
+import { randomInt } from "node:crypto";
+
+import { PROVIDER_KINDS, type ProviderKind } from "../../config/schema.js";
 import { providerLabel } from "../../hosting/types.js";
 import * as ds from "../datastar.js";
 import {
@@ -64,6 +66,7 @@ import {
   jsBoolean,
   jsString,
   lookupOr,
+  not,
   post,
   seq,
   set,
@@ -170,6 +173,10 @@ const PROVIDER_FORM_META_FALLBACK: Readonly<Record<string, string>> = {
   credentialHelp: "Paste the provider credential.",
 };
 
+const PROVIDER_LABEL_META: JsonValue = Object.fromEntries(
+  PROVIDER_KINDS.map((kind) => [kind, { label: providerLabel(kind) }]),
+);
+
 /** `(<table>[$providerForm.provider]?.<field> || "<fallback>")`. */
 function meta(field: keyof typeof PROVIDER_FORM_META_FALLBACK): Expr {
   return lookupOr(
@@ -180,11 +187,35 @@ function meta(field: keyof typeof PROVIDER_FORM_META_FALLBACK): Expr {
   );
 }
 
+function selectedProviderLabel(): Expr {
+  return lookupOr(
+    PROVIDER_LABEL_META,
+    "providerForm.provider",
+    "label",
+    "Hosting provider",
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /* Expressions                                                                */
 /* -------------------------------------------------------------------------- */
 
 const FIRST_PROVIDER_KIND: string = PROVIDER_KINDS[0];
+
+export function shuffledProviderKinds(
+  draw: (maxExclusive: number) => number = randomInt,
+): readonly ProviderKind[] {
+  const kinds = [...PROVIDER_KINDS];
+  for (let index = kinds.length - 1; index > 0; index -= 1) {
+    const swapIndex = draw(index + 1);
+    const current = kinds[index];
+    const swap = kinds[swapIndex];
+    if (current === undefined || swap === undefined) continue;
+    kinds[index] = swap;
+    kinds[swapIndex] = current;
+  }
+  return kinds;
+}
 
 /**
  * Go's `resetProviderFormExpression` (`views.go:545-558`).
@@ -196,6 +227,7 @@ const FIRST_PROVIDER_KIND: string = PROVIDER_KINDS[0];
 function resetProviderForm(open: boolean): Expr {
   return seq(
     set("providerForm.open", jsBoolean(open)),
+    set("providerForm.detailsOpen", jsBoolean(false)),
     set("providerForm.profile", jsString("")),
     set("providerForm.provider", jsString(FIRST_PROVIDER_KIND)),
     set("providerForm.credentialEnv", jsString("")),
@@ -203,6 +235,25 @@ function resetProviderForm(open: boolean): Expr {
     set("providerForm.companyId", jsString("")),
     set("providerForm.apiBaseUrl", jsString("")),
     set("providerForm.force", jsBoolean(false)),
+  );
+}
+
+function chooseProvider(kind: string): Expr {
+  return seq(
+    set("providerForm.provider", jsString(kind)),
+    set("providerForm.credentialEnv", jsString("")),
+    set("providerForm.credentialValue", jsString("")),
+    set("providerForm.companyId", jsString("")),
+    set("providerForm.apiBaseUrl", jsString("")),
+    set("providerForm.detailsOpen", jsBoolean(true)),
+    focusElementById("profile"),
+  );
+}
+
+function returnToProviderChoice(): Expr {
+  return seq(
+    set("providerForm.detailsOpen", jsBoolean(false)),
+    focusElementById("provider-choice-heading"),
   );
 }
 
@@ -227,6 +278,7 @@ function editProviderForm(profile: HostingProfileView): Expr {
     set("providerForm.apiBaseUrl", jsString(profile.apiBaseUrl ?? "")),
     set("providerForm.force", jsBoolean(true)),
     set("providerForm.open", jsBoolean(true)),
+    set("providerForm.detailsOpen", jsBoolean(true)),
     focusElementById("profile"),
   );
 }
@@ -261,7 +313,10 @@ export function renderProvidersPage(model: ProvidersPageModel): Html {
   if (model.onboarding) {
     return renderOnboarding(model);
   }
-  const addProfile = seq(resetProviderForm(true), focusElementById("profile"));
+  const addProfile = seq(
+    resetProviderForm(true),
+    focusElementById("provider-choice-heading"),
+  );
   return html`<section class="page"><header class="page-head"><div><h1>Hosting Providers</h1></div><div class="toolbar inline-toolbar"><button class="button primary" type="button"${ds.on(
     "click",
     addProfile,
@@ -282,7 +337,8 @@ export function renderProvidersPage(model: ProvidersPageModel): Html {
 function renderOnboarding(model: ProvidersPageModel): Html {
   const openForm = seq(
     set("providerForm.open", jsBoolean(true)),
-    focusElementById("profile"),
+    set("providerForm.detailsOpen", jsBoolean(false)),
+    focusElementById("provider-choice-heading"),
   );
   return html`<section class="page onboarding"><header class="page-head"><div><span class="eyebrow">Welcome to Novamira HQ</span><h1>Your site. Your AI.<br>Nothing in between.</h1><p class="lede">Manage your hosting environments and prepare sites for Novamira. Choose how you want to start.</p></div></header>${renderProviderFlash(
     model.notice,
@@ -316,6 +372,7 @@ export function renderProviderForm(open: boolean): Html {
   const action = post(url("/_dashboard/providers/save"), {
     include: ["providerForm"],
   });
+  const providerKinds = shuffledProviderKinds();
   return html`<form${idAttr("provider-form")}${classAttr(
     "panel",
     "form-panel",
@@ -323,14 +380,40 @@ export function renderProviderForm(open: boolean): Html {
     open && "open",
   )}${ds.classes({ open: signal("providerForm.open") })}${ds.onSubmit(
     action,
-  )}><div class="panel-head"><div><h2>Connect a hosting account</h2><p>Choose its provider so Novamira HQ can discover the account's sites and environments. You can also ask your agent to configure it.</p></div></div><div class="form-grid"><label><span>Profile name</span><input${idAttr(
-    "profile",
-  )} type="text"${ds.bind("providerForm.profile")} required></label><label><span>Provider</span><select${idAttr(
-    "provider",
-  )}${ds.bind("providerForm.provider")} required>${PROVIDER_KINDS.map(
+  )}><div class="panel-head"><div><h2>Connect a hosting account</h2><p>Novamira HQ uses this account to discover its sites and environments.</p></div></div><input type="hidden"${ds.bind(
+    "providerForm.provider",
+  )}><section class="provider-form-step"${ds.classes({
+    hidden: signal("providerForm.detailsOpen"),
+  })}><div class="provider-step-copy"><span class="eyebrow">Step 1 of 2</span><h3${idAttr(
+    "provider-choice-heading",
+  )}${attr(
+    "tabindex",
+    "-1",
+  )}>Choose your hosting provider</h3><p>The provider determines which credentials and account details are required.</p></div><div class="provider-choice-grid">${providerKinds.map(
     (kind) =>
-      html`<option${attr("value", kind)}>${providerLabel(kind)}</option>`,
-  )}</select></label><label><span>Credential</span><input${idAttr(
+      html`<button${idAttr(
+        `provider-${kind}`,
+      )} class="provider-choice" type="button"${ds.on(
+        "click",
+        chooseProvider(kind),
+      )}><strong>${providerLabel(kind)}</strong></button>`,
+  )}</div><div class="button-row"><button class="button secondary" type="button"${ds.on(
+    "click",
+    resetProviderForm(false),
+  )}>Cancel</button></div></section><section class="provider-form-step hidden"${ds.classes(
+    {
+      hidden: not(signal("providerForm.detailsOpen")),
+    },
+  )}><div class="provider-step-copy provider-details-head"><div><span class="eyebrow">Step 2 of 2</span><h3><span${ds.text(
+    selectedProviderLabel(),
+  )}></span> account details</h3></div><button class="button quiet" type="button"${ds.on(
+    "click",
+    returnToProviderChoice(),
+  )}>Change provider</button></div><div class="form-grid"><label><span>Profile name</span><input${idAttr(
+    "profile",
+  )} type="text"${ds.bind(
+    "providerForm.profile",
+  )} placeholder="e.g. production" required><small class="field-help">A local name used to identify this hosting account in Novamira HQ.</small></label><label><span>Credential</span><input${idAttr(
     "credential-value",
   )} type="password"${ds.bind(
     "providerForm.credentialValue",
@@ -344,10 +427,10 @@ export function renderProviderForm(open: boolean): Html {
     placeholder: meta("companyPlaceholder"),
   })}><small class="field-help"${ds.text(
     meta("companyHelp"),
-  )}></small></label></div><div class="button-row"><button class="button primary" type="submit">Save Profile</button><button class="button secondary" type="button"${ds.on(
+  )}></small></label></div><aside class="local-storage-note"><strong>Stored on this device</strong><span>Profile settings stay in Novamira HQ's local storage. The credential uses the operating system's credential store when available. Otherwise Novamira HQ warns before using an owner-only local file; that fallback is not encrypted by Novamira HQ.</span></aside><div class="button-row"><button class="button primary" type="submit">Save profile</button><button class="button secondary" type="button"${ds.on(
     "click",
     resetProviderForm(false),
-  )}>Cancel</button></div></form>`;
+  )}>Cancel</button></div></section></form>`;
 }
 
 /* -------------------------------------------------------------------------- */
