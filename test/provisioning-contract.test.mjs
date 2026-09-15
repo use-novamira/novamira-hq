@@ -1113,7 +1113,7 @@ test("WordPress must be 6.9 or newer, and must be comparable", async () => {
     "WP six-nine",
   );
   assert.equal(garbage.details.check, "compat.wordpress");
-  assert.match(garbage.message, /not a version number HQ can compare/);
+  assert.match(garbage.message, /not a version number Novamira HQ can compare/);
 });
 
 test("metadata that contradicts itself is compat.wordpress_consistency", async () => {

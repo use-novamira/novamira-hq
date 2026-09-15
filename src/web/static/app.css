@@ -1294,6 +1294,51 @@ dd {
 .profile-menu-label { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
 .profile-menu-popover .rename-profile { margin: 0; }
 .profile-menu-action { justify-content: flex-start; width: 100%; }
+.connect-success-page { max-width: 760px; margin: 0 auto; padding-top: clamp(24px, 8vh, 88px); }
+.connect-success { justify-items: start; gap: 22px; padding: clamp(28px, 6vw, 56px); }
+.connect-success h1 { margin: 8px 0 10px; }
+.connect-success-mark {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--success-bg);
+  color: var(--success);
+  font-size: 30px;
+  font-weight: 800;
+}
+.mcp-page { max-width: 1040px; }
+.mcp-page .page-head h1 { font-size: clamp(28px, 4vw, 36px); line-height: 1.15; margin: 8px 0 12px; }
+.mcp-steps { display: grid; gap: 16px; }
+.mcp-client { padding: 0; overflow: hidden; }
+.mcp-client > summary,
+.mcp-advanced > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  cursor: pointer;
+  list-style: none;
+}
+.mcp-client > summary::-webkit-details-marker,
+.mcp-advanced > summary::-webkit-details-marker { display: none; }
+.mcp-client > summary span,
+.mcp-advanced > summary span { color: var(--muted); font-size: 12px; }
+.mcp-client-body { display: grid; gap: 16px; padding: 0 20px 20px; }
+.mcp-config {
+  margin: 0;
+  padding: 18px;
+  border-radius: 8px;
+  background: var(--code-bg);
+  color: #fff;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.mcp-advanced { margin-top: 16px; }
+.mcp-advanced .mcp-client-body > section { display: grid; gap: 12px; }
 .cli-sites .site-grid {
   display: grid;
   grid-template-columns: minmax(240px, 0.9fr) minmax(360px, 1.6fr) minmax(510px, auto);

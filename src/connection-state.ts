@@ -148,20 +148,20 @@ export const SITE_CLI_INSTALL_HINT =
 const UNAVAILABLE_HINTS: Readonly<Record<UnavailableReason, string>> = {
   cli_absent: SITE_CLI_INSTALL_HINT,
   cli_incompatible:
-    "Update the Novamira site CLI: the installed version does not support the commands HQ uses.",
+    "Update the Novamira site CLI: the installed version does not support the commands Novamira HQ uses.",
   cli_timeout: "The Novamira site CLI did not answer in time; try again.",
   cli_failed:
     "The Novamira site CLI could not be run; check the installation and try again.",
   malformed_output:
-    "The Novamira site CLI returned output HQ could not read; check that its version is current.",
+    "The Novamira site CLI returned output Novamira HQ could not read; check that its version is current.",
   output_truncated:
-    "The Novamira site CLI returned more output than HQ reads; check that its version is current.",
+    "The Novamira site CLI returned more output than Novamira HQ reads; check that its version is current.",
   deadline_exceeded:
     "Checking connection state took too long and was stopped; try again.",
   site_unreachable:
     "The site could not be reached to confirm the connection; try again.",
   site_incompatible:
-    "The site reports an incompatible Novamira or WordPress setup. Check the site CLI's compatibility requirements and the site's AI Abilities settings. Connecting does not reinstall Novamira or enable abilities.",
+    "The site is not ready for Novamira. The plugin may be missing, inactive or incompatible, or required AI Abilities may be unavailable. Use Setup Novamira when this site belongs to a connected hosting account; otherwise install or update Novamira on the site, then reconnect.",
 };
 
 export function unavailableHint(reason: UnavailableReason): string {

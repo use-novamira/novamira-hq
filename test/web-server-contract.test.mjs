@@ -475,7 +475,7 @@ test("How to use it explains the complete handoff and links to both entry paths"
       "does not contain an AI chat",
       "Configure a different AI agent",
       "installer already configures the agent you select",
-      "installed HQ directly with npm",
+      "installed Novamira HQ directly with npm",
       "npx skills add &quot;$(npm root --global)/@novamira/hq&quot; --skill novamira-hq --global",
       "Sites already connected on this computer do not need to be connected again.",
     ])

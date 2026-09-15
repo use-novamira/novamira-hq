@@ -56,11 +56,16 @@ import { renderSettingsPage, type SettingsTab } from "./settings.js";
 import { renderSetupPage, type SetupView } from "./setup.js";
 import type { SitesResult } from "../services/sites.js";
 import { renderSitesPage } from "./sites.js";
+import {
+  renderSiteConnectSuccess,
+  type SiteConnectSuccessView,
+} from "./site-profiles.js";
 import type { ConfigView, DashboardNotice, DashboardPage } from "./types.js";
 
 export interface PageModel {
   readonly settingsTab?: SettingsTab;
   readonly sitesSnapshot?: SitesResult;
+  readonly siteConnectSuccess?: SiteConnectSuccessView;
   readonly deployConfirmation?: DeployConfirmation;
   readonly mcp?: McpConfiguration;
   readonly history?: HistoryView;
@@ -109,11 +114,13 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
         formOpen: model.signals.providerForm.open,
       });
     case "sites":
-      return renderSitesPage(
-        model.view,
-        model.signals.cliSites.open,
-        model.sitesSnapshot,
-      );
+      return model.siteConnectSuccess
+        ? renderSiteConnectSuccess(model.siteConnectSuccess)
+        : renderSitesPage(
+            model.view,
+            model.signals.cliSites.open,
+            model.sitesSnapshot,
+          );
     case "how-to-use":
       return renderHowToUsePage();
     case "deploy-paths":

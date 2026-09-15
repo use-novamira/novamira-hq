@@ -708,7 +708,8 @@ const SITE_CLI_SUMMARIES: Readonly<
 > = {
   available: "The Novamira site CLI is installed and compatible.",
   absent: "The Novamira site CLI is not installed.",
-  incompatible: "The installed Novamira site CLI is older than HQ requires.",
+  incompatible:
+    "The installed Novamira site CLI is older than Novamira HQ requires.",
   unreadable: "The Novamira site CLI could not be read.",
 };
 

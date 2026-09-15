@@ -75,15 +75,20 @@ test("MCP page renders dynamic profiles and never claims an external connection"
     ),
   );
   for (const text of [
+    "Step 1",
+    "Step 2",
+    "Step 3",
     "Claude Desktop",
     "ChatGPT Desktop",
     "future-profile",
     "future-adapter",
     "Copy configuration",
-    "does not prove",
-    "Verify local MCP startup",
+    "cannot confirm",
+    "Test Novamira HQ locally",
+    "Finish in your AI client",
   ])
     assert.ok(markup.includes(text), text);
+  assert.doesNotMatch(markup, /(?<!Novamira )\bHQ\b/);
 });
 
 test("standalone desktop never delegates its updater to npm", async () => {

@@ -181,7 +181,7 @@ novamira-hq dashboard                          # prefers http://127.0.0.1:8787
 novamira-hq dashboard --listen localhost:9000 --open
 ```
 
-The dashboard is HQ's interactive surface — it is what the CLI has instead of
+The dashboard is Novamira HQ's interactive surface — it is what the CLI has instead of
 prompts. It binds to **loopback only**: `--listen` accepts `:PORT`, `PORT`,
 `HOST:PORT` or `[IPv6]:PORT`, and the host must be `localhost`, an address in
 `127.0.0.0/8`, or `::1`. Anything else is refused before a socket is opened, so
@@ -204,16 +204,18 @@ What it does:
   site” is reserved for future provider-side creation. A direct site may use an
   optional custom profile name. Hosting inventory stays
   cached for five minutes; CLI actions use that warm inventory and never call a
-  provider. Every CLI control runs one `novamira` command — HQ stores nothing
+  provider. Every CLI control runs one `novamira` command — Novamira HQ stores nothing
   and never talks to the site itself.
 - **How to use it** — the persistent three-step guide from preparing a site, to
-  authorizing it on the computer, to opening the AI agent selected during HQ's
-  installation. HQ prepares the connection; the AI work happens in the agent.
+  authorizing it on the computer, to opening the AI agent selected during
+  Novamira HQ installation. Novamira HQ prepares the connection; the AI work
+  happens in the agent.
 - **Deploy paths** — create and remove the environment-to-environment paths.
   Deploy shows a source/target/scope confirmation, verifies a target safety
   backup, then pushes. A changed or reused confirmation is refused.
-- **Connect your AI** — copy Claude Desktop or ChatGPT Desktop configuration,
-  select launch capabilities and verify local MCP startup without provider calls.
+- **Connect your AI** — choose Claude Desktop or ChatGPT Desktop, open only that
+  client's setup guide, copy its configuration, test Novamira HQ locally, then
+  confirm the external connection in the AI client itself.
 - **History** — local requests and correlated workflows across CLI, dashboard
   and MCP, with observed outcomes and next steps for unverified work.
 - **Novamira Setup** — install and activate the plugin on an environment with
@@ -354,9 +356,9 @@ Client instructions follow the [MCP local-server guide](https://modelcontextprot
 and [ChatGPT Desktop MCP documentation](https://learn.chatgpt.com/docs/extend/mcp).
 
 The standalone desktop executable also accepts `--mcp` and launches the same MCP
-server without a window. The client starts its own process, so HQ's dashboard
-need not remain open. Its copied configuration does not require a separate HQ
-CLI installation. Provider secrets are never copied; environment-based secrets
+server without a window. The client starts its own process, so the Novamira HQ
+dashboard need not remain open. Its copied configuration does not require a
+separate Novamira HQ CLI installation. Provider secrets are never copied; environment-based secrets
 must be available to the AI client, which may not inherit your terminal's env.
 
 The application's initial acknowledgement explains that AI agents may explicitly

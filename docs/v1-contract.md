@@ -1077,14 +1077,14 @@ normalized by the same rules `hosting novamira setup` applies before it can
 reach an argv element, and a rejected URL is a `usage_error` with nothing
 spawned. Child output is read for the envelope's `ok` and then discarded: a
 failure is reported as one fixed sentence chosen by a reason enum, never as
-subprocess text. HQ holds no site token, makes no request to the site, and reads
-none of the site CLI's storage.
+subprocess text. Novamira HQ holds no site token, makes no request to the site,
+and reads none of the site CLI's storage.
 
 The four `/_dashboard/site-profiles/*` routes manage the **site CLI's** site
 profiles, and are not a reintroduction of the two deleted routes named below.
 Each one spawns a `novamira` command through the site-CLI integration and reads
-the v1 envelope's `ok`; HQ stores nothing, holds no site token, and makes no
-request to a configured site.
+the v1 envelope's `ok`; Novamira HQ stores nothing, holds no site token, and
+makes no request to a configured site.
 
 - `POST /_dashboard/site-profiles/connect` takes `?url=`, falling back to the
   posted `cliSites.url` signal, plus optional `cliSites.name`, and spawns
@@ -1106,11 +1106,14 @@ request to a configured site.
   enters a URL. A name conflict or an installed CLI without rename support is a
   fixed failure notice; child output never reaches the page.
 
-All four re-run the site-CLI listing and connected-state match against the warm
-hosting inventory, then patch `#sites-status` (inner), `#sites-result` (outer)
-and `#toast` (outer). They trigger no provider call and do not invalidate the
-sites cache: signing out of one site profile is not a reason to call eight
-hosting APIs.
+Rename, logout, remove and row-level Reconnect re-run the site-CLI listing and
+connected-state match against the warm hosting inventory, then patch
+`#sites-status` (inner), `#sites-result` (outer) and `#toast` (outer). A
+successful direct-site connection instead uses the one page-repaint sequence to
+show a full **Site connected** completion screen with the site URL or custom
+name, **Open Sites**, and **Connect another site**. A failure remains a fixed
+toast. None of these paths triggers a provider call or invalidates the sites
+cache.
 
 `/_dashboard/setup/start` takes `?profile=` and `?env=`, plus the optional
 display values `?site=` and `?envname=` the Sites page's link already carries.
@@ -1220,12 +1223,13 @@ form to itself and no page reloads.
   existing Novamira site, while **Hosting account** connects a provider and
   discovers its sites. “New site” is reserved for future provider-side site
   creation. The direct-site action accepts a URL and an optional custom profile
-  name. CLI actions reread only the warm hosting inventory and never trigger
-  provider calls.
+  name, and success renders a dedicated page rather than a transient toast. CLI
+  actions reread only the warm hosting inventory and never trigger provider
+  calls.
 - **How to use it** (`/how-to-use`) — the three-step handoff: prepare a site
   through a hosting provider or by URL, authorize it until it is Connected, then
-  open the AI agent selected during HQ installation. The page states explicitly
-  that HQ prepares the connection and does not contain an AI chat. It also
+  open the AI agent selected during Novamira HQ installation. The page states
+  explicitly that Novamira HQ prepares the connection and does not contain an AI chat. It also
   prints the macOS/Linux and PowerShell `npx skills add` commands for direct npm
   installs and for registering the packaged `novamira-hq` instructions with a
   different agent; the dashboard does not spawn that interactive third-party
@@ -1295,9 +1299,13 @@ reachability could not be established). A profile alone is never a connection.
 
 An explicit site-CLI `server_unsupported` code is classified as
 `site_incompatible`, not as a broken CLI or generic network failure. The fixed
-hint points to site compatibility and AI Abilities settings without exposing
-child output or guessing which specific requirement failed. Connect still makes
-no hosting mutation and never installs a plugin or enables abilities.
+hint explains that the plugin may be missing, inactive or incompatible, or that
+required AI Abilities may be unavailable, without exposing child output or
+guessing which specific requirement failed. The visible state is **Novamira not
+ready**, not **Unknown**. A matched hosting environment keeps its **Setup
+Novamira** action; a CLI-only profile tells the operator to install or update
+Novamira on the site and reconnect. Connect still makes no hosting mutation and
+never installs a plugin or enables abilities.
 
 Detection runs `novamira --json --quiet --timeout <ms> sites list` once, matches
 normalized origins against hosting environments, and then runs
@@ -1453,13 +1461,16 @@ work its caller did not ask for.
 
 ## Connect your AI and app acknowledgement
 
-`/mcp` renders Claude Desktop JSON and ChatGPT Desktop TOML using the actual
-executable path, fixed argv, and only HQ path overrides. It never copies provider
-credentials, modifies a client's files, or registers skills. `?access=` selects
-read/standard/all for the generated configuration; standard is the default.
-Selection does not alter an existing client process. Save/merge the configuration
-and restart the client. Profiles follow HQ configuration dynamically, with no
-per-profile permission switches; configured credentials are not validation.
+`/mcp` presents a three-step flow: choose an AI client, test Novamira HQ locally,
+and finish in the external client. Claude Desktop JSON and ChatGPT Desktop TOML
+are each hidden inside their own disclosure until selected. They use the actual
+executable path, fixed argv, and only Novamira HQ path overrides. The page never
+copies provider credentials, modifies a client's files, registers skills, or
+claims the external client is connected. Hosting profiles and the distinction
+between MCP and skills are secondary information under one Advanced disclosure.
+There are no access presets or per-profile permission switches; all supported
+typed tools are exposed at launch. Profiles follow Novamira HQ configuration
+dynamically, and configured credentials are not validation.
 
 The token-protected POST `/_dashboard/mcp/verify` spawns the configured local
 entry point and sends only initialize, initialized and tools/list. Output is

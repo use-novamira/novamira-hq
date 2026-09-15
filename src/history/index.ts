@@ -119,7 +119,7 @@ export function historyText(
 function storageError(): CliError {
   return new CliError(
     "config_error",
-    "Hosting history is unreadable or unsafe. Check HQ state storage before continuing.",
+    "Hosting history is unreadable or unsafe. Check Novamira HQ state storage before continuing.",
   );
 }
 

@@ -229,6 +229,10 @@ async function corpus() {
   return corpusCache;
 }
 
+test("public dashboard copy always names Novamira HQ in full", async () => {
+  assert.doesNotMatch(await corpus(), /(?<!Novamira )\bHQ\b/);
+});
+
 /** Go's `datastarAttrValues`: every value of one attribute, HTML-unescaped. */
 function attrValues(body, name) {
   const pattern = new RegExp(

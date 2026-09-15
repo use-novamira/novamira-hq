@@ -121,7 +121,7 @@ const CAPABILITY_ENTRIES: readonly ProviderCapabilityInput[] = [
   [
     "envs.push",
     false,
-    "Cloudways provider-native sync fields do not implement HQ's granular push contract",
+    "Cloudways provider-native sync fields do not implement Novamira HQ's granular push contract",
   ],
   ["domains.list", false, NOT_MAPPED_NOTE],
   [

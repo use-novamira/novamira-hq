@@ -53,7 +53,7 @@ import { asCliError, CliError } from "../../errors.js";
 import { normalizeSiteUrl } from "../../provisioning/index.js";
 import { isSiteProfileName } from "../../site-profiles.js";
 import type { SiteProfileOutcome } from "../../site-profiles.js";
-import { patchToast } from "../patch.js";
+import { patchPage, patchToast } from "../patch.js";
 import { readSignals } from "../request.js";
 import type { DashboardRequest } from "../request.js";
 import type { DashboardResponse } from "../responses.js";
@@ -61,8 +61,9 @@ import type { RouteContext, RouteHandler } from "../routes.js";
 import { parseCliSites } from "../signals-input.js";
 import { parseSiteBrowser } from "../signals-input.js";
 import { parseSiteProfileRename } from "../signals-input.js";
+import { defaultDashboardSignals } from "../signals.js";
 import type { SseStream } from "../sse.js";
-import type { DashboardNotice } from "../views/types.js";
+import { EMPTY_NOTICE, type DashboardNotice } from "../views/types.js";
 import { patchSites } from "./sites.js";
 
 function danger(message: string): DashboardNotice {
@@ -221,6 +222,29 @@ export function createSiteProfileConnectHandler(
         site.siteUrl,
         name === "" ? undefined : name,
       );
+      const reconnecting = (request.query.get("url") ?? "").trim() !== "";
+      if (outcome.kind === "connected" && !reconnecting) {
+        const options = listOptions(request, signals);
+        await context.sites.refreshWarm(options.profile, options.includeEnvs);
+        const view = await context.loadConfigView();
+        patchPage(stream, {
+          page: "sites",
+          notice: EMPTY_NOTICE,
+          model: {
+            view,
+            notice: EMPTY_NOTICE,
+            signals: defaultDashboardSignals(context.token),
+            siteConnectSuccess: {
+              siteUrl: site.siteUrl,
+              ...(name === "" ? {} : { profileName: name }),
+            },
+          },
+          signals: {
+            cliSites: { open: false, url: "", name: "", loading: false },
+          },
+        });
+        return;
+      }
       await patchDestination(
         request,
         signals,

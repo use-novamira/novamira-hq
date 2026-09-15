@@ -69,6 +69,7 @@ import {
   unavailableHint,
   type ConnectionResult,
   type ConnectionState,
+  type UnavailableReason,
 } from "../../connection-state.js";
 import type {
   SiteProfileListing,
@@ -358,6 +359,7 @@ export function deployPathView(
 export interface ConnectionView {
   readonly state: ConnectionState;
   readonly profiles: readonly string[];
+  readonly reason?: UnavailableReason;
   /** Present only for `unavailable`: a fixed, non-secret install or retry hint. */
   readonly hint?: string;
 }
@@ -387,6 +389,7 @@ export function connectionView(
     return {
       state: "unavailable",
       profiles: result.profiles,
+      ...(result.reason === undefined ? {} : { reason: result.reason }),
       hint:
         result.reason === undefined
           ? SITE_CLI_INSTALL_HINT
@@ -422,6 +425,7 @@ export interface SiteProfileRowView {
   readonly expiresAt?: string;
   /** Present only for `unknown` and `unreachable`: a fixed, non-secret sentence. */
   readonly hint?: string;
+  readonly reason?: UnavailableReason;
 }
 
 /** Why one row cannot say more than "Unknown". */
@@ -447,6 +451,7 @@ export function siteProfileRowView(
       siteUrl: summary.siteUrl,
       state: summary.state,
       ...expiresAt,
+      ...(summary.reason === undefined ? {} : { reason: summary.reason }),
       hint:
         summary.reason === undefined
           ? SITE_CLI_INSTALL_HINT

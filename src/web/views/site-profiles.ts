@@ -36,7 +36,15 @@
 
 import * as ds from "../datastar.js";
 import { confirmThen, post, signal, type Expr } from "../expr.js";
-import { attr, classAttr, flagAttr, html, url, type Html } from "../html.js";
+import {
+  attr,
+  classAttr,
+  flagAttr,
+  hrefAttr,
+  html,
+  url,
+  type Html,
+} from "../html.js";
 import { siteProfileRenameSignal } from "../signals.js";
 import { type SiteProfileRowView, type SiteProfileState } from "./types.js";
 
@@ -45,6 +53,20 @@ const CONNECT_PATH = "/_dashboard/site-profiles/connect";
 const LOGOUT_PATH = "/_dashboard/site-profiles/logout";
 const RENAME_PATH = "/_dashboard/site-profiles/rename";
 const REMOVE_PATH = "/_dashboard/site-profiles/remove";
+
+export interface SiteConnectSuccessView {
+  readonly siteUrl: string;
+  readonly profileName?: string;
+}
+
+/** Full-page completion for a newly connected direct site, never for Reconnect. */
+export function renderSiteConnectSuccess(view: SiteConnectSuccessView): Html {
+  return html`<section class="page connect-success-page"><section class="how-to-card connect-success" aria-labelledby="site-connected-title"><span class="connect-success-mark" aria-hidden="true">✓</span><div><span class="eyebrow">Connection complete</span><h1 id="site-connected-title">Site connected</h1><p><strong>${view.profileName ?? view.siteUrl}</strong> is now available through the Novamira site CLI.</p>${view.profileName === undefined ? false : html`<p class="field-help">${view.siteUrl}</p>`}</div><div class="button-row"><a class="button primary"${hrefAttr(
+    url("/sites"),
+  )}>Open Sites</a><a class="button secondary"${hrefAttr(
+    url("/sites", { new: "cli" }),
+  )}>Connect another site</a></div><p class="field-help">Open your AI client to work with this site. Novamira HQ does not need to remain open.</p></section></section>`;
+}
 
 function renderProfileMenu(
   name: string,
@@ -98,7 +120,10 @@ function titleAttr(text: string | undefined) {
 
 /** Reconnect-required is rendered as one action, not as a pill plus an action. */
 function renderConnectionControl(row: SiteProfileRowView, connect: Expr): Html {
-  const pill = PILLS[row.state];
+  const pill =
+    row.reason === "site_incompatible"
+      ? { text: "Novamira not ready", modifier: "warn" }
+      : PILLS[row.state];
   if (row.state === "reconnect_required") {
     return html`<button class="status-action warn" type="button"${attr(
       "title",

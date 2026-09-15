@@ -434,7 +434,7 @@ function renderStateCell(
     case "unavailable":
       return html`<span class="pill"${titleAttr(
         connection.hint,
-      )}>Unknown</span>${renderProfileLink(connection, view)}${
+      )}>${connection.reason === "site_incompatible" ? "Novamira not ready" : "Unknown"}</span>${renderProfileLink(connection, view)}${
         connection.profiles.length === 0
           ? renderConnectButton(connection, address, view)
           : false

@@ -13,12 +13,12 @@ export function createMcpVerifyHandler(context: RouteContext): RouteHandler {
         if (!context.mcpConnection)
           throw new CliError(
             "provider_unsupported",
-            "MCP startup verification is unavailable in this instance.",
+            "Novamira HQ MCP startup verification is unavailable in this instance.",
           );
         const result = await context.mcpConnection.verify();
         patchToast(stream, {
           level: "ok",
-          message: `Local MCP initialized and listed ${String(result.toolCount)} tools. This does not confirm an external client connection or provider credentials.`,
+          message: `Novamira HQ started locally and listed ${String(result.toolCount)} MCP tools. Confirm the external connection in your AI client.`,
         });
       } catch (error) {
         patchToast(stream, {

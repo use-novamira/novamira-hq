@@ -1064,7 +1064,7 @@ test("18: the unified list renders unmatched CLI profiles as an inventory group"
 
 test("19: adding a CLI site sends the optional custom name", async () => {
   const { server, connectCalls } = await fixture();
-  await sse(
+  const { recorder } = await sse(
     server,
     authorized("/_dashboard/site-profiles/connect?unified=true", {
       method: "POST",
@@ -1075,6 +1075,38 @@ test("19: adding a CLI site sends the optional custom name", async () => {
     }),
   );
   assert.deepEqual(connectCalls, ["https://example.com my-site"]);
+  assert.deepEqual(recorder.order, ["main/outer", "nav/outer", "toast/outer"]);
+  assert.deepEqual(recorder.signals, [
+    { cliSites: { open: false, url: "", name: "", loading: false } },
+  ]);
+  const main = recorder.find("main").markup;
+  assert.ok(main.includes("Site connected"));
+  assert.ok(main.includes("my-site"));
+  assert.ok(main.includes("https://example.com"));
+  assert.ok(main.includes('href="/sites">Open Sites</a>'));
+  assert.ok(main.includes('href="/sites?new=cli">Connect another site</a>'));
+  assert.ok(!recorder.find("toast").markup.includes("Connected."));
+});
+
+test("a CLI profile on a site without a compatible Novamira setup is explicit", async () => {
+  const siteProfiles = {
+    profiles: [
+      {
+        name: "not-ready",
+        siteUrl: "https://direct.example.com",
+        origin: "https://direct.example.com",
+        state: "unknown",
+        reason: "site_incompatible",
+      },
+    ],
+    checkedAt: NOW,
+    cliAvailable: true,
+  };
+  const { markup } = await resultMarkup({ siteProfiles });
+  assert.ok(markup.includes("Novamira not ready"));
+  assert.ok(markup.includes("plugin may be missing"));
+  assert.ok(markup.includes(">Reconnect</button>"));
+  assert.ok(!markup.includes(">Unknown</span>"));
 });
 
 test("20: renaming a CLI site posts the new name and uses only warm hosting inventory", async () => {

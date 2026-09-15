@@ -282,7 +282,7 @@ function assertWordPress(
   if (wordpress === undefined) {
     throw unsupported(
       "compat.wordpress",
-      `This site reports the WordPress version "${compatibility.wordpress_version}", which is not a version number HQ can compare. novamira auth login will reject this site.`,
+      `This site reports the WordPress version "${compatibility.wordpress_version}", which is not a version number Novamira HQ can compare. novamira auth login will reject this site.`,
       context,
       observed,
     );
@@ -406,7 +406,7 @@ function assertResource(
   const reject = (): never => {
     throw unsupported(
       "metadata.resource",
-      `The site advertises the OAuth resource ${safeValue ?? "(not a string)"}, which does not belong to ${site.siteUrl}. HQ used the WordPress "home" URL; if that is not the address visitors use, rerun with --url <the correct URL>.`,
+      `The site advertises the OAuth resource ${safeValue ?? "(not a string)"}, which does not belong to ${site.siteUrl}. Novamira HQ used the WordPress "home" URL; if that is not the address visitors use, rerun with --url <the correct URL>.`,
       context,
       safeValue === undefined ? {} : { resource: safeValue },
     );
@@ -571,7 +571,7 @@ async function fetchMetadata(
   if (response.status >= 300 && response.status < 400) {
     await discardBody(response);
     throw reachability(
-      `Novamira is installed and activated, but ${context.metadataUrl} redirected instead of serving the compatibility metadata. HQ cannot follow site redirects because setup permits exactly one request to the well-known URL. Rerun with --url <the URL WordPress actually serves>.`,
+      `Novamira is installed and activated, but ${context.metadataUrl} redirected instead of serving the compatibility metadata. Novamira HQ cannot follow site redirects because setup permits exactly one request to the well-known URL. Rerun with --url <the URL WordPress actually serves>.`,
       context,
       { status: response.status, reason: "redirect" },
     );

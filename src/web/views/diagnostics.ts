@@ -66,7 +66,7 @@ export function renderDiagnosticsPage(view: ConfigView): Html {
   )}>Health check</button></div>${renderDiagnosticsOutput(
     { level: "neutral", message: "" },
     "Select a diagnostic action.",
-  )}<section class="how-to-card"><h2>Hosting history</h2><p>Hosting operations performed through HQ. Does not include WordPress operations through Novamira CLI, including those delegated by HQ MCP.</p><div><a class="button secondary" href="/history">Open hosting history</a></div></section></section>`;
+  )}<section class="how-to-card"><h2>Hosting history</h2><p>Hosting operations performed through Novamira HQ. Does not include WordPress operations through Novamira CLI, including those delegated by Novamira HQ MCP.</p><div><a class="button secondary" href="/history">Open hosting history</a></div></section></section>`;
 }
 
 /**

@@ -323,7 +323,7 @@ export function renderProviderForm(open: boolean): Html {
     open && "open",
   )}${ds.classes({ open: signal("providerForm.open") })}${ds.onSubmit(
     action,
-  )}><div class="panel-head"><div><h2>Connect a hosting account</h2><p>Choose its provider so HQ can discover the account's sites and environments. You can also ask your agent to configure it.</p></div></div><div class="form-grid"><label><span>Profile name</span><input${idAttr(
+  )}><div class="panel-head"><div><h2>Connect a hosting account</h2><p>Choose its provider so Novamira HQ can discover the account's sites and environments. You can also ask your agent to configure it.</p></div></div><div class="form-grid"><label><span>Profile name</span><input${idAttr(
     "profile",
   )} type="text"${ds.bind("providerForm.profile")} required></label><label><span>Provider</span><select${idAttr(
     "provider",

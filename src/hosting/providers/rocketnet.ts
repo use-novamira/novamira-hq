@@ -114,7 +114,7 @@ const CAPABILITIES: readonly ProviderCapabilityInput[] = (() => {
     [
       "envs.push",
       false,
-      "Rocket.net staging publish is all-or-nothing; HQ requires an explicit granular push scope",
+      "Rocket.net staging publish is all-or-nothing; Novamira HQ requires an explicit granular push scope",
     ],
     ["domains.list", true, "uses GET /v1/sites/{site_id}/domains"],
     ["domains.add", true, "uses POST /v1/sites/{site_id}/domains"],

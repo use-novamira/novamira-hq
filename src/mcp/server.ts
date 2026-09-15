@@ -196,7 +196,7 @@ const TOOL_DEFINITIONS: readonly (McpTool & {})[] = [
       inputSchema: objectSchema(
         {
           site: nonEmptyString(
-            "Explicit Novamira site CLI profile, not an HQ hosting profile.",
+            "Explicit Novamira site CLI profile, not a Novamira HQ hosting profile.",
           ),
           ...(kind === "describe" || kind === "run"
             ? {
@@ -230,7 +230,7 @@ const TOOL_DEFINITIONS: readonly (McpTool & {})[] = [
   {
     name: "hosting_history_list",
     description:
-      "Read the last 500 local HQ hosting requests. Does not poll, retry, prove human approval, or include site CLI activity. Accepted is not completed.",
+      "Read the last 500 local Novamira HQ hosting requests. Does not poll, retry, prove human approval, or include site CLI activity. Accepted is not completed.",
     inputSchema: objectSchema({ profile: PROFILE_PROPERTY }, []),
     annotations: { ...annotations(true, false, true), openWorldHint: false },
   },
@@ -356,7 +356,7 @@ const TOOL_DEFINITIONS: readonly (McpTool & {})[] = [
   {
     name: "hosting_environment_push_apply",
     description:
-      "Apply a one-use push plan. HQ first creates and awaits a safety backup of the target environment.",
+      "Apply a one-use push plan. Novamira HQ first creates and awaits a safety backup of the target environment.",
     inputSchema: objectSchema(
       {
         confirmationId: nonEmptyString(
@@ -382,7 +382,7 @@ const TOOL_DEFINITIONS: readonly (McpTool & {})[] = [
   {
     name: "hosting_backup_restore_apply",
     description:
-      "Apply a one-use restore plan. HQ first creates and awaits a fresh safety backup of the target environment.",
+      "Apply a one-use restore plan. Novamira HQ first creates and awaits a fresh safety backup of the target environment.",
     inputSchema: objectSchema(
       {
         confirmationId: nonEmptyString(
