@@ -949,7 +949,7 @@ test("config show without a profile emits the whole document", async () => {
           credential: { type: "env", name: "KINSTA_API_KEY" },
         },
       },
-      deployPaths: {},
+      pushes: {},
     });
   });
 });

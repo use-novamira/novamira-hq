@@ -7,7 +7,7 @@
  *
  * **What the Go did.** Four copies of the same three lines.
  * `patchProvidersPageWithConfig`, `patchSitesPageWithConfig`,
- * `patchDeployPathsPageWithConfig` and `patchSetupMain` (`server.go:865-906`)
+ * `patchPushesPageWithConfig` and `patchSetupMain` (`server.go:865-906`)
  * each opened an SSE generator, optionally marshalled a signal patch, and then
  * patched `#main`, `#nav` and `#toast` — except `patchSetupMain`, which omitted
  * `#nav` for no stated reason, so the setup page's active nav link went stale
@@ -45,7 +45,7 @@ export interface PagePatch {
   /**
    * An RFC 7386 merge-patch over the client's signal store, sent **before** the
    * element patches. Typically `{ providerForm: defaultProviderFormSignals(…) }`
-   * or `{ deployForm: defaultDeployFormSignals() }` — a form reset.
+   * or `{ pushForm: defaultPushFormSignals() }` — a form reset.
    */
   readonly signals?: Readonly<Record<string, JsonValue>>;
 }

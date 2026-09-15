@@ -565,7 +565,7 @@ async function schemaCheck(
       valid: true,
       version: outcome.document.version,
       profileCount: Object.keys(outcome.document.hostingProfiles).length,
-      deployPathCount: Object.keys(outcome.document.deployPaths).length,
+      pushCount: Object.keys(outcome.document.pushes).length,
     },
   };
 }

@@ -5,7 +5,7 @@
  * The Sites page, `GET /_dashboard/sites` and `POST /_dashboard/connect`.
  *
  * This is the port of the sites half of Go's `server_test.go` — the toolbar, the
- * segmented control, the cache, the group and row markup, the deploy hint and
+ * segmented control, the cache, the group and row markup, the push hint and
  * the setup CTA — re-expressed over the four-state `ConnectionResult` that
  * replaced Go's `site_profiles` hostname match, plus the assertions Go could not
  * make because it had no Connect action: that a failing login puts **no child
@@ -67,7 +67,7 @@ function env(id, overrides = {}) {
   };
 }
 
-/** Kinsta: deploy-push capable and Novamira-setup capable. */
+/** Kinsta: environment-push capable and Novamira-setup capable. */
 const KINSTA_SITES = [
   {
     id: "s1",
@@ -94,7 +94,7 @@ const KINSTA_SITES = [
   },
 ];
 
-/** Pantheon: neither deploy-push nor Novamira setup. */
+/** Pantheon: neither environment-push nor Novamira setup. */
 const PANTHEON_SITES = [
   {
     id: "p1",
@@ -118,7 +118,7 @@ const CONFIG = {
       credential: { type: "env", name: "PANTHEON_MACHINE_TOKEN" },
     },
   },
-  deployPaths: {},
+  pushes: {},
 };
 
 const ENVIRONMENT = {
@@ -823,15 +823,15 @@ test("8: the four connection states render their documented pill and actions", a
   assert.ok(!absent.markup.includes("novamira auth login"));
 });
 
-test("9: + Deploy path appears only for a push-capable provider's multi-env site", async () => {
+test("9: + Push appears only for a push-capable provider's multi-env site", async () => {
   const { markup } = await resultMarkup();
-  const hints = [...markup.matchAll(/class="deploy-hint" href="([^"]*)"/g)].map(
+  const hints = [...markup.matchAll(/class="push-hint" href="([^"]*)"/g)].map(
     (match) => match[1],
   );
   assert.equal(hints.length, 1, "kinsta's multi-env site only");
   assert.ok(hints[0].includes("profile=prod"));
   assert.ok(hints[0].includes("site=s1"));
-  assert.ok(hints[0].startsWith("/deploy-paths/new?"));
+  assert.ok(hints[0].startsWith("/pushes/new?"));
 });
 
 test("10: Setup Novamira is a link for the three supported providers and a disabled button otherwise", async () => {

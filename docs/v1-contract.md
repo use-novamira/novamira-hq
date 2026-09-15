@@ -145,7 +145,7 @@ Stable code and exit mapping:
 
 Exit 0 always has `ok: true`; nonzero exits always have `ok: false`. Code
 meanings are fixed: `profile_not_found` is a missing local hosting profile or
-deploy path, `not_found` is a missing remote provider resource,
+saved push, `not_found` is a missing remote provider resource,
 `credential_invalid` covers provider 401/403 and unusable local credential
 records, `provider_unsupported` is an operation a provider deliberately does not
 implement, `integration_unavailable` is the optional `novamira` CLI being
@@ -179,7 +179,7 @@ sorted map keys and a trailing newline.
       "apiBaseUrl": "..."   // optional, absolute http(s) URL
     }
   },
-  "deployPaths": {
+  "pushes": {
     "<name>": {
       "name": "<name>",
       "hostingProfile": "<hosting profile name>",
@@ -192,10 +192,10 @@ sorted map keys and a trailing newline.
 }
 ```
 
-Names — map keys, hosting profile names, and deploy path names — match
+Names — map keys, hosting profile names, and push names — match
 `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`; a violation is a `usage_error`. A structural
 problem is a `config_error`; a field problem is a `schema_validation_failed`
-carrying the exact dotted path. A deploy path's `sourceEnvId` must differ from
+carrying the exact dotted path. A push's `sourceEnvId` must differ from
 its `targetEnvId`; its `hostingProfile` need not already exist. A missing
 configuration file loads as an empty version-1 document.
 
@@ -423,7 +423,7 @@ capability-selection options. Unexpected launch arguments are rejected.
 The hosting typed read tools are `hosting_profiles_list`, `hosting_provider_validate`,
 `hosting_capabilities_get`, `hosting_sites_list`, `hosting_site_get`,
 `hosting_environments_list`, `hosting_operation_get`, `hosting_backups_list`, and `hosting_history_list`. The typed mutations
-are `hosting_backup_create` and `hosting_novamira_setup`. The deploy tools are `hosting_environment_push_plan` and
+are `hosting_backup_create` and `hosting_novamira_setup`. The push tools are `hosting_environment_push_plan` and
 `hosting_environment_push_apply`; backup recovery uses
 `hosting_backup_restore_plan` and `hosting_backup_restore_apply`. Every tool
 carries MCP read-only and destructive annotations.
@@ -654,7 +654,7 @@ applies HQ's capability visibility policy before rendering.
   client, and provider adapters; `--yes` does not unlock them.
 - No command prompts, and no command reads standard input except through
   `--from-json -`, `--command-stdin`, and the `-stdin` secret sources.
-- Deploy-path commands are not shipped. `deployPaths` is reserved in the
+- Push commands are not shipped. `pushes` is reserved in the
   configuration schema and no v1 command reads or writes it.
 - No `site` group, no Application Password option, and no Ability proxying, per
   the boundary above.
@@ -1016,16 +1016,16 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 | `/providers` | GET | no |
 | `/sites` | GET | no |
 | `/how-to-use` | GET | no |
-| `/deploy-paths` | GET | no |
-| `/deploy-paths/new` | GET | no |
+| `/pushes` | GET | no |
+| `/pushes/new` | GET | no |
 | `/novamira-setup` | GET | no |
 | `/diagnostics` | GET | no |
 | `/history` | GET | no |
 | `/mcp` | GET | no |
 | `/_dashboard/mcp/verify` | POST | yes |
 | `/_dashboard/app/acknowledge` | POST | yes |
-| `/_dashboard/deploy-paths/plan` | POST | yes |
-| `/_dashboard/deploy-paths/apply` | POST | yes |
+| `/_dashboard/pushes/plan` | POST | yes |
+| `/_dashboard/pushes/apply` | POST | yes |
 | `/settings` | GET | no |
 | `/_dashboard/providers/save` | POST | yes |
 | `/_dashboard/providers/remove` | POST | yes |
@@ -1036,8 +1036,8 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 | `/_dashboard/site-profiles/logout` | POST | yes |
 | `/_dashboard/site-profiles/rename` | POST | yes |
 | `/_dashboard/site-profiles/remove` | POST | yes |
-| `/_dashboard/deploy-paths/save` | POST | yes |
-| `/_dashboard/deploy-paths/remove` | POST | yes |
+| `/_dashboard/pushes/save` | POST | yes |
+| `/_dashboard/pushes/remove` | POST | yes |
 | `/_dashboard/setup/start` | POST | yes |
 | `/_dashboard/setup/jobs/<id>` | GET | yes |
 | `/_dashboard/setup/jobs/<id>/stream` | GET | yes |
@@ -1234,10 +1234,10 @@ form to itself and no page reloads.
   installs and for registering the packaged `novamira-hq` instructions with a
   different agent; the dashboard does not spawn that interactive third-party
   installer itself.
-- **Deploy paths** (`/deploy-paths`, `/deploy-paths/new`) — the configured paths
+- **Push** (`/pushes`, `/pushes/new`) — the saved environment pushes
   with their resolved environment names and domains, and the creation form.
-  Deploy prepares a five-minute, one-use confirmation showing source, target
-  and positive scope. Apply rejects changed paths and uses the shared verified
+  Push prepares a five-minute, one-use confirmation showing source, target
+  and positive scope. Apply rejects changed pushes and uses the shared verified
   safety-backup/push workflow. Neither page load issues a provider call: both
   read the warm inventory only; explicit Plan and Apply actions contact providers.
 - **Novamira Setup** (`/novamira-setup`) — the target panel, the AI-Abilities

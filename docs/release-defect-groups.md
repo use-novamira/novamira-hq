@@ -233,7 +233,7 @@ Fix cache keys and invalidation together because both determine whether a warm
 entry still represents the requested resource:
 
 - Key site and environment resolution by the full provider profile, site, and
-  environment ownership needed by deploy paths.
+  environment ownership needed by pushes.
 - Remove fallback lookup that crosses profile ownership.
 - Add a generation or equivalent commit guard so work started before
   invalidation cannot repopulate current cache state or profile links.

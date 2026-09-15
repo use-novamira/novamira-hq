@@ -88,7 +88,7 @@ async function fixture(options = {}) {
   const security = defaultFileSecurity();
   await atomicWriteFile(
     paths.configFile,
-    JSON.stringify({ version: 1, hostingProfiles: PROFILES, deployPaths: {} }),
+    JSON.stringify({ version: 1, hostingProfiles: PROFILES, pushes: {} }),
     security,
   );
   const store = new ConfigStore(

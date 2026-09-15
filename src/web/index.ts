@@ -67,14 +67,14 @@ export {
 } from "./request.js";
 
 export {
-  parseDeployForm,
+  parsePushForm,
   parseDiagnostics,
   parseProviderForm,
   parseSetup,
   parseSiteBrowser,
   readQuerySignals,
   MAX_QUERY_SIGNAL_BYTES,
-  type DeployFormInput,
+  type PushFormInput,
   type DiagnosticsInput,
   type ProviderFormInput,
   type SetupInput,
@@ -84,7 +84,7 @@ export {
 export { patchPage, patchToast, type PagePatch } from "./patch.js";
 
 export {
-  createDeployPathService,
+  createPushService,
   createProviderService,
   createSetupJobService,
   createSitesService,
@@ -93,7 +93,7 @@ export {
   MAX_EVENTS,
   MAX_JOBS,
   SITES_CACHE_TTL_MS,
-  type DeployPathService,
+  type PushService,
   type EnvResolution,
   type EnvResolver,
   type ProviderMutation,
@@ -138,7 +138,7 @@ export {
   assertSignalPath,
   connCheckingSignal,
   defaultDashboardSignals,
-  defaultDeployFormSignals,
+  defaultPushFormSignals,
   defaultProviderFormSignals,
   dynamicSignalPath,
   providerDetailsSignal,
@@ -188,13 +188,13 @@ export {
 } from "./views/site-profiles.js";
 
 export {
-  deployPathsStatusLine,
-  deployPushesSummary,
-  renderDeployPathNewPage,
-  renderDeployPathsPage,
-  type DeployNewView,
+  pushesStatusLine,
+  pushScopeSummary,
+  renderPushNewPage,
+  renderPushesPage,
+  type PushNewView,
   type WarmSitesView,
-} from "./views/deploy-paths.js";
+} from "./views/pushes.js";
 
 export {
   renderDiagnosticsOutput,
@@ -237,8 +237,8 @@ export {
 
 export {
   connectionView,
-  deployPathView,
-  deployPushSupported,
+  pushView,
+  environmentPushSupported,
   hostingProfileView,
   providerLabelFor,
   statusClass,
@@ -252,7 +252,7 @@ export {
   type ConnectionView,
   type DashboardNotice,
   type DashboardPage,
-  type DeployPathView,
+  type PushView,
   type HostingProfileView,
   type NoticeLevel,
   type UnavailableReason,

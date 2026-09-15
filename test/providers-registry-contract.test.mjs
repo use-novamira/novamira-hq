@@ -31,7 +31,7 @@ import {
 } from "../dist/hosting/factory.js";
 import { PROVIDER_REGISTRY } from "../dist/hosting/providers/index.js";
 import {
-  DEPLOY_PUSH_PROVIDERS,
+  ENVIRONMENT_PUSH_PROVIDERS,
   NOVAMIRA_SETUP_PROVIDERS,
   NOVAMIRA_SETUP_PROVIDER_LABELS,
   providerLabel,
@@ -243,7 +243,7 @@ async function actionSupport(kind, request) {
   }
 }
 
-test("DEPLOY_PUSH_PROVIDERS is exactly the clients advertising safe envs.push", async () => {
+test("ENVIRONMENT_PUSH_PROVIDERS is exactly the clients advertising safe envs.push", async () => {
   for (const kind of PROVIDER_KINDS) {
     const state = await isolatedStore();
     let supported;
@@ -272,12 +272,12 @@ test("DEPLOY_PUSH_PROVIDERS is exactly the clients advertising safe envs.push", 
       await rm(state.root, { recursive: true, force: true });
     }
     assert.equal(
-      DEPLOY_PUSH_PROVIDERS.has(kind),
+      ENVIRONMENT_PUSH_PROVIDERS.has(kind),
       supported,
       `${kind}: the set and the advertised granular capability disagree`,
     );
   }
-  assert.deepEqual([...DEPLOY_PUSH_PROVIDERS], ["kinsta"]);
+  assert.deepEqual([...ENVIRONMENT_PUSH_PROVIDERS], ["kinsta"]);
 });
 
 test("NOVAMIRA_SETUP_PROVIDERS is run-wp-cli AND observable results", async () => {

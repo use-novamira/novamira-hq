@@ -13,7 +13,7 @@
  * built to make that structural: there is no field on it that could hold one.
  *
  * **What the Go did.** `configResponse` (types.go) carried `Providers`,
- * `DeployPaths`, `SiteProfiles` and `Token` in one struct that handlers passed
+ * `Pushes`, `SiteProfiles` and `Token` in one struct that handlers passed
  * around, and `statusClass` (views.go:1563-1574) lower-cased an arbitrary
  * `string` level and matched it against four groups of words, defaulting to
  * `neutral`. A level nobody had thought of styled itself silently.
@@ -54,10 +54,10 @@
  * connection**, which is the button that exists for exactly that. The failure
  * mode of Go's version is a dashboard that stalls on navigation.
  *
- * **`DeployPathView` carries three derived fields, and one imported type.** Go's
- * `deployPathSummary` (`types.go:20-32`) resolved each environment's display
- * name and domain against the warm sites inventory and asked whether the path's
- * provider could push at all; {@link deployPathView} does the same, taking the
+ * **`PushView` carries three derived fields, and one imported type.** Go's
+ * `pushSummary` (`types.go:20-32`) resolved each environment's display
+ * name and domain against the warm sites inventory and asked whether the push's
+ * provider could push at all; {@link pushView} does the same, taking the
  * resolver as a parameter rather than reaching for a cache. That is the one
  * place this module imports from `src/web/services/` — type-only, and in the
  * views → services direction. The reverse is forbidden: a service that imported
@@ -81,14 +81,17 @@ import {
   isProviderKind,
   PROVIDER_KINDS,
   type CredentialRef,
-  type DeployPath,
+  type SavedPush,
   type HostingProfile,
   type ProviderKind,
 } from "../../config/schema.js";
-import { DEPLOY_PUSH_PROVIDERS, providerLabel } from "../../hosting/types.js";
+import {
+  ENVIRONMENT_PUSH_PROVIDERS,
+  providerLabel,
+} from "../../hosting/types.js";
 // Type-only, and the direction is views → services: a service may never import
 // a view. `EnvResolver` is declared where it is produced so that the resolver
-// `services/sites.ts` builds and the one `deployPathView` consumes cannot drift.
+// `services/sites.ts` builds and the one `pushView` consumes cannot drift.
 import type { EnvResolver } from "../services/sites.js";
 
 export type {
@@ -111,7 +114,7 @@ export type {
 /* -------------------------------------------------------------------------- */
 
 /**
- * The routed pages. `deploy-path-new` and `novamira-setup` are pages in their
+ * The routed pages. `push-new` and `novamira-setup` are pages in their
  * own right but highlight another nav link, see `navLink`. `/sites` is the one
  * unified inventory for hosting environments and profiles owned by the site
  * CLI; there is no separate `site-profiles` page.
@@ -122,8 +125,8 @@ export type DashboardPage =
   | "providers"
   | "sites"
   | "how-to-use"
-  | "deploy-paths"
-  | "deploy-path-new"
+  | "pushes"
+  | "push-new"
   | "novamira-setup"
   | "diagnostics"
   | "settings";
@@ -134,8 +137,8 @@ export const DASHBOARD_PAGES: readonly DashboardPage[] = Object.freeze([
   "providers",
   "sites",
   "how-to-use",
-  "deploy-paths",
-  "deploy-path-new",
+  "pushes",
+  "push-new",
   "novamira-setup",
   "diagnostics",
   "settings",
@@ -196,16 +199,16 @@ export interface HostingProfileView {
 }
 
 /**
- * The eleven `DeployPath` fields plus the three Go's `deployPathSummary`
+ * The eleven `SavedPush` fields plus the three Go's `pushSummary`
  * (`types.go:20-32`) derived; nothing here is sensitive.
  *
  * `sourceEnvName` and `targetEnvName` are **resolved**, not stored: the warm
- * sites inventory's display name wins, the name saved on the deploy path is the
+ * sites inventory's display name wins, the name saved on the push is the
  * fallback, and the raw environment id is the last resort. That is Go's
- * `deployPathSummaries` `resolve` closure (`server.go:1553-1562`), and it is why
- * a path saved before a rename still shows the environment's current name.
+ * `pushSummaries` `resolve` closure (`server.go:1553-1562`), and it is why
+ * a push saved before a rename still shows the environment's current name.
  */
-export interface DeployPathView {
+export interface PushView {
   readonly name: string;
   readonly hostingProfile: string;
   readonly siteId: string;
@@ -219,13 +222,13 @@ export interface DeployPathView {
   readonly pushDb: boolean;
   readonly pushFiles: boolean;
   readonly searchReplace: boolean;
-  /** Whether this path's hosting profile can push environments at all. */
+  /** Whether this push's hosting profile can push environments at all. */
   readonly supported: boolean;
 }
 
 export interface ConfigView {
   readonly profiles: readonly HostingProfileView[];
-  readonly deployPaths: readonly DeployPathView[];
+  readonly pushes: readonly PushView[];
   /** HQ's own version, rendered in the sidebar pill. */
   readonly version: string;
   /** The resolved `config.json` path. A location, never a content. */
@@ -294,50 +297,47 @@ export function hostingProfileView(
  *
  * The argument is a `string` for the same reason {@link providerLabelFor}'s is:
  * it came out of a config file a newer HQ may have written. An unknown provider
- * is not deploy-capable, which is the safe answer — the Deploy button stays
+ * is not push-capable, which is the safe answer — the Push button stays
  * disabled rather than promising something no client implements.
  */
-export function deployPushSupported(provider: string): boolean {
-  return isProviderKind(provider) && DEPLOY_PUSH_PROVIDERS.has(provider);
+export function environmentPushSupported(provider: string): boolean {
+  return isProviderKind(provider) && ENVIRONMENT_PUSH_PROVIDERS.has(provider);
 }
 
-export interface DeployPathViewContext {
+export interface PushViewContext {
   /** From `services/sites.ts`; resolves an environment id against the warm cache. */
   readonly resolve: EnvResolver;
-  /** From {@link deployPushSupported} over the path's hosting profile. */
+  /** From {@link environmentPushSupported} over the saved push's hosting profile. */
   readonly supported: boolean;
 }
 
-export function deployPathView(
-  path: DeployPath,
-  context: DeployPathViewContext,
-): DeployPathView {
+export function pushView(push: SavedPush, context: PushViewContext): PushView {
   const source = context.resolve({
-    profile: path.hostingProfile,
-    siteId: path.siteId,
-    envId: path.sourceEnvId,
-    storedName: path.sourceEnvName,
+    profile: push.hostingProfile,
+    siteId: push.siteId,
+    envId: push.sourceEnvId,
+    storedName: push.sourceEnvName,
   });
   const target = context.resolve({
-    profile: path.hostingProfile,
-    siteId: path.siteId,
-    envId: path.targetEnvId,
-    storedName: path.targetEnvName,
+    profile: push.hostingProfile,
+    siteId: push.siteId,
+    envId: push.targetEnvId,
+    storedName: push.targetEnvName,
   });
   return {
-    name: path.name,
-    hostingProfile: path.hostingProfile,
-    siteId: path.siteId,
-    siteLabel: path.siteLabel,
-    sourceEnvId: path.sourceEnvId,
+    name: push.name,
+    hostingProfile: push.hostingProfile,
+    siteId: push.siteId,
+    siteLabel: push.siteLabel,
+    sourceEnvId: push.sourceEnvId,
     sourceEnvName: source.name,
     sourceEnvDomain: source.domain,
-    targetEnvId: path.targetEnvId,
+    targetEnvId: push.targetEnvId,
     targetEnvName: target.name,
     targetEnvDomain: target.domain,
-    pushDb: path.pushDb,
-    pushFiles: path.pushFiles,
-    searchReplace: path.searchReplace,
+    pushDb: push.pushDb,
+    pushFiles: push.pushFiles,
+    searchReplace: push.searchReplace,
     supported: context.supported,
   };
 }

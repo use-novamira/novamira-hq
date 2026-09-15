@@ -232,7 +232,7 @@ When profile-specific cache lookup misses, `resolveSite()` scans the all-profile
 cache without checking `group.profile === profile`. Provider-scoped site IDs are
 not guaranteed to be globally unique.
 
-Impact: a deploy-path form can show and persist environments belonging to a
+Impact: a push form can show and persist environments belonging to a
 different provider profile while retaining the requested profile name.
 
 ### DEF-012: Environment display lookup ignores profile and site ownership
@@ -243,10 +243,10 @@ References: `src/web/services/sites.ts:511-528`,
 `src/web/server.ts:537-549`, `src/web/views/types.ts:303-331`
 
 `envResolver()` creates one map keyed only by environment ID. A later provider
-with the same environment ID silently replaces an earlier entry. Deploy paths
+with the same environment ID silently replaces an earlier entry. Push
 carry profile and site ownership, but that ownership is not part of lookup.
 
-Impact: existing deploy paths can display another provider's environment name
+Impact: existing pushes can display another provider's environment name
 or domain, and ambiguous IDs can contribute to operations targeting unintended
 resources.
 
@@ -409,7 +409,7 @@ If a process dies after creating a lock but before writing valid JSON, later
 acquisitions receive a parse error. `isRecoverable()` treats only `ENOENT` as
 recoverable in that path, regardless of file age.
 
-Impact: config, credentials, deploy paths, or update state can remain blocked
+Impact: config, credentials, pushes, or update state can remain blocked
 until the lock file is manually removed.
 
 ### DEF-025: Installer smoke tests accept a failed doctor report

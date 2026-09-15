@@ -885,9 +885,9 @@ td.actions .button.link:hover {
 }
 .empty-block p { margin: 0; line-height: 1.55; }
 
-.deploy-dir { display: flex; flex-direction: column; gap: 2px; }
-.deploy-dir-names { font-weight: 600; }
-.deploy-dir-domains { font-family: "JetBrains Mono", monospace; font-size: 11px; color: #6b7178; }
+.push-dir { display: flex; flex-direction: column; gap: 2px; }
+.push-dir-names { font-weight: 600; }
+.push-dir-domains { font-family: "JetBrains Mono", monospace; font-size: 11px; color: #6b7178; }
 
 .provider-sites {
   display: grid;
@@ -1381,8 +1381,8 @@ dd {
 .seg-count { font-size: 11px; font-weight: 700; color: #6b7178; background: #eef1f3; border-radius: 999px; padding: 1px 7px; margin-left: 5px; }
 .seg-btn.on .seg-count { background: rgba(255,255,255,.2); color: #fff; }
 .setup-cta::before { content: "\2193"; margin-right: 4px; font-weight: 700; }
-.deploy-hint { font-size: 11px; font-weight: 700; color: #8a6414; margin-left: 10px; text-decoration: none; }
-.deploy-hint:hover { text-decoration: underline; }
+.push-hint { font-size: 11px; font-weight: 700; color: #8a6414; margin-left: 10px; text-decoration: none; }
+.push-hint:hover { text-decoration: underline; }
 
 @media (max-width: 900px) {
   .how-to-steps {

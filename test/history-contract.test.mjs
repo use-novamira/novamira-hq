@@ -115,7 +115,7 @@ async function configure(f) {
           companyId: "company-1",
         },
       },
-      deployPaths: {},
+      pushes: {},
     }),
     f.security,
   );

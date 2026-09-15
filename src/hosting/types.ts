@@ -220,9 +220,8 @@ export function providerLabel(provider: ProviderKind): string {
  * database/file scope HQ requires even though their adapters retain the raw
  * provider action internally.
  */
-export const DEPLOY_PUSH_PROVIDERS: ReadonlySet<ProviderKind> = Object.freeze(
-  new Set<ProviderKind>(["kinsta"]),
-);
+export const ENVIRONMENT_PUSH_PROVIDERS: ReadonlySet<ProviderKind> =
+  Object.freeze(new Set<ProviderKind>(["kinsta"]));
 
 /**
  * Providers `hosting novamira setup` can run against.

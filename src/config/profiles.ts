@@ -13,31 +13,31 @@ import {
   emptyConfigDocument,
   emptyNameMap,
   parseConfigDocument,
-  parseDeployPath,
+  parseSavedPush,
   parseHostingProfile,
   serializeConfigDocument,
-  validateDeployPathName,
+  validateSavedPushName,
   validateProfileName,
   type ConfigDocument,
-  type DeployPath,
+  type SavedPush,
   type HostingProfile,
 } from "./schema.js";
 
 /**
  * Lock key prefixes. The whole-document key is `CONFIG_LOCK_KEY`, so profile
- * and deploy-path keys are namespaced: a hosting profile that happened to be
+ * and push keys are namespaced: a hosting profile that happened to be
  * named `config` must not collide with the document lock (one
  * `ProfileLockManager` refuses to hold the same key twice).
  */
 export const HOSTING_PROFILE_LOCK_PREFIX = "hosting-profile:";
-export const DEPLOY_PATH_LOCK_PREFIX = "deploy-path:";
+export const PUSH_LOCK_PREFIX = "push:";
 
 export function hostingProfileLockKey(name: string): string {
   return `${HOSTING_PROFILE_LOCK_PREFIX}${name}`;
 }
 
-export function deployPathLockKey(name: string): string {
-  return `${DEPLOY_PATH_LOCK_PREFIX}${name}`;
+export function pushLockKey(name: string): string {
+  return `${PUSH_LOCK_PREFIX}${name}`;
 }
 
 export interface HostingProfileEntry {
@@ -54,7 +54,7 @@ function sortedNames(record: Readonly<Record<string, unknown>>): string[] {
 }
 
 /**
- * Own-property lookup. Profile and deploy-path names are user-chosen and the
+ * Own-property lookup. Profile and push names are user-chosen and the
  * name pattern accepts `toString`, `constructor`, `valueOf` and friends, so a
  * bare `record[name]` could yield an inherited `Object.prototype` function and
  * be mistaken for an existing entry. Maps are built prototype-less as well;
@@ -96,17 +96,12 @@ function profileNotFound(name: string, profiles: readonly string[]): CliError {
   );
 }
 
-function deployPathNotFound(
-  name: string,
-  deployPaths: readonly string[],
-): CliError {
+function pushNotFound(name: string, pushes: readonly string[]): CliError {
   // `profile_not_found` is the taxonomy's exit-2 "named local entry is
-  // missing" code; a mistyped deploy-path name is the same class of mistake.
-  return new CliError(
-    "profile_not_found",
-    `Deploy path ${name} was not found.`,
-    { details: { deployPaths } },
-  );
+  // missing" code; a mistyped push name is the same class of mistake.
+  return new CliError("profile_not_found", `Push ${name} was not found.`, {
+    details: { pushes },
+  });
 }
 
 /**
@@ -227,12 +222,12 @@ export class ConfigStore {
     return this.withHostingProfileLock(name, operation);
   }
 
-  async withDeployPathLock<T>(
+  async withSavedPushLock<T>(
     name: string,
     operation: () => Promise<T>,
   ): Promise<T> {
     return this.runExclusive(
-      deployPathLockKey(validateDeployPathName(name)),
+      pushLockKey(validateSavedPushName(name)),
       operation,
     );
   }
@@ -330,70 +325,68 @@ export class ConfigStore {
     });
   }
 
-  async listDeployPaths(): Promise<DeployPath[]> {
+  async listPushes(): Promise<SavedPush[]> {
     const document = await this.load();
-    return sortedNames(document.deployPaths).flatMap((name) => {
-      const deployPath = lookup(document.deployPaths, name);
-      return deployPath === undefined ? [] : [deployPath];
+    return sortedNames(document.pushes).flatMap((name) => {
+      const push = lookup(document.pushes, name);
+      return push === undefined ? [] : [push];
     });
   }
 
-  async getDeployPath(name: string): Promise<DeployPath | undefined> {
-    return lookup((await this.load()).deployPaths, name);
+  async getSavedPush(name: string): Promise<SavedPush | undefined> {
+    return lookup((await this.load()).pushes, name);
   }
 
-  async requireDeployPath(name: string): Promise<DeployPath> {
+  async requireSavedPush(name: string): Promise<SavedPush> {
     const document = await this.load();
-    const deployPath = lookup(document.deployPaths, name);
-    if (deployPath === undefined)
-      throw deployPathNotFound(name, sortedNames(document.deployPaths));
-    return deployPath;
+    const push = lookup(document.pushes, name);
+    if (push === undefined)
+      throw pushNotFound(name, sortedNames(document.pushes));
+    return push;
   }
 
   /**
-   * Upsert a deploy path, keyed by its own `name`. The referenced hosting
-   * profile is not required to exist: a path may outlive a profile that is
+   * Upsert a push, keyed by its own `name`. The referenced hosting
+   * profile is not required to exist: a saved push may outlive a profile that is
    * about to be recreated, exactly as in the Go dashboard.
    */
-  async upsertDeployPath(deployPath: DeployPath): Promise<DeployPath> {
-    return this.withDeployPathLock(deployPath.name, () =>
-      this.upsertDeployPathWithLockHeld(deployPath),
+  async upsertSavedPush(push: SavedPush): Promise<SavedPush> {
+    return this.withSavedPushLock(push.name, () =>
+      this.upsertSavedPushWithLockHeld(push),
     );
   }
 
-  /** Upsert without taking the deploy-path lock; the caller must hold it. */
-  async upsertDeployPathWithLockHeld(
-    deployPath: DeployPath,
-  ): Promise<DeployPath> {
-    const key = validateDeployPathName(deployPath.name);
-    const validated = parseDeployPath(deployPath, `deployPaths.${key}`, key);
+  /** Upsert without taking the push lock; the caller must hold it. */
+  async upsertSavedPushWithLockHeld(push: SavedPush): Promise<SavedPush> {
+    const key = validateSavedPushName(push.name);
+    const validated = parseSavedPush(push, `pushes.${key}`, key);
     await this.mutate((document) => ({
       document: {
         ...document,
-        deployPaths: withKey(document.deployPaths, key, validated),
+        pushes: withKey(document.pushes, key, validated),
       },
       result: undefined,
     }));
     return validated;
   }
 
-  async removeDeployPath(name: string): Promise<DeployPath> {
-    return this.withDeployPathLock(name, () =>
-      this.removeDeployPathWithLockHeld(name),
+  async removeSavedPush(name: string): Promise<SavedPush> {
+    return this.withSavedPushLock(name, () =>
+      this.removeSavedPushWithLockHeld(name),
     );
   }
 
-  /** Remove without taking the deploy-path lock; the caller must hold it. */
-  async removeDeployPathWithLockHeld(name: string): Promise<DeployPath> {
-    const key = validateDeployPathName(name);
+  /** Remove without taking the push lock; the caller must hold it. */
+  async removeSavedPushWithLockHeld(name: string): Promise<SavedPush> {
+    const key = validateSavedPushName(name);
     return this.mutate((document) => {
-      const existing = lookup(document.deployPaths, key);
+      const existing = lookup(document.pushes, key);
       if (existing === undefined)
-        throw deployPathNotFound(key, sortedNames(document.deployPaths));
+        throw pushNotFound(key, sortedNames(document.pushes));
       return {
         document: {
           ...document,
-          deployPaths: withoutKey(document.deployPaths, key),
+          pushes: withoutKey(document.pushes, key),
         },
         result: existing,
       };

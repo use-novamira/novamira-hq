@@ -75,7 +75,7 @@ import type {
   SiteProfileSummary,
 } from "../../site-profiles.js";
 import {
-  DEPLOY_PUSH_PROVIDERS,
+  ENVIRONMENT_PUSH_PROVIDERS,
   NOVAMIRA_SETUP_PROVIDERS,
   providerLabel,
   type HostingEnvironment,
@@ -330,13 +330,13 @@ function renderSiteItem(
     )}><summary class="site-main"><span class="site-chevron"></span><span class="site-name">${title}</span><span class="site-domain">${domain}</span><span class="site-state"><span class="pill">${String(
       envs.length,
     )} environments</span>${
-      DEPLOY_PUSH_PROVIDERS.has(group.provider)
-        ? html`<a class="deploy-hint"${hrefAttr(
-            url("/deploy-paths/new", {
+      ENVIRONMENT_PUSH_PROVIDERS.has(group.provider)
+        ? html`<a class="push-hint"${hrefAttr(
+            url("/pushes/new", {
               profile: group.profile,
               site: site.id,
             }),
-          )}>+ Deploy path</a>`
+          )}>+ Push</a>`
         : false
     }</span></summary><div class="env-subrows">${envs.map((env) =>
       renderEnvironment(group, site, env, title, view),
@@ -476,7 +476,7 @@ function renderProfileLink(
       (candidate) => candidate.name === name,
     );
     return profile === undefined
-      ? html`<span class="deploy-hint">${name}</span>`
+      ? html`<span class="push-hint">${name}</span>`
       : renderSiteProfileActions(siteProfileRowView(profile), {
           profile: view.profile,
           includeEnvs: view.includeEnvs,

@@ -210,7 +210,7 @@ async function fixture(options = {}) {
     JSON.stringify({
       version: 1,
       hostingProfiles: options.hostingProfiles ?? PROFILES,
-      deployPaths: {},
+      pushes: {},
     }),
     security,
   );

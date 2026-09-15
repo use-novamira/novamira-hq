@@ -65,10 +65,10 @@ import { renderAcknowledgement } from "./views/acknowledgement.js";
 import type { HistoryStore } from "../history/index.js";
 import { createConnectHandler } from "./handlers/connect.js";
 import {
-  createDeployPathRemoveHandler,
-  createDeployPathSaveHandler,
-  createDeployExecutionHandler,
-} from "./handlers/deploy-paths.js";
+  createPushRemoveHandler,
+  createPushSaveHandler,
+  createPushExecutionHandler,
+} from "./handlers/pushes.js";
 import {
   createDiagnosticsCapabilitiesHandler,
   createDiagnosticsDoctorHandler,
@@ -96,7 +96,7 @@ import {
 } from "./handlers/updates.js";
 import { htmlResponse, type DashboardResponse } from "./responses.js";
 import type { DashboardRequest } from "./request.js";
-import type { DeployPathService } from "./services/deploy-paths.js";
+import type { PushService } from "./services/pushes.js";
 import type { ProviderService } from "./services/providers.js";
 import type { SetupJobService } from "./services/setup-jobs.js";
 import type { SitesService } from "./services/sites.js";
@@ -136,13 +136,13 @@ export interface Route {
 /**
  * The dashboard's dependency record. `server.ts` builds it once per process.
  *
- * It grew one field per 6b batch: 6b-2 added `sites`, `deployPaths`,
+ * It grew one field per 6b batch: 6b-2 added `sites`, `pushes`,
  * `integration` and `environment`; 6b-3 added `setupJobs` and `setupPollMs`.
  * Keep it a flat list so a future batch's diff does not collide.
  */
 export interface RouteContext {
   readonly appAcknowledgement?: import("../config/app-acknowledgement.js").AppAcknowledgement;
-  readonly deployExecution?: import("./services/deploy-execution.js").DeployExecutionService;
+  readonly pushExecution?: import("./services/push-execution.js").PushExecutionService;
   readonly mcpConnection?: import("../mcp-connection.js").McpConnectionService;
   readonly history: Pick<HistoryStore, "list">;
   /** Reads `config.json` and projects it into the view model. */
@@ -191,8 +191,8 @@ export interface RouteContext {
   readonly providers: ProviderService;
   /** Provider site inventory, its five-minute cache, and connected state. */
   readonly sites: SitesService;
-  /** Deploy-path validation and persistence. */
-  readonly deployPaths: DeployPathService;
+  /** Saved-push validation and persistence. */
+  readonly pushes: PushService;
   /** The Novamira-setup job registry and its `provisionNovamira` runner. */
   readonly setupJobs: SetupJobService;
   /**
@@ -260,8 +260,8 @@ const PAGE_PATHS: Readonly<Record<string, DashboardPage>> = {
   "/providers": "providers",
   "/sites": "sites",
   "/how-to-use": "how-to-use",
-  "/deploy-paths": "deploy-paths",
-  "/deploy-paths/new": "deploy-path-new",
+  "/pushes": "pushes",
+  "/pushes/new": "push-new",
   "/novamira-setup": "novamira-setup",
   "/diagnostics": "diagnostics",
   "/settings": "settings",
@@ -300,7 +300,7 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
   /**
    * The per-page extras, read from process-local state only.
    *
-   * Neither deploy-path page may trigger a provider call — Go's did not either
+   * Neither push page may trigger a provider call — Go's did not either
    * (`server.go:782`, `:931`) — so both of those are `Map` lookups that return
    * "we have not looked yet" rather than going and looking, and the setup page
    * is a lookup in the job registry. An absent value is a state each renderer
@@ -320,21 +320,21 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
         settingsTab: tab === "updates" || tab === "uninstall" ? tab : "general",
       };
     }
-    if (page === "deploy-paths") {
+    if (page === "pushes") {
       const warm = context.sites.warm(ALL_PROFILES_SENTINEL, true);
       return {
-        deployPaths: {
+        pushes: {
           groups: warm?.groups ?? [],
           cacheWarm: warm !== undefined,
         },
       };
     }
-    if (page === "deploy-path-new") {
+    if (page === "push-new") {
       const profile = (request.query.get("profile") ?? "").trim();
       const siteId = (request.query.get("site") ?? "").trim();
       const site = context.sites.resolveSite(profile, siteId);
       return {
-        deployNew: {
+        pushNew: {
           profile,
           siteId,
           // Go fell back to the raw site id so the page still names its target
@@ -503,15 +503,15 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
     },
     {
       method: "POST",
-      path: "/_dashboard/deploy-paths/plan",
+      path: "/_dashboard/pushes/plan",
       auth: "token",
-      handler: createDeployExecutionHandler(context, "plan"),
+      handler: createPushExecutionHandler(context, "plan"),
     },
     {
       method: "POST",
-      path: "/_dashboard/deploy-paths/apply",
+      path: "/_dashboard/pushes/apply",
       auth: "token",
-      handler: createDeployExecutionHandler(context, "apply"),
+      handler: createPushExecutionHandler(context, "apply"),
     },
     {
       method: "POST",
@@ -585,15 +585,15 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
     },
     {
       method: "POST",
-      path: "/_dashboard/deploy-paths/save",
+      path: "/_dashboard/pushes/save",
       auth: "token",
-      handler: createDeployPathSaveHandler(context),
+      handler: createPushSaveHandler(context),
     },
     {
       method: "POST",
-      path: "/_dashboard/deploy-paths/remove",
+      path: "/_dashboard/pushes/remove",
       auth: "token",
-      handler: createDeployPathRemoveHandler(context),
+      handler: createPushRemoveHandler(context),
     },
     {
       method: "POST",

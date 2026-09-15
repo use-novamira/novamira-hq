@@ -201,7 +201,7 @@ Schema (`config.json`, version 1):
   "version": 1,
   "hostingProfiles": { "<name>": { "provider": "kinsta", "credential": {...},
                                    "companyId": "...", "apiBaseUrl": "..." } },
-  "deployPaths":     { "<name>": { ... } }
+  "pushes":          { "<name>": { ... } }
 }
 ```
 

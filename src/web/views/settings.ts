@@ -51,7 +51,7 @@
  *
  * **The panel's copy loses one word.** Go said "Where Novamira stores your
  * hosting **and site** profiles"; HQ has no site profiles, so it says hosting
- * profiles and deploy paths, which is what the file actually holds. The path is
+ * profiles and pushes, which is what the file actually holds. The path is
  * rendered inside a `<code>`; it is a *location*, never a content, and nothing
  * on this page reads the file.
  */
@@ -196,7 +196,7 @@ export function renderSettingsPage(
   card: UpdateCardView = initialUpdateCardView(view.version),
   tab: SettingsTab = "general",
 ): Html {
-  return html`<section class="page"><header class="page-head"><div><h1>Settings</h1></div></header><nav aria-label="Settings sections" style="display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 12px">${(["general", "updates", "uninstall"] as const).map((key) => html`<a${classAttr("button", key === tab ? "primary" : "secondary")}${hrefAttr(url("/settings", { tab: key }))}${key === tab ? attr("aria-current", "page") : false}>${{ general: "General", updates: "Updates", uninstall: "Uninstalling" }[key]}</a>`)}</nav>${tab === "updates" ? renderUpdateCard(card) : tab === "uninstall" ? renderUninstallHelp() : html`<section class="panel"><div class="panel-head"><div><h2>Configuration file</h2><p>Where Novamira HQ stores your hosting profiles and deploy paths. Read-only for now — not editable from the dashboard yet.</p></div></div><dl class="details-list"><div><dt>Path</dt><dd><code>${view.configFile}</code></dd></div></dl></section>`}</section>`;
+  return html`<section class="page"><header class="page-head"><div><h1>Settings</h1></div></header><nav aria-label="Settings sections" style="display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 12px">${(["general", "updates", "uninstall"] as const).map((key) => html`<a${classAttr("button", key === tab ? "primary" : "secondary")}${hrefAttr(url("/settings", { tab: key }))}${key === tab ? attr("aria-current", "page") : false}>${{ general: "General", updates: "Updates", uninstall: "Uninstalling" }[key]}</a>`)}</nav>${tab === "updates" ? renderUpdateCard(card) : tab === "uninstall" ? renderUninstallHelp() : html`<section class="panel"><div class="panel-head"><div><h2>Configuration file</h2><p>Where Novamira HQ stores your hosting profiles and pushes. Read-only for now — not editable from the dashboard yet.</p></div></div><dl class="details-list"><div><dt>Path</dt><dd><code>${view.configFile}</code></dd></div></dl></section>`}</section>`;
 }
 
 /** Instructions only: no uninstall command or credential action is executed. */

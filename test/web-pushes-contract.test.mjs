@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * The two deploy-path pages and their two routes.
+ * The two push pages and their two routes.
  *
- * The port of Go's deploy-path `server_test.go` cases: the four sentences of
- * `deployPathsStatusLine`, the populated table's columns and its two
- * disabled-Deploy reasons, the environment name and domain resolution against
- * the warm sites cache, the new-path form, and the save and remove handlers.
+ * The port of Go's push `server_test.go` cases: the four sentences of
+ * `pushesStatusLine`, the populated table's columns and its two
+ * disabled-Push reasons, the environment name and domain resolution against
+ * the warm sites cache, the new-push form, and the save and remove handlers.
  *
  * Fully offline and socket-free. The one place the sites cache is warmed is a
  * dispatch of `/_dashboard/sites` against an injected registry of local fakes;
- * both deploy-path pages then read that cache and must issue **no** provider
+ * both push pages then read that cache and must issue **no** provider
  * call of their own, which is asserted by counting the fake's invocations.
  */
 
@@ -89,7 +89,7 @@ const PROFILES = {
   },
 };
 
-const DEPLOY_PATHS = {
+const PUSHES = {
   orphan: {
     name: "orphan",
     hostingProfile: "plain",
@@ -119,7 +119,7 @@ const DEPLOY_PATHS = {
 };
 
 async function fixture(options = {}) {
-  const home = await mkdtemp(join(tmpdir(), "novamira-hq-deploy-"));
+  const home = await mkdtemp(join(tmpdir(), "novamira-hq-push-"));
   roots.push(home);
   const environment = {
     NOVAMIRA_HQ_HOME: home,
@@ -133,7 +133,7 @@ async function fixture(options = {}) {
     JSON.stringify({
       version: 1,
       hostingProfiles: options.hostingProfiles ?? PROFILES,
-      deployPaths: options.deployPaths ?? {},
+      pushes: options.pushes ?? {},
     }),
     security,
   );
@@ -202,18 +202,14 @@ async function fixture(options = {}) {
       connect: async () => ({ kind: "connected" }),
     },
     doctor: async () => {
-      throw new Error("the deploy-path pages run no doctor report");
+      throw new Error("the push pages run no doctor report");
     },
     updates: {
       check: async () => {
-        throw new Error(
-          "the deploy-paths suite must not reach a package registry",
-        );
+        throw new Error("the pushes suite must not reach a package registry");
       },
       install: async () => {
-        throw new Error(
-          "the deploy-paths suite must not run a package manager",
-        );
+        throw new Error("the pushes suite must not run a package manager");
       },
     },
   });
@@ -313,8 +309,7 @@ async function warmCache(server) {
 /* -------------------------------------------------------------------------- */
 
 test("1: the empty page explains why, with Go's four sentences", async () => {
-  const line = async (server) =>
-    unescapeHtml(await page(server, "/deploy-paths"));
+  const line = async (server) => unescapeHtml(await page(server, "/pushes"));
 
   const none = await fixture({ hostingProfiles: {} });
   assert.ok(
@@ -341,7 +336,7 @@ test("1: the empty page explains why, with Go's four sentences", async () => {
   const cold = await fixture();
   assert.ok(
     (await line(cold.server)).includes(
-      "You have a deploy-capable host: prod (Kinsta). Open the Hosting Sites page",
+      "You have a push-capable host: prod (Kinsta). Open the Hosting Sites page",
     ),
   );
   assert.equal(cold.listCalls.length, 0, "a page render lists no sites");
@@ -360,7 +355,7 @@ test("1: the empty page explains why, with Go's four sentences", async () => {
   await warmCache(single.server);
   assert.ok(
     (await line(single.server)).includes(
-      "Your deploy-capable host(s) prod (Kinsta) have no site with more than one environment yet",
+      "Your push-capable host(s) prod (Kinsta) have no site with more than one environment yet",
     ),
   );
 });
@@ -369,23 +364,23 @@ test("1: the empty page explains why, with Go's four sentences", async () => {
 /* 2-3: the populated table                                                   */
 /* -------------------------------------------------------------------------- */
 
-test("2: the table renders Go's five columns, both Deploy reasons and the summary", async () => {
-  const { server } = await fixture({ deployPaths: DEPLOY_PATHS });
+test("2: the table renders Go's five columns, both Push reasons and the summary", async () => {
+  const { server } = await fixture({ pushes: PUSHES });
   await warmCache(server);
-  const markup = await page(server, "/deploy-paths");
+  const markup = await page(server, "/pushes");
   for (const want of [
     "<th>Name</th>",
     "<th>Site</th>",
     "<th>Direction</th>",
     "<th>Pushes</th>",
-    'class="deploy-dir-names"',
-    'class="deploy-dir-domains"',
+    'class="push-dir-names"',
+    'class="push-dir-domains"',
     ">DB, files<",
     ">—<",
-    'title="Review the target and scope before deploying"',
+    'title="Review the target and scope before pushing"',
     'title="This provider does not support environment push"',
-    "/_dashboard/deploy-paths/remove?path=stage-to-live",
-    "Remove deploy path stage-to-live?",
+    "/_dashboard/pushes/remove?push=stage-to-live",
+    "Remove push stage-to-live?",
   ])
     assert.ok(markup.includes(want), want);
   // Go's `</section></section>` bug is not ported: the tags balance.
@@ -396,9 +391,9 @@ test("2: the table renders Go's five columns, both Deploy reasons and the summar
 });
 
 test("3: environments resolve from the warm cache, then the stored name, then the id", async () => {
-  const { server } = await fixture({ deployPaths: DEPLOY_PATHS });
+  const { server } = await fixture({ pushes: PUSHES });
   await warmCache(server);
-  const markup = await page(server, "/deploy-paths");
+  const markup = await page(server, "/pushes");
   // Resolved from the inventory, so a rename in the console shows through.
   assert.ok(markup.includes("env-a display → env-b display"));
   assert.ok(markup.includes("staging.example.com → live.example.com"));
@@ -407,8 +402,8 @@ test("3: environments resolve from the warm cache, then the stored name, then th
   assert.ok(markup.includes("Stored Source → missing-2"));
 
   // With a cold cache both fall back to the stored names.
-  const cold = await fixture({ deployPaths: DEPLOY_PATHS });
-  const coldMarkup = await page(cold.server, "/deploy-paths");
+  const cold = await fixture({ pushes: PUSHES });
+  const coldMarkup = await page(cold.server, "/pushes");
   assert.ok(coldMarkup.includes("stored-a → stored-b"));
   assert.equal(cold.listCalls.length, 0);
 });
@@ -449,7 +444,7 @@ test("3b: environment display resolution keeps profile and site ownership", asyn
       alpha: [ownedSite("shared", "Alpha"), ownedSite("other", "Other")],
       beta: [ownedSite("shared", "Beta")],
     },
-    deployPaths: {
+    pushes: {
       alpha: path("alpha", "alpha", "shared"),
       beta: path("beta", "beta", "shared"),
       other: path("other", "alpha", "other"),
@@ -457,7 +452,7 @@ test("3b: environment display resolution keeps profile and site ownership", asyn
     },
   });
   await warmCache(server);
-  const markup = await page(server, "/deploy-paths");
+  const markup = await page(server, "/pushes");
   for (const owner of ["Alpha", "Beta", "Other"])
     assert.ok(markup.includes(`${owner} source → ${owner} target`), owner);
   assert.ok(
@@ -470,29 +465,29 @@ test("3b: environment display resolution keeps profile and site ownership", asyn
 /* 4-5: the new-path page                                                     */
 /* -------------------------------------------------------------------------- */
 
-test("4: the form renders with the cached environments and highlights Deploy paths", async () => {
+test("4: the form renders with the cached environments and highlights Push", async () => {
   const { server, listCalls } = await fixture();
   await warmCache(server);
   const before = listCalls.length;
-  const markup = await page(server, "/deploy-paths/new?profile=prod&site=s1");
+  const markup = await page(server, "/pushes/new?profile=prod&site=s1");
   assert.equal(listCalls.length, before, "the form reads the warm cache only");
   for (const want of [
-    'data-bind="deployForm.name"',
-    'data-bind="deployForm.sourceEnvId"',
-    'data-bind="deployForm.targetEnvId"',
-    'data-bind="deployForm.pushDb"',
-    'data-bind="deployForm.pushFiles"',
-    'data-bind="deployForm.searchReplace"',
+    'data-bind="pushForm.name"',
+    'data-bind="pushForm.sourceEnvId"',
+    'data-bind="pushForm.targetEnvId"',
+    'data-bind="pushForm.pushDb"',
+    'data-bind="pushForm.pushFiles"',
+    'data-bind="pushForm.searchReplace"',
     '<option value="env-a">env-a display</option>',
-    "/_dashboard/deploy-paths/save",
-    ">Save deploy path</button>",
+    "/_dashboard/pushes/save",
+    ">Save push</button>",
     "Push changes between two environments of Multi Site.",
-    'class="nav-link active" href="/deploy-paths"',
+    'class="nav-link active" href="/pushes"',
   ])
     assert.ok(markup.includes(want), want);
   // The submit sets the three fields the selects do not carry.
-  assert.ok(markup.includes("$deployForm.hostingProfile = "));
-  assert.ok(markup.includes("$deployForm.siteId = "));
+  assert.ok(markup.includes("$pushForm.hostingProfile = "));
+  assert.ok(markup.includes("$pushForm.siteId = "));
 });
 
 test("4b: the form resolves a duplicate site id only within its requested profile", async () => {
@@ -527,37 +522,34 @@ test("4b: the form resolves a duplicate site id only within its requested profil
   });
   await warmCache(server);
 
-  const beta = await page(server, "/deploy-paths/new?profile=beta&site=shared");
+  const beta = await page(server, "/pushes/new?profile=beta&site=shared");
   assert.ok(
     beta.includes("Push changes between two environments of Beta Site."),
   );
   assert.ok(beta.includes('<option value="source">Beta Source</option>'));
   assert.ok(!beta.includes("Alpha Source"));
 
-  const missing = await page(
-    server,
-    "/deploy-paths/new?profile=gamma&site=shared",
-  );
+  const missing = await page(server, "/pushes/new?profile=gamma&site=shared");
   assert.ok(missing.includes("Open this from the Hosting Sites page"));
-  assert.ok(!missing.includes("deployForm.sourceEnvId"));
+  assert.ok(!missing.includes("pushForm.sourceEnvId"));
 });
 
 test("5: without two resolvable environments the page is guidance, not a form", async () => {
   const { server } = await fixture();
   for (const path of [
-    "/deploy-paths/new",
-    "/deploy-paths/new?profile=prod&site=s1",
-    "/deploy-paths/new?profile=prod&site=nope",
+    "/pushes/new",
+    "/pushes/new?profile=prod&site=s1",
+    "/pushes/new?profile=prod&site=nope",
   ]) {
     const markup = await page(server, path);
     assert.ok(markup.includes("Open this from the Hosting Sites page"), path);
-    assert.ok(!markup.includes("deployForm.sourceEnvId"), path);
+    assert.ok(!markup.includes("pushForm.sourceEnvId"), path);
   }
   // A single-environment site is still fewer than two.
   await warmCache(server);
-  const single = await page(server, "/deploy-paths/new?profile=prod&site=s2");
+  const single = await page(server, "/pushes/new?profile=prod&site=s2");
   assert.ok(single.includes("Open this from the Hosting Sites page"));
-  assert.ok(!single.includes("deployForm.sourceEnvId"));
+  assert.ok(!single.includes("pushForm.sourceEnvId"));
 });
 
 /* -------------------------------------------------------------------------- */
@@ -565,8 +557,8 @@ test("5: without two resolvable environments the page is guidance, not a form", 
 /* -------------------------------------------------------------------------- */
 
 function saveRequest(form) {
-  return authorized("/_dashboard/deploy-paths/save", {
-    body: JSON.stringify({ token: TOKEN, deployForm: form }),
+  return authorized("/_dashboard/pushes/save", {
+    body: JSON.stringify({ token: TOKEN, pushForm: form }),
   });
 }
 
@@ -587,17 +579,15 @@ const VALID_FORM = {
 test("6: save persists the eleven fields, resets the form and repaints the page", async () => {
   const { server, store } = await fixture();
   const { recorder } = await sse(server, saveRequest(VALID_FORM));
-  assert.deepEqual((await store.load()).deployPaths["stage-to-live"], {
+  assert.deepEqual((await store.load()).pushes["stage-to-live"], {
     ...VALID_FORM,
   });
   assert.deepEqual(recorder.order, ["main/outer", "nav/outer", "toast/outer"]);
   assert.equal(recorder.signals.length, 1);
-  assert.equal(recorder.signals[0].deployForm.name, "");
-  assert.equal(recorder.signals[0].deployForm.pushDb, false);
-  assert.ok(recorder.find("toast").markup.includes("Deploy path saved."));
-  assert.ok(
-    recorder.find("main").markup.includes('class="main main-deploy-paths"'),
-  );
+  assert.equal(recorder.signals[0].pushForm.name, "");
+  assert.equal(recorder.signals[0].pushForm.pushDb, false);
+  assert.ok(recorder.find("toast").markup.includes("Push saved."));
+  assert.ok(recorder.find("main").markup.includes('class="main main-pushes"'));
 });
 
 test("6b: an incomplete or self-targeting form is a danger notice and no write", async () => {
@@ -605,37 +595,35 @@ test("6b: an incomplete or self-targeting form is a danger notice and no write",
     [{ ...VALID_FORM, name: "" }, "are all required"],
     [{ ...VALID_FORM, siteId: "" }, "are all required"],
     [{ ...VALID_FORM, targetEnvId: "env-a" }, "must differ"],
-    [{ ...VALID_FORM, name: "not a name" }, "Deploy path name must use"],
+    [{ ...VALID_FORM, name: "not a name" }, "Push name must use"],
   ]) {
     const { server, store } = await fixture();
     const { recorder } = await sse(server, saveRequest(form));
     const toast = recorder.find("toast").markup;
     assert.ok(toast.includes("danger"), sentence);
     assert.ok(toast.includes(sentence), `${sentence} :: ${toast}`);
-    assert.deepEqual(Object.keys((await store.load()).deployPaths), []);
+    assert.deepEqual(Object.keys((await store.load()).pushes), []);
     // The operator's values stay in the form: no reset on the failure path.
     assert.equal(recorder.signals.length, 0);
   }
 });
 
-test("7: remove deletes the entry and reports a path that was not there", async () => {
-  const { server, store } = await fixture({ deployPaths: DEPLOY_PATHS });
+test("7: remove deletes the entry and reports a push that was not there", async () => {
+  const { server, store } = await fixture({ pushes: PUSHES });
   const { recorder } = await sse(
     server,
-    authorized("/_dashboard/deploy-paths/remove?path=orphan", {
+    authorized("/_dashboard/pushes/remove?push=orphan", {
       body: JSON.stringify({ token: TOKEN }),
     }),
   );
-  assert.deepEqual(Object.keys((await store.load()).deployPaths), [
-    "stage-to-live",
-  ]);
+  assert.deepEqual(Object.keys((await store.load()).pushes), ["stage-to-live"]);
   assert.ok(recorder.find("toast").markup.includes("orphan removed."));
   assert.deepEqual(recorder.order, ["main/outer", "nav/outer", "toast/outer"]);
 
   // Go silently deleted a missing key and reported success; HQ says so.
   const { recorder: again } = await sse(
     server,
-    authorized("/_dashboard/deploy-paths/remove?path=orphan", {
+    authorized("/_dashboard/pushes/remove?push=orphan", {
       body: JSON.stringify({ token: TOKEN }),
     }),
   );
@@ -645,20 +633,20 @@ test("7: remove deletes the entry and reports a path that was not there", async 
 test("8: both routes refuse a missing or wrong token", async () => {
   const { server, store } = await fixture();
   for (const path of [
-    "/_dashboard/deploy-paths/save",
-    "/_dashboard/deploy-paths/remove?path=orphan",
+    "/_dashboard/pushes/save",
+    "/_dashboard/pushes/remove?push=orphan",
   ]) {
     for (const headers of [{}, { [TOKEN_HEADER]: "9".repeat(64) }]) {
       const response = await server.dispatch(
         request(path, {
           method: "POST",
           headers,
-          body: JSON.stringify({ token: TOKEN, deployForm: VALID_FORM }),
+          body: JSON.stringify({ token: TOKEN, pushForm: VALID_FORM }),
         }),
       );
       assert.equal(response.status, 403, path);
       assert.equal(response.envelope.error.code, "usage_error");
     }
   }
-  assert.deepEqual(Object.keys((await store.load()).deployPaths), []);
+  assert.deepEqual(Object.keys((await store.load()).pushes), []);
 });

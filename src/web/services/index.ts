@@ -20,7 +20,7 @@
  * makes a page impossible to test.
  *
  * **This file was appended to by each 6b batch**, one block per service: 6b-1
- * `providers.ts`, 6b-2 `sites.ts` and `deploy-paths.ts`, 6b-3 `setup-jobs.ts`.
+ * `providers.ts`, 6b-2 `sites.ts` and `pushes.ts`, 6b-3 `setup-jobs.ts`.
  * Keep it a flat list of re-exports so a future batch's diff does not collide.
  */
 
@@ -50,10 +50,10 @@ export {
 } from "./sites.js";
 
 export {
-  createDeployPathService,
-  type DeployPathService,
-  type DeployPathServiceOptions,
-} from "./deploy-paths.js";
+  createPushService,
+  type PushService,
+  type PushServiceOptions,
+} from "./pushes.js";
 
 export {
   createSetupJobService,

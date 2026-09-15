@@ -6,7 +6,7 @@
  *
  * `@novamira/cli` is an **optional** integration: it is never imported, never a
  * runtime, package or peer dependency, and everything else in HQ — hosting
- * inventory, provider actions, deploy paths, provisioning, plugin-installed
+ * inventory, provider actions, pushes, provisioning, plugin-installed
  * status — works with `novamira` absent. Only connected-state detection
  * degrades, and it degrades to the state `unavailable` with a fixed install
  * hint, never to an error.

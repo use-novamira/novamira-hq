@@ -69,7 +69,7 @@ test("MCP page renders dynamic profiles and never claims an external connection"
             credentialAvailable: false,
           },
         ],
-        deployPaths: [],
+        pushes: [],
       },
       config,
     ),

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * The two deploy-path routes: `/_dashboard/deploy-paths/{save,remove}`.
+ * The two push routes: `/_dashboard/pushes/{save,remove}`.
  *
- * **What the Go did.** `handleDashboardDeployPathSave` and `…Remove`
+ * **What the Go did.** `handleDashboardSavedPushSave` and `…Remove`
  * (`server.go:752-828`) each re-checked the method, re-read the signals,
  * re-checked authorization — accepting the token out of the request body as
  * well as the header — loaded the config, mutated the map and saved, then
@@ -13,15 +13,15 @@
  *
  * **What HQ does instead.** The table checks the method and the token before a
  * handler runs, and the token is header-only. The validation and the write are
- * `services/deploy-paths.ts`; the repaint is `patchPage`. A removal of a path
+ * `services/pushes.ts`; the repaint is `patchPage`. Removing a saved push
  * that is not there is `not_found` and says so, because the operator clicked a
  * row, so the row existed a moment ago and the disagreement is worth reporting.
  *
  * **The repaint reads the warm sites cache, never the providers.** The
- * deploy-path list resolves environment names and domains from the inventory
- * (`views/types.ts`'s `deployPathView`), and the empty-state sentence needs to
+ * push list resolves environment names and domains from the inventory
+ * (`views/types.ts`'s `pushView`), and the empty-state sentence needs to
  * know whether the cache is warm at all. Both come from
- * `sites.warm("__all__", true)`, which is a `Map` lookup: saving a deploy path
+ * `sites.warm("__all__", true)`, which is a `Map` lookup: saving a push
  * must not cost a round of provider API calls.
  *
  * **Every handler catches its own errors.** An escaping throw would be rendered
@@ -32,16 +32,16 @@
  */
 
 import { asCliError, CliError } from "../../errors.js";
-import type { DeployConfirmation } from "../services/deploy-execution.js";
+import type { PushConfirmation } from "../services/push-execution.js";
 import type { JsonValue } from "../expr.js";
 import { patchPage } from "../patch.js";
 import { readSignals, type DashboardRequest } from "../request.js";
 import type { DashboardResponse } from "../responses.js";
 import type { RouteContext, RouteHandler } from "../routes.js";
-import { parseDeployForm } from "../signals-input.js";
+import { parsePushForm } from "../signals-input.js";
 import {
   defaultDashboardSignals,
-  defaultDeployFormSignals,
+  defaultPushFormSignals,
   ALL_PROFILES_SENTINEL,
 } from "../signals.js";
 import type { SseStream } from "../sse.js";
@@ -50,36 +50,36 @@ import type { DashboardNotice } from "../views/types.js";
 
 /** The reset both mutations send before the new markup, as Go's `patch` did. */
 function resetFormSignals(): Readonly<Record<string, JsonValue>> {
-  return { deployForm: { ...defaultDeployFormSignals() } };
+  return { pushForm: { ...defaultPushFormSignals() } };
 }
 
 /**
- * Repaint `/deploy-paths`.
+ * Repaint `/pushes`.
  *
  * `loadConfigView` is re-read rather than mutated in place, so the table shows
  * what is actually on disk — including the environment names resolved from the
  * warm inventory, which the posted form did not carry.
  */
-async function patchDeployPathsPage(
+async function patchPushesPage(
   context: RouteContext,
   stream: SseStream,
   notice: DashboardNotice,
   signals?: Readonly<Record<string, JsonValue>>,
-  confirmation?: DeployConfirmation,
+  confirmation?: PushConfirmation,
 ): Promise<void> {
   const view = await context.loadConfigView();
   const warm = context.sites.warm(ALL_PROFILES_SENTINEL, true);
   patchPage(stream, {
-    page: "deploy-paths",
+    page: "pushes",
     notice,
     model: {
-      ...(confirmation ? { deployConfirmation: confirmation } : {}),
+      ...(confirmation ? { pushConfirmation: confirmation } : {}),
       view,
       notice,
       signals: defaultDashboardSignals(context.token, {
         firstProviderKind: PROVIDER_KINDS[0],
       }),
-      deployPaths: {
+      pushes: {
         groups: warm?.groups ?? [],
         cacheWarm: warm !== undefined,
       },
@@ -92,7 +92,7 @@ function danger(message: string): DashboardNotice {
   return { level: "danger", message };
 }
 
-export function createDeployExecutionHandler(
+export function createPushExecutionHandler(
   context: RouteContext,
   action: "plan" | "apply",
 ): RouteHandler {
@@ -101,16 +101,16 @@ export function createDeployExecutionHandler(
     run: async (stream) => {
       try {
         await readSignals(request);
-        if (!context.deployExecution)
+        if (!context.pushExecution)
           throw new CliError(
             "provider_unsupported",
-            "Deploy execution is unavailable.",
+            "Push execution is unavailable.",
           );
         if (action === "plan") {
-          const confirmation = await context.deployExecution.plan(
-            pathParameter(request),
+          const confirmation = await context.pushExecution.plan(
+            pushParameter(request),
           );
-          await patchDeployPathsPage(
+          await patchPushesPage(
             context,
             stream,
             {
@@ -121,17 +121,16 @@ export function createDeployExecutionHandler(
             confirmation,
           );
         } else {
-          await context.deployExecution.apply(
+          await context.pushExecution.apply(
             request.query.get("confirmation") ?? "",
           );
-          await patchDeployPathsPage(context, stream, {
+          await patchPushesPage(context, stream, {
             level: "ok",
-            message:
-              "Safety backup and deploy completed according to the provider.",
+            message: "Push completed according to the provider.",
           });
         }
       } catch (error) {
-        await patchDeployPathsPage(
+        await patchPushesPage(
           context,
           stream,
           danger(asCliError(error).message),
@@ -143,33 +142,31 @@ export function createDeployExecutionHandler(
 }
 
 /* -------------------------------------------------------------------------- */
-/* POST /_dashboard/deploy-paths/save                                         */
+/* POST /_dashboard/pushes/save                                         */
 /* -------------------------------------------------------------------------- */
 
-export function createDeployPathSaveHandler(
-  context: RouteContext,
-): RouteHandler {
+export function createPushSaveHandler(context: RouteContext): RouteHandler {
   return (request): DashboardResponse => ({
     kind: "sse",
     run: async (stream) => {
       try {
-        const input = parseDeployForm(await readSignals(request));
-        await context.deployPaths.upsert(input);
-        await patchDeployPathsPage(
+        const input = parsePushForm(await readSignals(request));
+        await context.pushes.upsert(input);
+        await patchPushesPage(
           context,
           stream,
-          { level: "ok", message: "Deploy path saved." },
+          { level: "ok", message: "Push saved." },
           resetFormSignals(),
         );
       } catch (error) {
         const cliError = asCliError(error);
         context.onDiagnostic?.("dashboard", {
-          path: "/_dashboard/deploy-paths/save",
+          path: "/_dashboard/pushes/save",
           code: cliError.code,
         });
         // No signal patch on the failure path: the operator's values stay in
         // the form so a name collision can be fixed without retyping.
-        await patchDeployPathsPage(context, stream, danger(cliError.message));
+        await patchPushesPage(context, stream, danger(cliError.message));
       }
       stream.close();
     },
@@ -177,36 +174,32 @@ export function createDeployPathSaveHandler(
 }
 
 /* -------------------------------------------------------------------------- */
-/* POST /_dashboard/deploy-paths/remove                                       */
+/* POST /_dashboard/pushes/remove                                       */
 /* -------------------------------------------------------------------------- */
 
-/** `?path=`, trimmed. Go's `strings.TrimSpace(r.URL.Query().Get("path"))`. */
-function pathParameter(request: DashboardRequest): string {
-  return (request.query.get("path") ?? "").trim();
+/** The selected saved push, trimmed before it becomes a store lookup key. */
+function pushParameter(request: DashboardRequest): string {
+  return (request.query.get("push") ?? "").trim();
 }
 
-export function createDeployPathRemoveHandler(
-  context: RouteContext,
-): RouteHandler {
+export function createPushRemoveHandler(context: RouteContext): RouteHandler {
   return (request): DashboardResponse => ({
     kind: "sse",
     run: async (stream) => {
       try {
         await readSignals(request);
-        const removed = await context.deployPaths.remove(
-          pathParameter(request),
-        );
-        await patchDeployPathsPage(context, stream, {
+        const removed = await context.pushes.remove(pushParameter(request));
+        await patchPushesPage(context, stream, {
           level: "ok",
           message: `${removed} removed.`,
         });
       } catch (error) {
         const cliError = asCliError(error);
         context.onDiagnostic?.("dashboard", {
-          path: "/_dashboard/deploy-paths/remove",
+          path: "/_dashboard/pushes/remove",
           code: cliError.code,
         });
-        await patchDeployPathsPage(context, stream, danger(cliError.message));
+        await patchPushesPage(context, stream, danger(cliError.message));
       }
       stream.close();
     },

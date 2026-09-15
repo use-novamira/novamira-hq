@@ -74,7 +74,7 @@ export interface ProviderFormSignals {
   readonly force: boolean;
 }
 
-export interface DeployFormSignals {
+export interface PushFormSignals {
   readonly open: boolean;
   readonly name: string;
   readonly hostingProfile: string;
@@ -136,7 +136,7 @@ export interface DashboardSignals {
   /** The per-process mutation token; the page's only copy of it. */
   readonly token: string;
   readonly providerForm: ProviderFormSignals;
-  readonly deployForm: DeployFormSignals;
+  readonly pushForm: PushFormSignals;
   readonly sites: SiteBrowserSignals;
   readonly cliSites: CliSitesSignals;
   readonly diagnostics: DiagnosticsSignals;
@@ -256,8 +256,8 @@ export function defaultProviderFormSignals(
   };
 }
 
-/** The deploy form's reset state; 6b-3's save handler patches it. */
-export function defaultDeployFormSignals(): DeployFormSignals {
+/** The push form's reset state; 6b-3's save handler patches it. */
+export function defaultPushFormSignals(): PushFormSignals {
   return {
     open: false,
     name: "",
@@ -294,7 +294,7 @@ export function defaultDashboardSignals(
       ...defaultProviderFormSignals(options?.firstProviderKind),
       open: options?.openProviderForm ?? false,
     },
-    deployForm: defaultDeployFormSignals(),
+    pushForm: defaultPushFormSignals(),
     sites: {
       profile: ALL_PROFILES_SENTINEL,
       includeEnvs: true,
@@ -333,7 +333,7 @@ export function toSignalRecord(
   return {
     token: signals.token,
     providerForm: { ...signals.providerForm },
-    deployForm: { ...signals.deployForm },
+    pushForm: { ...signals.pushForm },
     sites: { ...signals.sites },
     cliSites: { ...signals.cliSites },
     diagnostics: { ...signals.diagnostics },

@@ -71,8 +71,8 @@ test("app acknowledgement and MCP verification use token-protected POST routes",
     for (const path of [
       "/_dashboard/app/acknowledge",
       "/_dashboard/mcp/verify",
-      "/_dashboard/deploy-paths/plan",
-      "/_dashboard/deploy-paths/apply",
+      "/_dashboard/pushes/plan",
+      "/_dashboard/pushes/apply",
     ]) {
       assert.equal((await server.dispatch(request(path))).status, 405);
       assert.equal(
@@ -125,7 +125,7 @@ const CONFIG = {
       companyId: "company-1",
     },
   },
-  deployPaths: {},
+  pushes: {},
 };
 
 async function fixture(overrides = {}) {
@@ -208,7 +208,7 @@ function routeContext(overrides = {}) {
   return {
     loadConfigView: async () => ({
       profiles: [],
-      deployPaths: [],
+      pushes: [],
       version: "0.0.0-test",
       configFile: "/dev/null",
     }),
@@ -240,7 +240,7 @@ function routeContext(overrides = {}) {
         ({ envId }) => ({ name: envId, domain: "" }),
       resolveSite: () => undefined,
     },
-    deployPaths: { upsert: async () => "x", remove: async () => "x" },
+    pushes: { upsert: async () => "x", remove: async () => "x" },
     integration: {
       connectionStates: async () => {
         throw new Error("this suite renders no connection state");
@@ -413,8 +413,8 @@ test("#main carries its per-page class, and renderPlaceholderBody is gone", asyn
       ["/providers", "providers"],
       ["/sites", "sites"],
       ["/how-to-use", "how-to-use"],
-      ["/deploy-paths", "deploy-paths"],
-      ["/deploy-paths/new", "deploy-path-new"],
+      ["/pushes", "pushes"],
+      ["/pushes/new", "push-new"],
       ["/novamira-setup", "novamira-setup"],
       ["/diagnostics", "diagnostics"],
       ["/settings", "settings"],
@@ -446,8 +446,8 @@ test("the nav active link follows the two page aliases", async () => {
       ["/sites", "/sites"],
       ["/how-to-use", "/how-to-use"],
       ["/novamira-setup", "/sites"],
-      ["/deploy-paths", "/deploy-paths"],
-      ["/deploy-paths/new", "/deploy-paths"],
+      ["/pushes", "/pushes"],
+      ["/pushes/new", "/pushes"],
       ["/diagnostics", "/diagnostics"],
       ["/settings", "/settings"],
     ]) {
@@ -729,9 +729,9 @@ test("the token appears exactly once, inside the root data-signals", async () =>
     assert.equal(parsed.token, server.token);
     assert.deepEqual(Object.keys(parsed).sort(), [
       "cliSites",
-      "deployForm",
       "diagnostics",
       "providerForm",
+      "pushForm",
       "setup",
       "sites",
       "token",
@@ -970,8 +970,8 @@ test("the build ships all nine assets under dist/web/static", async () => {
 const SHIPPED_ROUTES = [
   "GET /",
   "GET /_dashboard/connect",
-  "GET /_dashboard/deploy-paths/remove",
-  "GET /_dashboard/deploy-paths/save",
+  "GET /_dashboard/pushes/remove",
+  "GET /_dashboard/pushes/save",
   "GET /_dashboard/diagnostics/capabilities",
   "GET /_dashboard/diagnostics/doctor",
   "GET /_dashboard/providers/remove",
@@ -991,8 +991,8 @@ const SHIPPED_ROUTES = [
   "GET /_dashboard/updates/check",
   "GET /_dashboard/updates/install",
   "GET /assets/",
-  "GET /deploy-paths",
-  "GET /deploy-paths/new",
+  "GET /pushes",
+  "GET /pushes/new",
   "GET /diagnostics",
   "GET /history",
   "GET /mcp",
@@ -1004,8 +1004,8 @@ const SHIPPED_ROUTES = [
   "HEAD /assets/",
   "GET /_dashboard/mcp/verify",
   "GET /_dashboard/app/acknowledge",
-  "GET /_dashboard/deploy-paths/plan",
-  "GET /_dashboard/deploy-paths/apply",
+  "GET /_dashboard/pushes/plan",
+  "GET /_dashboard/pushes/apply",
 ];
 
 test("the deferred-route list is empty and the shipped surface is frozen", async () => {
@@ -1238,9 +1238,9 @@ test("a POST SSE route that reads its body still writes its patches", async () =
     const bound = await server.listen({ hostname: "127.0.0.1", port: 0 });
     const response = await rawPost(
       bound.port,
-      "/_dashboard/deploy-paths/save",
+      "/_dashboard/pushes/save",
       { host: `127.0.0.1:${bound.port}`, [TOKEN_HEADER]: TOKEN },
-      JSON.stringify({ deployForm: {} }),
+      JSON.stringify({ pushForm: {} }),
     );
     assert.equal(response.status, 200);
     assert.match(response.headers["content-type"], /text\/event-stream/);

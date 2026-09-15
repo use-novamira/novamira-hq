@@ -103,7 +103,7 @@ ${renderToast(input.notice)}
  * The sidebar: brand, the one "Connect" action, the nav, and the version pill.
  *
  * `view` is taken whole rather than as a version string so that 6b can put the
- * profile and deploy-path counts back without changing the signature.
+ * profile and push counts back without changing the signature.
  */
 export function renderSidebar(
   view: ConfigView,
@@ -130,8 +130,8 @@ export function renderSidebar(
  * `#nav`, one of the three catalogued patch targets.
  *
  * `navLink` marks a link active for its own page plus two aliases:
- * `novamira-setup` highlights Sites, and `deploy-path-new` highlights Deploy
- * paths. `/sites` is the unified hosting and site-CLI inventory. `How to use
+ * `novamira-setup` highlights Sites, and `push-new` highlights Push.
+ * `/sites` is the unified hosting and site-CLI inventory. `How to use
  * it` is HQ's persistent handoff guide;
  * it is a page rather than first-run copy so an operator can return to it after
  * configuring providers and sites.
@@ -144,7 +144,7 @@ export function renderNav(page: DashboardPage, showActive = true): Html {
     : undefined;
   return html`<nav${idAttr("nav")} class="nav" aria-label="Dashboard sections">${[
     navLink(current, "sites", "/sites", "Sites"),
-    navLink(current, "deploy-paths", "/deploy-paths", "Deploy paths"),
+    navLink(current, "pushes", "/pushes", "Push"),
     navLink(current, "providers", "/providers", "Hosting Providers"),
     navLink(current, "mcp", "/mcp", "Connect your AI"),
     navLink(current, "how-to-use", "/how-to-use", "How to use it"),
@@ -162,7 +162,7 @@ function navLink(
   const active =
     current === page ||
     (current === "novamira-setup" && page === "sites") ||
-    (current === "deploy-path-new" && page === "deploy-paths");
+    (current === "push-new" && page === "pushes");
   return html`<a${classAttr("nav-link", active && "active")}${hrefAttr(
     url(href),
   )}>${label}</a>`;

@@ -342,7 +342,7 @@ test("5: storage.permissions fails on a group-readable config file and --fix rep
     config: JSON.stringify({
       version: 1,
       hostingProfiles: {},
-      deployPaths: {},
+      pushes: {},
     }),
   });
   await chmod(paths.configFile, 0o644);
@@ -390,7 +390,7 @@ test("5b: storage.permissions does not report fixed when --fix cannot repair the
     config: JSON.stringify({
       version: 1,
       hostingProfiles: {},
-      deployPaths: {},
+      pushes: {},
     }),
   });
   // A directory where the config *file* must be: chmod cannot turn it into a
@@ -475,7 +475,7 @@ test("8: config.schema warns when absent, fails when malformed, passes when vali
       hostingProfiles: {
         dev: { provider: "kinsta", credential: { type: "env", name: "K" } },
       },
-      deployPaths: {},
+      pushes: {},
     }),
   });
   const validCheck = checkOf(
@@ -484,7 +484,7 @@ test("8: config.schema warns when absent, fails when malformed, passes when vali
   );
   assert.equal(validCheck.status, "pass");
   assert.equal(validCheck.evidence.profileCount, 1);
-  assert.equal(validCheck.evidence.deployPathCount, 0);
+  assert.equal(validCheck.evidence.pushCount, 0);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -504,7 +504,7 @@ const TWO_PROFILES = JSON.stringify({
       companyId: "acme",
     },
   },
-  deployPaths: {},
+  pushes: {},
 });
 
 test("9: profile.credentials warns, never fails, and never carries the secret", async () => {

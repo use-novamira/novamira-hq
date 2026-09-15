@@ -26,7 +26,7 @@
  *
  * **{@link PageModel} grew with those batches too.** 6b-1 gave it what every
  * page needs — the config view, the notice and the signals. 6b-2 added
- * `deployPaths?: WarmSitesView` and `deployNew?: DeployNewView`; 6b-3 added
+ * `pushes?: WarmSitesView` and `pushNew?: PushNewView`; 6b-3 added
  * `setup?: SetupView`. Each is optional and each is declared in the view module
  * that owns it, rather than typed as `unknown` here: a field typed loosely
  * enough to be filled in later is a field a handler can fill in wrongly today.
@@ -37,17 +37,17 @@
 import { CliError } from "../../errors.js";
 import type { McpConfiguration } from "../../mcp-connection.js";
 import { renderMcpPage } from "./mcp.js";
-import { renderDeployConfirmation } from "./deploy-confirmation.js";
-import type { DeployConfirmation } from "../services/deploy-execution.js";
+import { renderPushConfirmation } from "./push-confirmation.js";
+import type { PushConfirmation } from "../services/push-execution.js";
 import { html } from "../html.js";
 import type { Html } from "../html.js";
 import type { DashboardSignals } from "../signals.js";
 import {
-  renderDeployPathNewPage,
-  renderDeployPathsPage,
-  type DeployNewView,
+  renderPushNewPage,
+  renderPushesPage,
+  type PushNewView,
   type WarmSitesView,
-} from "./deploy-paths.js";
+} from "./pushes.js";
 import { renderDiagnosticsPage } from "./diagnostics.js";
 import { renderHistoryPage, type HistoryView } from "./history.js";
 import { renderHowToUsePage } from "./how-to-use.js";
@@ -66,7 +66,7 @@ export interface PageModel {
   readonly settingsTab?: SettingsTab;
   readonly sitesSnapshot?: SitesResult;
   readonly siteConnectSuccess?: SiteConnectSuccessView;
-  readonly deployConfirmation?: DeployConfirmation;
+  readonly pushConfirmation?: PushConfirmation;
   readonly mcp?: McpConfiguration;
   readonly history?: HistoryView;
   readonly view: ConfigView;
@@ -84,13 +84,13 @@ export interface PageModel {
    */
   readonly signals: DashboardSignals;
   /**
-   * The warm sites inventory, for `/deploy-paths`'s status line. Absent means
+   * The warm sites inventory, for `/pushes`'s status line. Absent means
    * "nobody has listed sites in this process yet", which is a state the sentence
    * has words for — not a missing value to be invented.
    */
-  readonly deployPaths?: WarmSitesView;
-  /** The site and environments `/deploy-paths/new` was opened for. */
-  readonly deployNew?: DeployNewView;
+  readonly pushes?: WarmSitesView;
+  /** The site and environments `/pushes/new` was opened for. */
+  readonly pushNew?: PushNewView;
   /**
    * The setup target and, when one exists, the job running against it. Absent
    * renders the "Select an environment from Sites" empty state, which is what
@@ -123,10 +123,10 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
           );
     case "how-to-use":
       return renderHowToUsePage();
-    case "deploy-paths":
-      return html`${model.deployConfirmation ? renderDeployConfirmation(model.deployConfirmation) : false}${renderDeployPathsPage(model.view, model.notice, model.deployPaths)}`;
-    case "deploy-path-new":
-      return renderDeployPathNewPage(model.deployNew);
+    case "pushes":
+      return html`${model.pushConfirmation ? renderPushConfirmation(model.pushConfirmation) : false}${renderPushesPage(model.view, model.notice, model.pushes)}`;
+    case "push-new":
+      return renderPushNewPage(model.pushNew);
     case "novamira-setup":
       return renderSetupPage(model.setup);
     case "diagnostics":

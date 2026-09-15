@@ -4,12 +4,12 @@
 /**
  * The site inventory the dashboard renders: the provider listing, its
  * five-minute cache, the one connected-state round per listing, and the two
- * cache readers the deploy-path pages need.
+ * cache readers the push pages need.
  *
  * **What the Go did.** `*Server` carried `sitesCache map[sitesCacheKey]
  * sitesCacheEntry` behind the same `sync.Mutex` that guarded the config file
  * (`server.go:49`), `listSiteGroups` walked the profiles (`:1436-1481`),
- * `deployPathSummaries` reached into the warm `__all__` entry to resolve
+ * `pushSummaries` reached into the warm `__all__` entry to resolve
  * environment names and domains (`:1534-1588`), and `deployNewViewFromRequest`
  * did the same to find one site (`:920-957`). Every one of those was a method on
  * the HTTP server, so none could be exercised without one.
@@ -108,9 +108,9 @@ export interface EnvDisplay {
 }
 
 /**
- * Go's `resolve` closure inside `deployPathSummaries`: the warm inventory's name
+ * Go's `resolve` closure inside `pushSummaries`: the warm inventory's name
  * and domain for an environment's full ownership tuple, falling back to the
- * name stored on the deploy path and then to the raw id.
+ * name stored on the push and then to the raw id.
  */
 export interface EnvResolution {
   readonly profile: string;
@@ -121,7 +121,7 @@ export interface EnvResolution {
 
 export type EnvResolver = (resolution: EnvResolution) => EnvDisplay;
 
-/** One site found in the warm cache, for the new-deploy-path page. */
+/** One site found in the warm cache, for the new-push page. */
 export interface ResolvedSite {
   readonly label: string;
   readonly envs: readonly HostingEnvironment[];
@@ -449,7 +449,7 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
       group.sites.some((site) => (site.environments?.length ?? 0) > 0),
     );
 
-  /** The warm `__all__` inventory every deploy-path resolution reads. */
+  /** The warm `__all__` inventory every push resolution reads. */
   const warmAll = (): CacheEntry | undefined =>
     read(cacheKey(ALL_PROFILES_SENTINEL, true));
 

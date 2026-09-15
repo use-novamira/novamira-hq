@@ -112,11 +112,11 @@ export function parseProviderForm(
 }
 
 /* -------------------------------------------------------------------------- */
-/* deployForm                                                                 */
+/* pushForm                                                                 */
 /* -------------------------------------------------------------------------- */
 
-/** The eleven persisted `DeployPath` fields; `open` is UI state and is not one. */
-export interface DeployFormInput {
+/** The eleven persisted `SavedPush` fields; `open` is UI state and is not one. */
+export interface PushFormInput {
   readonly name: string;
   readonly hostingProfile: string;
   readonly siteId: string;
@@ -130,10 +130,10 @@ export interface DeployFormInput {
   readonly searchReplace: boolean;
 }
 
-export function parseDeployForm(
+export function parsePushForm(
   signals: Readonly<Record<string, unknown>>,
-): DeployFormInput {
-  const form = subtree(signals, "deployForm");
+): PushFormInput {
+  const form = subtree(signals, "pushForm");
   return {
     name: trimmedString(form, "name"),
     hostingProfile: trimmedString(form, "hostingProfile"),

@@ -49,7 +49,7 @@ const DOCUMENT = {
       credential: storedCredential(STORED_ID),
     },
   },
-  deployPaths: {
+  pushes: {
     "staging-to-production": {
       name: "staging-to-production",
       hostingProfile: "production",
@@ -71,7 +71,7 @@ const DOCUMENT = {
 // asserts the prototype-less shape itself; it is never dropped silently.
 function assertNameMapsAreProtoless(document) {
   assert.equal(Object.getPrototypeOf(document.hostingProfiles), null);
-  assert.equal(Object.getPrototypeOf(document.deployPaths), null);
+  assert.equal(Object.getPrototypeOf(document.pushes), null);
 }
 
 function plainDocument(document) {
@@ -102,7 +102,7 @@ test("a version-1 document round-trips through serialize and parse", () => {
   assert.deepEqual(Object.keys(JSON.parse(serialized)), [
     "version",
     "hostingProfiles",
-    "deployPaths",
+    "pushes",
   ]);
   assert.deepEqual(Object.keys(JSON.parse(serialized).hostingProfiles), [
     "production",
@@ -207,7 +207,7 @@ test("a missing config file loads as an empty version-1 document", async () => {
   try {
     assert.deepEqual(await state.store.load(), emptyConfigDocument());
     assert.deepEqual(await state.store.listHostingProfiles(), []);
-    assert.deepEqual(await state.store.listDeployPaths(), []);
+    assert.deepEqual(await state.store.listPushes(), []);
     await assert.rejects(state.store.requireHostingProfile("production"), {
       code: "profile_not_found",
     });
@@ -342,20 +342,20 @@ test("names that collide with Object.prototype members are not found", async () 
     );
     for (const name of inherited) {
       assert.equal(await state.store.getHostingProfile(name), undefined);
-      assert.equal(await state.store.getDeployPath(name), undefined);
+      assert.equal(await state.store.getSavedPush(name), undefined);
       await assert.rejects(state.store.requireHostingProfile(name), {
         code: "profile_not_found",
       });
       await assert.rejects(state.store.selectHostingProfile(name), {
         code: "profile_not_found",
       });
-      await assert.rejects(state.store.requireDeployPath(name), {
+      await assert.rejects(state.store.requireSavedPush(name), {
         code: "profile_not_found",
       });
       await assert.rejects(state.store.removeHostingProfile(name), {
         code: "profile_not_found",
       });
-      await assert.rejects(state.store.removeDeployPath(name), {
+      await assert.rejects(state.store.removeSavedPush(name), {
         code: "profile_not_found",
       });
     }
@@ -370,7 +370,7 @@ test("names that collide with Object.prototype members are not found", async () 
   }
 });
 
-test("profiles and deploy paths round-trip through the store on owner-only files", async () => {
+test("profiles and pushes round-trip through the store on owner-only files", async () => {
   const state = await isolatedConfig();
   try {
     await state.store.upsertHostingProfile(
@@ -381,9 +381,7 @@ test("profiles and deploy paths round-trip through the store on owner-only files
       "staging",
       DOCUMENT.hostingProfiles.staging,
     );
-    await state.store.upsertDeployPath(
-      DOCUMENT.deployPaths["staging-to-production"],
-    );
+    await state.store.upsertSavedPush(DOCUMENT.pushes["staging-to-production"]);
 
     assert.deepEqual(
       (await state.store.listHostingProfiles()).map(({ name }) => name),
@@ -391,8 +389,8 @@ test("profiles and deploy paths round-trip through the store on owner-only files
     );
     assert.deepEqual(plainDocument(await state.store.load()), DOCUMENT);
     assert.deepEqual(
-      await state.store.requireDeployPath("staging-to-production"),
-      DOCUMENT.deployPaths["staging-to-production"],
+      await state.store.requireSavedPush("staging-to-production"),
+      DOCUMENT.pushes["staging-to-production"],
     );
 
     const onDisk = JSON.parse(await readFile(state.paths.configFile, "utf8"));
@@ -419,11 +417,11 @@ test("profiles and deploy paths round-trip through the store on owner-only files
       code: "profile_not_found",
     });
     assert.deepEqual(
-      await state.store.removeDeployPath("staging-to-production"),
-      DOCUMENT.deployPaths["staging-to-production"],
+      await state.store.removeSavedPush("staging-to-production"),
+      DOCUMENT.pushes["staging-to-production"],
     );
     await assert.rejects(
-      state.store.requireDeployPath("staging-to-production"),
+      state.store.requireSavedPush("staging-to-production"),
       {
         code: "profile_not_found",
       },
@@ -458,7 +456,7 @@ test("unknown fields load and are dropped on the next save", async () => {
     assert.deepEqual(Object.keys(loaded), [
       "version",
       "hostingProfiles",
-      "deployPaths",
+      "pushes",
     ]);
     assert.equal(loaded.hostingProfiles.production.legacyField, undefined);
 

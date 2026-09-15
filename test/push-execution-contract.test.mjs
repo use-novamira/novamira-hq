@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createDeployExecutionService } from "../dist/web/services/deploy-execution.js";
+import { createPushExecutionService } from "../dist/web/services/push-execution.js";
 
 function fixture() {
   const calls = [];
@@ -18,8 +18,8 @@ function fixture() {
     searchReplace: false,
   };
   let now = 1000;
-  const service = createDeployExecutionService(
-    { requireDeployPath: async () => ({ ...path }) },
+  const service = createPushExecutionService(
+    { requireSavedPush: async () => ({ ...path }) },
     {
       clientFromProfile: async () => ({
         provider: "kinsta",
@@ -68,7 +68,7 @@ function fixture() {
   };
 }
 
-test("dashboard deploy plans are read-only, explicit and one-use", async () => {
+test("dashboard push plans are read-only, explicit and one-use", async () => {
   const f = fixture();
   const plan = await f.service.plan("stage-live");
   assert.deepEqual(f.calls, []);
@@ -83,7 +83,7 @@ test("dashboard deploy plans are read-only, explicit and one-use", async () => {
   await f.service.shutdown();
 });
 
-test("changed and expired deploy plans cannot mutate targets", async () => {
+test("changed and expired push plans cannot mutate targets", async () => {
   for (const change of ["change", "expire"]) {
     const f = fixture();
     const plan = await f.service.plan("stage-live");

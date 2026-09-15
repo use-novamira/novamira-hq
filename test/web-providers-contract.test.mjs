@@ -92,7 +92,7 @@ async function fixture(options = {}) {
   await atomicWriteFile(
     paths.configFile,
     JSON.stringify(
-      options.config ?? { version: 1, hostingProfiles: {}, deployPaths: {} },
+      options.config ?? { version: 1, hostingProfiles: {}, pushes: {} },
     ),
     security,
   );
@@ -266,7 +266,7 @@ const PROFILE_CONFIG = {
       apiBaseUrl: "https://api.example.test/v2",
     },
   },
-  deployPaths: {},
+  pushes: {},
 };
 
 /* -------------------------------------------------------------------------- */

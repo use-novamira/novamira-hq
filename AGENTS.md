@@ -192,7 +192,7 @@ calls just to test.
   `src/connection-state.ts` and `src/integration/`'s public surface, and may not
   import `src/web/views/` or `src/web/handlers/`. `services/sites.ts` owns the
   five-minute provider-listing cache and the single `connectionStates` round per
-  listing. The deploy-path pages read the cache **warm only** and must never
+  listing. The push pages read the cache **warm only** and must never
   trigger a provider call, and `/_dashboard/connect` spawns
   `novamira auth login <url>` through `src/integration/` and renders no child
   output, ever. `/sites` is one unified inventory: hosting environments include

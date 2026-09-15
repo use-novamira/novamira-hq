@@ -97,14 +97,14 @@ import {
   type Route,
 } from "./routes.js";
 import { streamSse } from "./sse.js";
-import { createDeployPathService } from "./services/deploy-paths.js";
-import { createDeployExecutionService } from "./services/deploy-execution.js";
+import { createPushService } from "./services/pushes.js";
+import { createPushExecutionService } from "./services/push-execution.js";
 import { createProviderService } from "./services/providers.js";
 import { createSetupJobService } from "./services/setup-jobs.js";
 import { createSitesService } from "./services/sites.js";
 import {
-  deployPathView,
-  deployPushSupported,
+  pushView,
+  environmentPushSupported,
   hostingProfileView,
   type ConfigView,
 } from "./views/types.js";
@@ -514,8 +514,8 @@ export function createDashboardServer(
     },
   });
 
-  const deployPaths = createDeployPathService({ store: dependencies.store });
-  const deployExecution = createDeployExecutionService(
+  const pushes = createPushService({ store: dependencies.store });
+  const pushExecution = createPushExecutionService(
     dependencies.store,
     dependencies.hosting,
   );
@@ -544,21 +544,21 @@ export function createDashboardServer(
         }),
       );
     // Built once per view, not once per path: it walks the warm inventory, and
-    // a config with a dozen deploy paths would otherwise walk it a dozen times.
+    // a config with a dozen pushes would otherwise walk it a dozen times.
     const resolve = sites.envResolver();
-    const deployPathViews = Object.values(document.deployPaths)
+    const pushViews = Object.values(document.pushes)
       .sort((left, right) => left.name.localeCompare(right.name))
       .map((path) =>
-        deployPathView(path, {
+        pushView(path, {
           resolve,
-          supported: deployPushSupported(
+          supported: environmentPushSupported(
             document.hostingProfiles[path.hostingProfile]?.provider ?? "",
           ),
         }),
       );
     return {
       profiles,
-      deployPaths: deployPathViews,
+      pushes: pushViews,
       version: dependencies.version,
       configFile: dependencies.store.configFile,
     };
@@ -569,7 +569,7 @@ export function createDashboardServer(
     ...(dependencies.appAcknowledgement
       ? { appAcknowledgement: dependencies.appAcknowledgement }
       : {}),
-    deployExecution,
+    pushExecution,
     ...(dependencies.mcpConnection
       ? { mcpConnection: dependencies.mcpConnection }
       : {}),
@@ -581,7 +581,7 @@ export function createDashboardServer(
     now: dependencies.now,
     providers,
     sites,
-    deployPaths,
+    pushes,
     setupJobs,
     integration: dependencies.integration,
     environment: dependencies.environment,
@@ -960,7 +960,7 @@ export function createDashboardServer(
     if (shutdown !== undefined) return shutdown;
     shutdown = (async () => {
       const jobsStopped = setupJobs.shutdown();
-      const deploysStopped = deployExecution.shutdown();
+      const pushesStopped = pushExecution.shutdown();
       const server = httpServer;
       if (server !== undefined) {
         // Keep-alive sockets would otherwise hold `close` open until timeout.
@@ -972,7 +972,7 @@ export function createDashboardServer(
         });
       }
       await jobsStopped;
-      await deploysStopped;
+      await pushesStopped;
     })();
     return shutdown;
   };

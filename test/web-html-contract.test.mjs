@@ -116,7 +116,7 @@ const CONFIG = {
       companyId: "company-1",
     },
   },
-  deployPaths: {},
+  pushes: {},
 };
 
 const temporaryRoots = [];
@@ -208,8 +208,8 @@ const CORPUS_PATHS = [
   "/sites",
   "/sites?new=site",
   "/how-to-use",
-  "/deploy-paths",
-  "/deploy-paths/new",
+  "/pushes",
+  "/pushes/new",
   "/novamira-setup?profile=dev&env=env-1",
   "/diagnostics",
   "/settings",
@@ -305,7 +305,7 @@ function routeContext(overrides = {}) {
   return {
     loadConfigView: async () => ({
       profiles: [],
-      deployPaths: [],
+      pushes: [],
       version: "0.0.0-test",
       configFile: "/dev/null",
     }),
@@ -337,7 +337,7 @@ function routeContext(overrides = {}) {
         ({ envId }) => ({ name: envId, domain: "" }),
       resolveSite: () => undefined,
     },
-    deployPaths: {
+    pushes: {
       upsert: async () => "x",
       remove: async () => "x",
     },
@@ -770,12 +770,12 @@ test("20: sites.search is producible and is what sites-filter.js selects on", as
     "sites.search",
     "sites.profile",
     "diagnostics.profile",
-    "deployForm.name",
-    "deployForm.sourceEnvId",
-    "deployForm.targetEnvId",
-    "deployForm.pushDb",
-    "deployForm.pushFiles",
-    "deployForm.searchReplace",
+    "pushForm.name",
+    "pushForm.sourceEnvId",
+    "pushForm.targetEnvId",
+    "pushForm.pushDb",
+    "pushForm.pushFiles",
+    "pushForm.searchReplace",
   ]) {
     assert.notEqual(resolve(path), undefined, path);
     assert.doesNotThrow(() => ds.bind(path), path);
@@ -1092,8 +1092,8 @@ test("29: every routed page carries main, nav and toast", async () => {
       path: "/sites",
       ids: ["main", "nav", "toast", "sites-status", "sites-result"],
     },
-    { path: "/deploy-paths", ids: ["main", "nav", "toast"] },
-    { path: "/deploy-paths/new", ids: ["main", "nav", "toast"] },
+    { path: "/pushes", ids: ["main", "nav", "toast"] },
+    { path: "/pushes/new", ids: ["main", "nav", "toast"] },
     {
       path: "/novamira-setup?profile=dev&env=env-1",
       ids: ["main", "nav", "toast", "setup-work"],
@@ -1257,9 +1257,9 @@ test("33: the root signal object carries exactly the eight keys, and no siteForm
   // Application Password; the assertion below still pins that one absent.
   assert.deepEqual(Object.keys(signals).sort(), [
     "cliSites",
-    "deployForm",
     "diagnostics",
     "providerForm",
+    "pushForm",
     "setup",
     "sites",
     "token",

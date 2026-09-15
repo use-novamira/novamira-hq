@@ -100,7 +100,7 @@ credential, or keychain storage.
 
 ## Configuration
 
-HQ keeps a single `config.json` holding hosting profiles and deploy paths. A
+HQ keeps a single `config.json` holding hosting profiles and pushes. A
 hosting profile names a provider, an optional company or account id, an optional
 API base URL, and a reference to a credential — never the credential itself. A
 credential reference is one of:
@@ -210,8 +210,8 @@ What it does:
   authorizing it on the computer, to opening the AI agent selected during
   Novamira HQ installation. Novamira HQ prepares the connection; the AI work
   happens in the agent.
-- **Deploy paths** — create and remove the environment-to-environment paths.
-  Deploy shows a source/target/scope confirmation, verifies a target safety
+- **Push** — save and run environment-to-environment pushes.
+  Push shows a source/target/scope confirmation, verifies a target safety
   backup, then pushes. A changed or reused confirmation is refused.
 - **Connect your AI** — choose Claude Desktop or ChatGPT Desktop, open only that
   client's setup guide, copy its configuration, test Novamira HQ locally, then
@@ -237,7 +237,7 @@ if it cannot.
 Connected-state detection — whether a provisioned site is actually connected to
 your agent — needs `@novamira/cli` installed alongside HQ, which the installers
 do by default. Without it that one panel reports "unavailable" with an install
-hint; provider inventory, deploy paths, provisioning and everything else are
+hint; provider inventory, pushes, provisioning and everything else are
 unaffected.
 
 ## Desktop app

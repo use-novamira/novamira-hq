@@ -189,7 +189,7 @@ export function profileApiBaseUrl(profile: HostingProfile): string {
 }
 
 /** A saved provider-environment to provider-environment push preset. */
-export interface DeployPath {
+export interface SavedPush {
   readonly name: string;
   readonly hostingProfile: string;
   readonly siteId: string;
@@ -212,11 +212,11 @@ export interface DeployPath {
 export interface ConfigDocument {
   readonly version: typeof CONFIG_FORMAT_VERSION;
   readonly hostingProfiles: Readonly<Record<string, HostingProfile>>;
-  readonly deployPaths: Readonly<Record<string, DeployPath>>;
+  readonly pushes: Readonly<Record<string, SavedPush>>;
 }
 
 /**
- * A prototype-less map. Profile and deploy-path names are user-chosen and pass
+ * A prototype-less map. Profile and push names are user-chosen and pass
  * a pattern that accepts `toString`, `constructor` and every other
  * `Object.prototype` member, so a plain `{}` would resolve those names to
  * inherited functions instead of reporting `profile_not_found`.
@@ -229,7 +229,7 @@ export function emptyConfigDocument(): ConfigDocument {
   return {
     version: CONFIG_FORMAT_VERSION,
     hostingProfiles: emptyNameMap<HostingProfile>(),
-    deployPaths: emptyNameMap<DeployPath>(),
+    pushes: emptyNameMap<SavedPush>(),
   };
 }
 
@@ -344,11 +344,11 @@ export function validateProfileName(name: string): string {
   return name;
 }
 
-export function validateDeployPathName(name: string): string {
+export function validateSavedPushName(name: string): string {
   if (!NAME_PATTERN.test(name)) {
     throw new CliError(
       "usage_error",
-      "Deploy path name must use 1-64 letters, numbers, dots, dashes, or underscores.",
+      "Push name must use 1-64 letters, numbers, dots, dashes, or underscores.",
     );
   }
   return name;
@@ -467,15 +467,15 @@ export function isHostingProfile(value: unknown): value is HostingProfile {
 }
 
 /**
- * Parse a deploy path. `name` may be omitted, in which case the map key is
+ * Parse a push. `name` may be omitted, in which case the map key is
  * used; when present it must match the key, so the record can never disagree
  * with the map it lives in.
  */
-export function parseDeployPath(
+export function parseSavedPush(
   value: unknown,
   path: string,
   key?: string,
-): DeployPath {
+): SavedPush {
   const record = requireRecord(value, path);
   const declared = optionalNonEmptyString(record, "name", path);
   if (declared === undefined && key === undefined)
@@ -483,7 +483,7 @@ export function parseDeployPath(
   const name = declared ?? key ?? "";
   if (key !== undefined && declared !== undefined && declared !== key)
     throw schemaError(`${path}.name`, `must match its key ${key}.`);
-  validateDeployPathName(name);
+  validateSavedPushName(name);
   const sourceEnvId = requireNonEmptyString(record, "sourceEnvId", path);
   const targetEnvId = requireNonEmptyString(record, "targetEnvId", path);
   if (sourceEnvId === targetEnvId)
@@ -505,9 +505,9 @@ export function parseDeployPath(
   };
 }
 
-export function isDeployPath(value: unknown): value is DeployPath {
+export function isSavedPush(value: unknown): value is SavedPush {
   try {
-    parseDeployPath(value, "deployPath");
+    parseSavedPush(value, "push");
     return true;
   } catch {
     return false;
@@ -557,11 +557,11 @@ export function parseConfigDocument(value: unknown): ConfigDocument {
       validateProfileName,
       (entry, entryPath) => parseHostingProfile(entry, entryPath),
     ),
-    deployPaths: parseRecordOf(
-      value.deployPaths,
-      "deployPaths",
-      validateDeployPathName,
-      (entry, entryPath, key) => parseDeployPath(entry, entryPath, key),
+    pushes: parseRecordOf(
+      value.pushes,
+      "pushes",
+      validateSavedPushName,
+      (entry, entryPath, key) => parseSavedPush(entry, entryPath, key),
     ),
   };
 }
@@ -587,7 +587,7 @@ export function serializeConfigDocument(document: ConfigDocument): string {
   const ordered = {
     version: document.version,
     hostingProfiles: sortedEntries(document.hostingProfiles),
-    deployPaths: sortedEntries(document.deployPaths),
+    pushes: sortedEntries(document.pushes),
   };
   return `${JSON.stringify(ordered, null, 2)}\n`;
 }

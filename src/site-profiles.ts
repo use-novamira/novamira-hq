@@ -31,7 +31,7 @@
  * **`expiresAt` is a time, not a credential.** It is the one field on this type
  * that comes out of the site CLI's credential record, and it is carried because
  * it is the fact an operator needs in order to decide whether to reconnect
- * before a deploy. It is an ISO-8601 stamp, opaque to HQ, rendered as text and
+ * before a push. It is an ISO-8601 stamp, opaque to HQ, rendered as text and
  * never parsed for meaning.
  */
 
