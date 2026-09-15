@@ -8,12 +8,12 @@
  *
  * Everything runs offline. The provider is a recording fake implementing
  * `ProviderClient`, keyed by the exact WP-CLI command line so a test can script
- * a whole multi-step setup without ordering guesswork, and the three outbound
- * non-provider requests (resolving `--source novamira-latest`, the
- * `--validate-source` HEAD, and the one unauthenticated compatibility read) go
- * either to a literal `fetch` double or to a loopback `node:http` server. No
- * socket ever leaves 127.0.0.1 and no provider credential exists in this file
- * beyond an obvious placeholder that is asserted never to be printed.
+ * a whole multi-step setup without ordering guesswork, and the two outbound
+ * non-provider requests (the canonical source HEAD and the one unauthenticated
+ * compatibility read) go either to a literal `fetch` double or to a loopback
+ * `node:http` server. No socket ever leaves 127.0.0.1 and no provider credential
+ * exists in this file beyond an obvious placeholder that is asserted never to
+ * be printed.
  *
  * The group is exercised through its own `registerNovamiraCommands` on a
  * throwaway program carrying the same globals the assembled program does, which
@@ -50,6 +50,7 @@ import { PROTECTED_RESOURCE_PATH } from "../dist/provisioning/compatibility.js";
 import {
   ALREADY_INSTALLED_HINT,
   DB_HOST_LOCALHOST_HINT,
+  NOVAMIRA_DOWNLOAD_URL,
 } from "../dist/provisioning/plugin.js";
 import { PHP_VERSION_COMMAND } from "../dist/provisioning/phpcompat.js";
 import {
@@ -685,27 +686,12 @@ test("each --no- flag flips exactly its own option", async () => {
 const originHolder = { value: "" };
 
 test("a default run issues exactly the Phase B sequence and hands off", async () => {
-  // 82 and 83. The whole flow with no flags but `--env`: the alias resolves
-  // through a loopback release API, the zip is HEAD-checked, the site URL is
-  // discovered from `wp option get home`, and the compatibility document is
-  // read from the discovered URL through the real global `fetch`.
+  // 82 and 83. The whole flow with no flags but `--env`: the alias resolves to
+  // the canonical download endpoint, that endpoint is HEAD-checked, the site
+  // URL is discovered from `wp option get home`, and the compatibility
+  // document is read from the discovered URL.
   await withServer(
     (request, response) => {
-      if (request.url === "/latest") {
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end(
-          JSON.stringify({
-            tag_name: "v1.11.1",
-            assets: [
-              {
-                name: "novamira-1.11.1.zip",
-                browser_download_url: `${originHolder.value}/novamira-1.11.1.zip`,
-              },
-            ],
-          }),
-        );
-        return;
-      }
       if (request.url === PROTECTED_RESOURCE_PATH) {
         response.writeHead(200, { "content-type": "application/json" });
         response.end(JSON.stringify(metadataDocument(originHolder.value)));
@@ -715,13 +701,25 @@ test("a default run issues exactly the Phase B sequence and hands off", async ()
     },
     async ({ base, requests }) => {
       originHolder.value = base;
-      const zip = `${base}/novamira-1.11.1.zip`;
+      const sourceChecks = [];
       const client = fakeClient({
-        wpCli: happyScript({ siteUrl: base, host: "127.0.0.1", source: zip }),
+        wpCli: happyScript({
+          siteUrl: base,
+          host: "127.0.0.1",
+          source: NOVAMIRA_DOWNLOAD_URL,
+        }),
       });
       const { run } = harness({
         client,
-        overrides: { latestReleaseApi: `${base}/latest` },
+        overrides: {
+          fetch: async (target, init = {}) => {
+            if (target === NOVAMIRA_DOWNLOAD_URL) {
+              sourceChecks.push({ method: init.method ?? "GET", url: target });
+              return httpResponse({ status: 405 });
+            }
+            return fetch(target, init);
+          },
+        },
       });
 
       const { envelope } = await run(["setup", "--env", "env-abc123"]);
@@ -732,7 +730,7 @@ test("a default run issues exactly the Phase B sequence and hands off", async ()
         PHP_VERSION_COMMAND,
         EXISTING_NOVAMIRA_COMMAND,
         "wp option get siteurl",
-        `wp plugin install ${zip}`,
+        `wp plugin install ${NOVAMIRA_DOWNLOAD_URL}`,
         "wp plugin status novamira",
         "wp plugin activate novamira",
         "wp option get home",
@@ -742,11 +740,10 @@ test("a default run issues exactly the Phase B sequence and hands off", async ()
       for (const command of client.commands())
         assert.doesNotMatch(command, /--activate(-network)?\b/);
 
-      // The outbound requests: resolve, validate, read the document. Nothing
-      // else leaves the process.
+      assert.deepEqual(sourceChecks, [
+        { method: "HEAD", url: NOVAMIRA_DOWNLOAD_URL },
+      ]);
       assert.deepEqual(requests, [
-        { method: "GET", url: "/latest" },
-        { method: "HEAD", url: "/novamira-1.11.1.zip" },
         { method: "GET", url: PROTECTED_RESOURCE_PATH },
       ]);
 
@@ -762,7 +759,7 @@ test("a default run issues exactly the Phase B sequence and hands off", async ()
         url: base,
         plugin: {
           slug: "novamira",
-          source: zip,
+          source: NOVAMIRA_DOWNLOAD_URL,
           version: "1.11.1",
           activated: true,
           network_activated: false,
@@ -1189,20 +1186,16 @@ test("a --url carrying userinfo is refused without repeating it", async () => {
   assert.deepEqual(client.actionRequests, []);
 });
 
-test("a --source that cannot be resolved fails before the provider is touched", async () => {
-  // 93. A5 is deliberately earlier than Go had it: a `--source` typo must be
-  // reported before HQ starts round-tripping the provider.
+test("an unreachable canonical download fails before the provider is touched", async () => {
+  // 93. Source validation is deliberately earlier than Go had it: a download
+  // failure must be reported before HQ starts round-tripping the provider.
   const client = fakeClient();
   const http = routedFetch({
-    "GET https://releases.invalid/latest": httpResponse({ status: 500 }),
-  });
-  const { run } = harness({
-    client,
-    overrides: {
-      fetch: http,
-      latestReleaseApi: "https://releases.invalid/latest",
+    [`HEAD ${NOVAMIRA_DOWNLOAD_URL}`]: () => {
+      throw new Error("ECONNREFUSED");
     },
   });
+  const { run } = harness({ client, overrides: { fetch: http } });
 
   const { envelope } = await run(["setup", "--env", "env-1"]);
 

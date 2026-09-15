@@ -7,11 +7,13 @@
  * `wpPluginInstallCommand` / `wpPluginActivateCommand` in
  * `internal/cli/payloads.go`.
  *
- * Resolving `--source novamira-latest` and HEAD-checking a remote zip are the
- * only outbound requests HQ makes to a host that is neither a hosting provider
- * nor the site being provisioned, and both go through the injected
- * {@link HttpFetch} seam so contract tests stay offline. The HEAD check is a
- * check, never a download: HQ does not fetch the zip, the provider does.
+ * `--source novamira-latest` resolves locally to Novamira's canonical download
+ * endpoint. HEAD-checking that endpoint (or another explicitly supplied remote
+ * source) is the only outbound request HQ makes to a host that is neither a
+ * hosting provider nor the site being provisioned, and it goes through the
+ * injected {@link HttpFetch} seam so contract tests stay offline. The HEAD
+ * check is a check, never a download: HQ does not fetch the zip, the provider
+ * does.
  *
  * Activation is a separate WP-CLI call rather than `wp plugin install
  * --activate`. Go made that choice for `hosting wp plugins install` whenever it
@@ -34,12 +36,7 @@ import { shellJoin } from "../hosting/shell.js";
 import type { OperationStatus } from "../hosting/types.js";
 import { asRecord } from "../json.js";
 import { redactAssociatedText, redactText } from "../output/redact.js";
-import {
-  discardBody,
-  readBoundedText,
-  type HttpFetch,
-  type HttpResponse,
-} from "./http.js";
+import { discardBody, type HttpFetch, type HttpResponse } from "./http.js";
 import {
   contextualize,
   runWpCli,
@@ -57,20 +54,14 @@ export const NOVAMIRA_PLUGIN_SLUG = "novamira";
 /** `--source` alias resolving to the newest Novamira plugin zip. */
 export const NOVAMIRA_LATEST_SOURCE_ALIAS = "novamira-latest";
 
-/** The pre-alias URL, still accepted and resolved the same way. */
-export const NOVAMIRA_LEGACY_ZIP_URL =
-  "https://github.com/use-novamira/novamira/releases/latest/download/novamira.zip";
-
-/** Where the alias is resolved from. Overridable so tests stay offline. */
-export const NOVAMIRA_LATEST_RELEASE_API =
-  "https://api.github.com/repos/use-novamira/novamira/releases/latest";
+/** The sole canonical download source for released Novamira plugin builds. */
+export const NOVAMIRA_DOWNLOAD_URL =
+  "https://license.dynamic.ooo/api/novamira/download";
 
 /** Asset names that count as "the Novamira plugin zip". */
 export const NOVAMIRA_ZIP_ASSET = /^novamira(?:-[0-9][A-Za-z0-9._-]*)?\.zip$/;
 /** Outbound plugin-source checks have one bounded request/read budget. */
 export const PLUGIN_SOURCE_TIMEOUT_MS = 10_000;
-/** 1 MiB. GitHub's release document for one release should be far smaller. */
-export const PLUGIN_RELEASE_MAX_BYTES = 1_048_576;
 
 /** The WP-CLI command the preflight runs, and the one its hint runs. */
 export const PREFLIGHT_COMMAND = "wp option get siteurl";
@@ -107,7 +98,7 @@ export function inferPluginSlug(source: string): string {
   if (source === "") return "";
   if (
     source === NOVAMIRA_LATEST_SOURCE_ALIAS ||
-    source === NOVAMIRA_LEGACY_ZIP_URL
+    source === NOVAMIRA_DOWNLOAD_URL
   )
     return NOVAMIRA_PLUGIN_SLUG;
   if (source.includes("github.com/use-novamira/novamira/"))
@@ -119,33 +110,6 @@ export function inferPluginSlug(source: string): string {
       : "";
   if (/[/:\\]/.test(source) || source.endsWith(".zip")) return "";
   return source;
-}
-
-interface ReleaseAsset {
-  readonly name: string;
-  readonly url: string;
-}
-
-function releaseAssets(release: unknown): readonly ReleaseAsset[] {
-  const record = asRecord(release);
-  const raw = record?.assets;
-  if (!Array.isArray(raw)) return [];
-  const entries = raw as readonly unknown[];
-  const assets: ReleaseAsset[] = [];
-  for (const entry of entries) {
-    const asset = asRecord(entry);
-    if (asset === undefined) continue;
-    const name = asset.name;
-    const url = asset.browser_download_url;
-    if (typeof name === "string" && typeof url === "string" && url !== "")
-      assets.push({ name, url });
-  }
-  return assets;
-}
-
-function releaseTag(release: unknown): string {
-  const tag = asRecord(release)?.tag_name;
-  return typeof tag === "string" ? tag : "";
 }
 
 function pluginRequestTimeout(source: string): CliError {
@@ -195,89 +159,9 @@ async function refusePluginRedirect(
   );
 }
 
-/** Go's `resolveNovamiraLatestZip`. */
-async function resolveNovamiraLatestZip(
-  http: HttpFetch,
-  apiUrl: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  let response;
-  let requestSignal: AbortSignal;
-  try {
-    ({ response, signal: requestSignal } = await boundedPluginRequest(
-      http,
-      apiUrl,
-      { headers: { Accept: "application/vnd.github+json" } },
-      signal,
-    ));
-  } catch (error) {
-    if (error instanceof CliError) throw error;
-    throw new CliError(
-      "network_error",
-      `Failed to resolve the ${NOVAMIRA_LATEST_SOURCE_ALIAS} plugin source.`,
-      { retryable: true, cause: error, details: { source: apiUrl } },
-    );
-  }
-  await refusePluginRedirect(response, apiUrl);
-  if (!response.ok) {
-    await discardBody(response);
-    throw new CliError(
-      "network_error",
-      `Failed to resolve the ${NOVAMIRA_LATEST_SOURCE_ALIAS} plugin source: GitHub returned ${String(response.status)}.`,
-      { retryable: true, details: { source: apiUrl, status: response.status } },
-    );
-  }
-  let release: unknown;
-  try {
-    const text = await readBoundedText(response, PLUGIN_RELEASE_MAX_BYTES);
-    if (text === undefined) {
-      throw new CliError(
-        "schema_validation_failed",
-        `The ${NOVAMIRA_LATEST_SOURCE_ALIAS} release metadata exceeded ${String(PLUGIN_RELEASE_MAX_BYTES)} bytes.`,
-        { details: { source: apiUrl } },
-      );
-    }
-    release = JSON.parse(text) as unknown;
-  } catch (error) {
-    if (error instanceof CliError) throw error;
-    if (signal?.aborted === true) throw signal.reason;
-    if (requestSignal.aborted) throw pluginRequestTimeout(apiUrl);
-    throw new CliError(
-      "schema_validation_failed",
-      `Failed to parse the ${NOVAMIRA_LATEST_SOURCE_ALIAS} release metadata.`,
-      { cause: error, details: { source: apiUrl } },
-    );
-  }
-
-  let fallback = "";
-  for (const asset of releaseAssets(release)) {
-    if (asset.name === "novamira.zip") return asset.url;
-    if (fallback === "" && NOVAMIRA_ZIP_ASSET.test(asset.name))
-      fallback = asset.url;
-  }
-  if (fallback !== "") return fallback;
-  const tag = releaseTag(release);
-  throw new CliError(
-    "not_found",
-    tag === ""
-      ? "The latest Novamira release does not include a novamira zip asset."
-      : `The latest Novamira release ${tag} does not include a novamira zip asset.`,
-    { details: { source: apiUrl } },
-  );
-}
-
-/** Go's `resolvePluginInstallSource`. */
-export async function resolvePluginSource(
-  source: string,
-  http: HttpFetch,
-  latestReleaseApi: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  if (
-    source === NOVAMIRA_LATEST_SOURCE_ALIAS ||
-    source === NOVAMIRA_LEGACY_ZIP_URL
-  )
-    return resolveNovamiraLatestZip(http, latestReleaseApi, signal);
+/** Map every historical official release spelling onto the canonical endpoint. */
+export function resolvePluginSource(source: string): string {
+  if (source === NOVAMIRA_LATEST_SOURCE_ALIAS) return NOVAMIRA_DOWNLOAD_URL;
   return source;
 }
 

@@ -29,10 +29,10 @@
  * optionally validate `--source`, run a DB-backed WP-CLI preflight, dispatch the
  * install, wait for the operation, then activate the plugin in a second WP-CLI
  * call when the provider lets HQ observe WP-CLI results. Resolving
- * `--source novamira-latest` and `--validate-source` are the only outbound
- * requests HQ makes to a host that is not a hosting provider; both go through
- * the injectable `fetch` seam on {@link createWpHandlers} so contract tests stay
- * offline.
+ * `--source novamira-latest` resolves locally to the canonical Novamira
+ * download endpoint. `--validate-source` is the only outbound request HQ makes
+ * to a host that is not a hosting provider; it goes through the injectable
+ * `fetch` seam on {@link createWpHandlers} so contract tests stay offline.
  *
  * Every step of that sequence that is not CLI grammar now lives one layer down,
  * in `src/provisioning/`: source resolution and validation, the preflight and
@@ -57,7 +57,6 @@ import {
 import type { OperationStatus } from "../../hosting/types.js";
 import type { HttpFetch } from "../../provisioning/http.js";
 import {
-  NOVAMIRA_LATEST_RELEASE_API,
   NOVAMIRA_LATEST_SOURCE_ALIAS,
   activateInstalledPlugin,
   inferPluginSlug,
@@ -321,15 +320,13 @@ function assetUpdateAllRequest(
 
 /**
  * Seams for {@link createWpHandlers}; production supplies none. The `fetch`
- * seam and the two source-resolution helpers behind it now live in
+ * seam and the source helpers behind it now live in
  * `src/provisioning/`, which owns everything from "the operator named a source"
  * to "the plugin is active"; this group keeps only what reads a CLI option.
  */
 interface WpCommandOverrides {
   /** Defaults to the global `fetch`. */
   readonly fetch?: HttpFetch;
-  /** Defaults to {@link NOVAMIRA_LATEST_RELEASE_API}. */
-  readonly latestReleaseApi?: string;
 }
 
 function pollBudget(options: WpPluginInstallCommandOptions): PollBudget {
@@ -390,8 +387,6 @@ export function createWpHandlers(
 ): WpHandlers {
   const http: HttpFetch =
     overrides.fetch ?? ((input, init) => fetch(input, init));
-  const latestReleaseApi =
-    overrides.latestReleaseApi ?? NOVAMIRA_LATEST_RELEASE_API;
 
   const runInstall = async (
     client: ProviderClient,
@@ -402,7 +397,7 @@ export function createWpHandlers(
     // the source is reported first regardless of the other options.
     let resolved = options.source ?? "";
     if (resolved !== "") {
-      resolved = await resolvePluginSource(resolved, http, latestReleaseApi);
+      resolved = resolvePluginSource(resolved);
       if (options.validateSource ?? true)
         await validateRemotePluginSource(resolved, http);
     }

@@ -12,10 +12,10 @@
  * `code: message` without `CliError.details`.
  *
  * Fully offline and socket-free. The provider is a recording fake keyed by
- * WP-CLI command line; the three outbound non-provider requests
- * (`novamira-latest` release metadata, the source HEAD, and the one
- * unauthenticated compatibility read) go to an injected `fetch` double. Nothing
- * in this file contacts a provider, a registry or a site.
+ * WP-CLI command line; the two outbound non-provider requests (the canonical
+ * source HEAD and the one unauthenticated compatibility read) go to an injected
+ * `fetch` double. Nothing in this file contacts a provider, a registry or a
+ * site.
  *
  * The progress stream doubles as the suite's synchronisation primitive: the job
  * runs detached from the request that started it, and
@@ -37,7 +37,7 @@ import { createHostingClientFactory } from "../dist/hosting/factory.js";
 import { PROTECTED_RESOURCE_PATH } from "../dist/provisioning/compatibility.js";
 import { PHP_VERSION_COMMAND } from "../dist/provisioning/phpcompat.js";
 import { EXISTING_NOVAMIRA_COMMAND } from "../dist/provisioning/existing.js";
-import { NOVAMIRA_LATEST_RELEASE_API } from "../dist/provisioning/plugin.js";
+import { NOVAMIRA_DOWNLOAD_URL } from "../dist/provisioning/plugin.js";
 import {
   createDashboardServer,
   createSetupJobService,
@@ -47,7 +47,7 @@ const TOKEN = "d".repeat(64);
 const TOKEN_HEADER = "x-novamira-dashboard-token";
 const START = 1_700_000_000_000;
 const SITE_URL = "https://example.com";
-const ZIP_URL = "https://downloads.invalid/novamira.zip";
+const ZIP_URL = NOVAMIRA_DOWNLOAD_URL;
 
 const roots = [];
 const servers = [];
@@ -176,15 +176,7 @@ function fakeFetch() {
   const impl = async (target, init = {}) => {
     const method = init.method ?? "GET";
     calls.push(`${method} ${target}`);
-    if (target === NOVAMIRA_LATEST_RELEASE_API) {
-      return httpResponse({
-        body: {
-          tag_name: "v1.11.1",
-          assets: [{ name: "novamira.zip", browser_download_url: ZIP_URL }],
-        },
-      });
-    }
-    if (target === ZIP_URL) return httpResponse();
+    if (target === ZIP_URL) return httpResponse({ status: 405 });
     if (target === `${SITE_URL}${PROTECTED_RESOURCE_PATH}`)
       return httpResponse({ body: METADATA });
     throw new Error(`unexpected fetch ${method} ${target}`);
@@ -470,7 +462,6 @@ test("3: start runs provisionNovamira, records the job and repaints the page", a
     "wp option update novamira_ai_abilities_domain example.com",
   ]);
   assert.deepEqual(outbound.calls, [
-    `GET ${NOVAMIRA_LATEST_RELEASE_API}`,
     `HEAD ${ZIP_URL}`,
     `GET ${SITE_URL}${PROTECTED_RESOURCE_PATH}`,
   ]);

@@ -104,16 +104,14 @@ export interface NovamiraHandlers {
 
 /**
  * Seams for {@link createNovamiraHandlers}; production supplies none. `fetch`
- * covers both non-provider outbound requests the command can make — resolving
- * `--source novamira-latest` against the release API, and the one
- * unauthenticated compatibility read — so a contract test can exercise the
- * whole sequence offline.
+ * covers both non-provider outbound requests the command can make — validating
+ * the canonical plugin download endpoint and reading the one unauthenticated
+ * compatibility document — so a contract test can exercise the whole sequence
+ * offline.
  */
 export interface NovamiraCommandOverrides {
   /** Defaults to {@link globalHttpFetch}. */
   readonly fetch?: HttpFetch;
-  /** Defaults to the provisioning service's own release API constant. */
-  readonly latestReleaseApi?: string;
   /** Total deadline for the compatibility read. */
   readonly metadataTimeoutMs?: number;
 }
@@ -178,9 +176,6 @@ export function createNovamiraHandlers(
               hostingProfile: entry.name,
               environment: io.env,
               fetch: http,
-              ...(overrides.latestReleaseApi === undefined
-                ? {}
-                : { latestReleaseApi: overrides.latestReleaseApi }),
               ...(overrides.metadataTimeoutMs === undefined
                 ? {}
                 : { metadataTimeoutMs: overrides.metadataTimeoutMs }),

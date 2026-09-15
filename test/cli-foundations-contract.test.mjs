@@ -821,8 +821,7 @@ test("asset update payloads name the plugin or theme collection", async () => {
 test("plugin install builds the WP-CLI command line", async () => {
   const payload = await wpPluginInstallPayload(
     {
-      source:
-        "https://github.com/use-novamira/novamira/releases/latest/download/novamira.zip",
+      source: "https://license.dynamic.ooo/api/novamira/download",
       force: true,
       activate: true,
       ignoreRequirements: true,
@@ -831,7 +830,7 @@ test("plugin install builds the WP-CLI command line", async () => {
   );
   assert.equal(
     payload.wp_command,
-    "wp plugin install https://github.com/use-novamira/novamira/releases/latest/download/novamira.zip --force --ignore-requirements --activate",
+    "wp plugin install https://license.dynamic.ooo/api/novamira/download --force --ignore-requirements --activate",
   );
 });
 

@@ -6,9 +6,8 @@
  * `hosting analytics` (`src/cli/hosting/wp.ts`).
  *
  * Everything runs offline: the provider is a recording fake implementing
- * `ProviderClient`, and the two outbound non-provider requests the plugin
- * install makes (resolving `--source novamira-latest` and `--validate-source`)
- * go to a loopback `node:http` server through the handlers' `fetch` seam.
+ * `ProviderClient`; remote source validation goes through the handlers'
+ * injected `fetch` seam or to a loopback `node:http` server.
  *
  * `program.ts` is not ours to edit during Phase 4, so the grammar is exercised
  * by registering it onto a throwaway program that carries the same globals the
@@ -25,6 +24,7 @@ import {
   registerWpCommands,
 } from "../dist/cli/hosting/wp.js";
 import { createRenderer } from "../dist/output/render.js";
+import { NOVAMIRA_DOWNLOAD_URL } from "../dist/provisioning/plugin.js";
 
 /* -------------------------------------------------------------------------- */
 /* Harness                                                                    */
@@ -1058,100 +1058,43 @@ test("an exhausted polling budget is a retryable timeout", async () => {
 /* wp plugins install: --source resolution and validation                     */
 /* -------------------------------------------------------------------------- */
 
-test("--source novamira-latest resolves to the newest release zip", async () => {
-  // Assigned once the loopback server is listening; the handler only runs after
-  // that, so it can safely close over it.
-  let origin;
-  await withServer(
-    (request, response) => {
-      if (request.url === "/latest") {
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end(
-          JSON.stringify({
-            tag_name: "v1.7.0",
-            assets: [
-              {
-                name: "checksums.txt",
-                browser_download_url: `${origin}/checksums.txt`,
-              },
-              {
-                name: "novamira-1.7.0.zip",
-                browser_download_url: `${origin}/novamira-1.7.0.zip`,
-              },
-            ],
-          }),
-        );
-        return;
-      }
-      response.writeHead(200).end();
+test("--source novamira-latest uses only the canonical download endpoint", async () => {
+  const requests = [];
+  const client = fakeClient({
+    observable: false,
+    wpCli: {
+      [`wp plugin install ${NOVAMIRA_DOWNLOAD_URL} --activate`]: actionResult({
+        operationId: "op-install",
+      }),
     },
-    async ({ base, requests }) => {
-      origin = base;
-      const zipUrl = `${base}/novamira-1.7.0.zip`;
-      const client = fakeClient({
-        observable: false,
-        wpCli: {
-          [`wp plugin install ${zipUrl} --activate`]: actionResult({
-            operationId: "op-install",
-          }),
-        },
-        operations: { "op-install": operationStatus("op-install") },
-      });
-      const { run } = harness({
-        client,
-        overrides: { latestReleaseApi: `${base}/latest` },
-      });
-
-      const { envelope } = await run([
-        "wp",
-        "plugins",
-        "install",
-        "--env",
-        "env-1",
-        "--source",
-        "novamira-latest",
-      ]);
-
-      assert.equal(envelope.ok, true);
-      // The alias is resolved before the command line is built, and the slug is
-      // still inferred as "novamira" from the resolved asset name.
-      assert.equal(
-        client.actionRequests[0].body.wp_command,
-        `wp plugin install ${zipUrl} --activate`,
-      );
-      // The resolution GET and the --validate-source HEAD, in that order.
-      assert.deepEqual(requests, [
-        { method: "GET", url: "/latest" },
-        { method: "HEAD", url: "/novamira-1.7.0.zip" },
-      ]);
+    operations: { "op-install": operationStatus("op-install") },
+  });
+  const { run } = harness({
+    client,
+    overrides: {
+      fetch: async (url, init = {}) => {
+        requests.push({ method: init.method ?? "GET", url });
+        return new Response("", { status: 405, headers: { allow: "GET" } });
+      },
     },
+  });
+
+  const { envelope } = await run([
+    "wp",
+    "plugins",
+    "install",
+    "--env",
+    "env-1",
+    "--source",
+    "novamira-latest",
+  ]);
+
+  assert.equal(envelope.ok, true);
+  assert.equal(
+    client.actionRequests[0].body.wp_command,
+    `wp plugin install ${NOVAMIRA_DOWNLOAD_URL} --activate`,
   );
-});
-
-test("a release without a novamira zip asset is not_found", async () => {
-  await withServer(
-    (request, response) => {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ tag_name: "v1.7.0", assets: [] }));
-    },
-    async ({ base }) => {
-      const { run } = harness({
-        client: fakeClient(),
-        overrides: { latestReleaseApi: `${base}/latest` },
-      });
-      const { envelope } = await run([
-        "wp",
-        "plugins",
-        "install",
-        "--env",
-        "env-1",
-        "--source",
-        "novamira-latest",
-      ]);
-      assert.equal(envelope.error.code, "not_found");
-      assert.match(envelope.error.message, /v1\.7\.0 does not include/);
-    },
-  );
+  assert.deepEqual(requests, [{ method: "HEAD", url: NOVAMIRA_DOWNLOAD_URL }]);
 });
 
 test("--validate-source rejects a remote zip the host will not serve", async () => {

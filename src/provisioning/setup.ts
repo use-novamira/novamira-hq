@@ -61,7 +61,6 @@ import {
 import { connectHandoff, type Handoff } from "./handoff.js";
 import type { HttpFetch } from "./http.js";
 import {
-  NOVAMIRA_LATEST_RELEASE_API,
   NOVAMIRA_LATEST_SOURCE_ALIAS,
   activatePlugin,
   inferPluginSlug,
@@ -145,7 +144,6 @@ export interface NovamiraSetupDependencies {
   readonly environment: InsecureHttpEnvironment;
   /** The one outbound-HTTP seam. Production passes `globalHttpFetch`. */
   readonly fetch: HttpFetch;
-  readonly latestReleaseApi?: string;
   readonly metadataTimeoutMs?: number;
   /** Optional progress channel: the CLI's `renderer.note`, Phase 6's job log. */
   readonly report?: ProgressReporter;
@@ -256,8 +254,6 @@ async function provisionNovamiraSteps(
 ): Promise<NovamiraSetupResult> {
   const { client, hostingProfile, environment } = dependencies;
   const http = dependencies.fetch;
-  const latestReleaseApi =
-    dependencies.latestReleaseApi ?? NOVAMIRA_LATEST_RELEASE_API;
   const report: ProgressReporter = dependencies.report ?? (() => undefined);
   const budget: PollBudget = {
     intervalSeconds: request.intervalSeconds ?? DEFAULT_INTERVAL_SECONDS,
@@ -299,12 +295,7 @@ async function provisionNovamiraSteps(
   // issued when the PHP check fails" property still holds.
   report("info", "Resolving the Novamira plugin source.");
   const source = request.source ?? NOVAMIRA_LATEST_SOURCE_ALIAS;
-  const resolvedSource = await resolvePluginSource(
-    source,
-    http,
-    latestReleaseApi,
-    dependencies.signal,
-  );
+  const resolvedSource = resolvePluginSource(source);
   if (request.validateSource ?? true)
     await validateRemotePluginSource(resolvedSource, http, dependencies.signal);
   report("ok", "Plugin source resolved.");

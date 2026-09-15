@@ -48,8 +48,8 @@ import {
   handoffHuman,
 } from "../dist/provisioning/handoff.js";
 import {
+  NOVAMIRA_DOWNLOAD_URL,
   NOVAMIRA_LATEST_SOURCE_ALIAS,
-  PLUGIN_RELEASE_MAX_BYTES,
   resolvePluginSource,
   validateRemotePluginSource,
 } from "../dist/provisioning/plugin.js";
@@ -931,41 +931,16 @@ test("an attempt deadline that expires mid-body is a retryable timeout", async (
 /* Plugin source network policy                                                */
 /* -------------------------------------------------------------------------- */
 
-test("plugin release lookup is bounded and refuses redirects", async () => {
-  const api = "https://api.example/releases/latest";
-  const http = scriptedFetch(() => redirect("https://cdn.example/latest"));
-  const error = await raised(
-    () => resolvePluginSource(NOVAMIRA_LATEST_SOURCE_ALIAS, http, api),
-    "release redirect",
+test("novamira-latest resolves locally to the sole canonical download URL", () => {
+  assert.equal(
+    resolvePluginSource(NOVAMIRA_LATEST_SOURCE_ALIAS),
+    NOVAMIRA_DOWNLOAD_URL,
   );
-
-  assert.equal(error.code, "network_error");
-  assert.match(error.message, /redirects are not permitted/);
-  assert.equal(http.calls.length, 1);
-  assert.equal(http.calls[0].init.redirect, "manual");
-  assert.ok(http.calls[0].init.signal instanceof AbortSignal);
-});
-
-test("plugin release metadata is rejected past its body ceiling", async () => {
-  const api = "https://api.example/releases/latest";
-  let cancelled = false;
-  const body = new ReadableStream({
-    pull(controller) {
-      controller.enqueue(new Uint8Array(64 * 1024));
-    },
-    cancel() {
-      cancelled = true;
-    },
-  });
-  const http = scriptedFetch(() => ({ ...response(), body }));
-  const error = await raised(
-    () => resolvePluginSource(NOVAMIRA_LATEST_SOURCE_ALIAS, http, api),
-    "oversized release",
+  assert.equal(
+    resolvePluginSource(NOVAMIRA_DOWNLOAD_URL),
+    NOVAMIRA_DOWNLOAD_URL,
   );
-
-  assert.equal(error.code, "schema_validation_failed");
-  assert.match(error.message, new RegExp(String(PLUGIN_RELEASE_MAX_BYTES)));
-  assert.equal(cancelled, true);
+  assert.equal(resolvePluginSource("another-plugin"), "another-plugin");
 });
 
 test("remote plugin HEAD validation is bounded and refuses redirects", async () => {
@@ -987,6 +962,14 @@ test("remote plugin HEAD validation is bounded and refuses redirects", async () 
   assert.equal(http.calls[0].url, source);
   assert.equal(error.message.includes("source-password"), false);
   assert.equal(error.message.includes("signed-source"), false);
+});
+
+test("the canonical download endpoint may reject HEAD without failing validation", async () => {
+  const http = scriptedFetch(() => response({ status: 405 }));
+  await validateRemotePluginSource(NOVAMIRA_DOWNLOAD_URL, http);
+  assert.equal(http.calls.length, 1);
+  assert.equal(http.calls[0].url, NOVAMIRA_DOWNLOAD_URL);
+  assert.equal(http.calls[0].init.method, "HEAD");
 });
 
 /* -------------------------------------------------------------------------- */
