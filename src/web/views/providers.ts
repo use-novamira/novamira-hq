@@ -174,7 +174,10 @@ const PROVIDER_FORM_META_FALLBACK: Readonly<Record<string, string>> = {
 };
 
 const PROVIDER_LABEL_META: JsonValue = Object.fromEntries(
-  PROVIDER_KINDS.map((kind) => [kind, { label: providerLabel(kind) }]),
+  PROVIDER_KINDS.map((kind) => [
+    kind,
+    { label: providerLabel(kind), profilePlaceholder: `e.g. my-${kind}` },
+  ]),
 );
 
 /** `(<table>[$providerForm.provider]?.<field> || "<fallback>")`. */
@@ -193,6 +196,15 @@ function selectedProviderLabel(): Expr {
     "providerForm.provider",
     "label",
     "Hosting provider",
+  );
+}
+
+function selectedProviderProfilePlaceholder(): Expr {
+  return lookupOr(
+    PROVIDER_LABEL_META,
+    "providerForm.provider",
+    "profilePlaceholder",
+    "e.g. my-hosting-account",
   );
 }
 
@@ -411,9 +423,9 @@ export function renderProviderForm(open: boolean): Html {
     returnToProviderChoice(),
   )}>Change provider</button></div><div class="form-grid"><label><span>Profile name</span><input${idAttr(
     "profile",
-  )} type="text"${ds.bind(
-    "providerForm.profile",
-  )} placeholder="e.g. production" required><small class="field-help">A local name used to identify this hosting account in Novamira HQ.</small></label><label><span>Credential</span><input${idAttr(
+  )} type="text"${ds.bind("providerForm.profile")}${ds.attrs({
+    placeholder: selectedProviderProfilePlaceholder(),
+  })} required><small class="field-help">A local name used to identify this hosting account in Novamira HQ.</small></label><label><span>Credential</span><input${idAttr(
     "credential-value",
   )} type="password"${ds.bind(
     "providerForm.credentialValue",
@@ -427,7 +439,7 @@ export function renderProviderForm(open: boolean): Html {
     placeholder: meta("companyPlaceholder"),
   })}><small class="field-help"${ds.text(
     meta("companyHelp"),
-  )}></small></label></div><aside class="local-storage-note"><strong>Stored on this device</strong><span>Profile settings stay in Novamira HQ's local storage. The credential uses the operating system's credential store when available. Otherwise Novamira HQ warns before using an owner-only local file; that fallback is not encrypted by Novamira HQ.</span></aside><div class="button-row"><button class="button primary" type="submit">Save profile</button><button class="button secondary" type="button"${ds.on(
+  )}></small></label></div><aside class="local-storage-note"><strong>Stored on this device</strong><span>Novamira HQ never sends this information to Novamira servers; it uses the credential locally to contact your hosting provider directly. The credential uses the operating system's credential store when available. Otherwise Novamira HQ warns before using an owner-only local file; that fallback is not encrypted by Novamira HQ.</span></aside><div class="button-row"><button class="button primary" type="submit">Save profile</button><button class="button secondary" type="button"${ds.on(
     "click",
     resetProviderForm(false),
   )}>Cancel</button></div></section></form>`;

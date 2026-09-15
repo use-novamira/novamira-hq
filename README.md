@@ -195,10 +195,11 @@ What it does:
 - **Hosting Providers** — add, edit and remove provider profiles, and check a
   profile's API credential. New accounts choose a randomly ordered provider
   first, then enter its account details. Configuration stays on the user's
-  device. The credential is posted once and handed to the OS credential store
-  when available; the owner-only local file fallback is not OS-encrypted and
-  produces a warning. The page only ever shows the reference (`env:NAME`,
-  `stored:ID`), never a value.
+  device and is never sent to Novamira servers; Novamira HQ uses the credential
+  locally to contact the hosting provider directly. The credential is posted
+  once and handed to the OS credential store when available; the owner-only
+  local file fallback is not OS-encrypted and produces a warning. The page only
+  ever shows the reference (`env:NAME`, `stored:ID`), never a value.
 - **Sites** — browse hosting sites and Novamira CLI profiles in one list. A CLI
   profile matched to a hosting environment appears only on that environment;
   unmatched profiles appear once under **CLI only**. The list exposes credential

@@ -1211,8 +1211,10 @@ form to itself and no page reloads.
   A new account is configured in two local steps: choose from a freshly shuffled
   provider list first, then enter the profile name and provider-specific account
   details. The second step states that configuration stays on the device, that
-  secrets use the OS credential store when available, and that the owner-only
-  unencrypted file fallback produces a warning.
+  it is not sent to Novamira servers, that provider credentials are used locally
+  for direct provider API calls, that secrets use the OS credential store when
+  available, and that the owner-only unencrypted file fallback produces a
+  warning.
   Credential
   *references* are rendered, never values; there is no field, column or details
   row that could hold a secret.
