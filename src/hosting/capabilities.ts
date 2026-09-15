@@ -8,7 +8,7 @@
  * Provider APIs have broader surfaces than HQ. Capability output therefore
  * uses an explicit public allowlist: provider-native and newly-added adapter
  * operations remain private until HQ deliberately adopts them here. The rule
- * sits below CLI, dashboard, MCP and the guarded environment-push workflow so
+ * sits below CLI, dashboard, MCP and the environment-push operation so
  * every caller sees the same fail-closed public contract.
  */
 

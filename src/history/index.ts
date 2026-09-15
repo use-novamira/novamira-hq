@@ -175,13 +175,9 @@ function parseEntry(value: unknown): HistoryEntry {
     throw storageError();
   if (
     row.workflowId !== undefined &&
-    (!(
-      [
-        "novamira-setup",
-        "environment-push",
-        "backup-restore",
-      ] as readonly unknown[]
-    ).includes(row.workflowKind) ||
+    (!(["novamira-setup", "backup-restore"] as readonly unknown[]).includes(
+      row.workflowKind,
+    ) ||
       !(["running", "succeeded", "failed"] as readonly unknown[]).includes(
         row.workflowStatus,
       ))

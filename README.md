@@ -211,8 +211,9 @@ What it does:
   Novamira HQ installation. Novamira HQ prepares the connection; the AI work
   happens in the agent.
 - **Push** — save and run environment-to-environment pushes.
-  Push shows a source/target/scope confirmation, verifies a target safety
-  backup, then pushes. A changed or reused confirmation is refused.
+  Push shows a source/target/scope confirmation, then invokes the provider's
+  native push operation. It does not create a separate backup. A changed or
+  reused confirmation is refused.
 - **Connect your AI** — choose Claude Desktop or ChatGPT Desktop, open only that
   client's setup guide, copy its configuration, test Novamira HQ locally, then
   confirm the external connection in the AI client itself.
@@ -397,10 +398,12 @@ WP-CLI passthrough, no domain or DNS mutation, and no SSH/SFTP tool.
 Environment push is two-step: `hosting_environment_push_plan` requires an
 explicit database, all-files, or file-list scope and returns a five-minute,
 session-local, one-use confirmation ID; `hosting_environment_push_apply` consumes
-it and creates a completed safety backup of the target before starting the push.
+it and invokes only the provider's native push operation. Novamira HQ does not
+combine a separate backup and push into a workflow; any automatic backup is part
+of the provider's own behavior.
 Tool inputs never accept provider credential values; credentials continue to
 resolve from the HQ profile's configured environment, file, or credential store
-reference. The safe granular push contract is currently available on Kinsta;
+reference. The granular push contract is currently available on Kinsta;
 Rocket.net's all-or-nothing publish and Cloudways' provider-native sync remain
 unexposed. The MCP server retains HQ's WordPress-site boundary rule.
 

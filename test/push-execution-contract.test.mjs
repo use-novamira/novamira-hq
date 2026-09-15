@@ -23,10 +23,7 @@ function fixture() {
     {
       clientFromProfile: async () => ({
         provider: "kinsta",
-        read: async () => [
-          { name: "envs.push", supported: true },
-          { name: "backups.create", supported: true },
-        ],
+        read: async () => [{ name: "envs.push", supported: true }],
         listEnvironments: async () => [
           { id: "source", displayName: "Stage" },
           { id: "target", displayName: "Live" },
@@ -77,7 +74,7 @@ test("dashboard push plans are read-only, explicit and one-use", async () => {
   await f.service.apply(plan.id);
   assert.deepEqual(
     f.calls.map((call) => call.kind ?? call.operationId),
-    ["create-backup", "create-backup", "push-environment", "push-environment"],
+    ["push-environment", "push-environment"],
   );
   await assert.rejects(f.service.apply(plan.id), { code: "not_found" });
   await f.service.shutdown();

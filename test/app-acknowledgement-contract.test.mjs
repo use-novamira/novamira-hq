@@ -40,6 +40,8 @@ test("the app explains autonomous activation, PHP and the separate CLI/MCP polic
   for (const value of [
     "execute PHP",
     "without asking you again",
+    "does not create a separate Novamira HQ backup",
+    "Backup restore remains recovery-only",
     "command line and MCP do not require",
     "I understand and accept",
     "/_dashboard/app/acknowledge",

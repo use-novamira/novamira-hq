@@ -407,7 +407,7 @@ test("maintenance and provisioning are fixed typed mutations", async () => {
   assert.equal(messages[2].result.isError, undefined);
 });
 
-test("deploy uses a one-use plan and backs up the target before push", async () => {
+test("push uses a one-use plan and invokes only the provider-native push", async () => {
   const { messages, calls } = await session(
     [
       initialize,
@@ -437,7 +437,7 @@ test("deploy uses a one-use plan and backs up the target before push", async () 
   );
   const planned = JSON.parse(messages[1].result.content[0].text);
   assert.equal(planned.confirmationId, "fixed-confirmation-id");
-  assert.equal(planned.plan.safetyBackup, "required");
+  assert.ok(!("safetyBackup" in planned.plan));
   assert.equal(messages[2].result.isError, undefined);
   assert.equal(messages[3].result.isError, true);
   assert.equal(
@@ -450,11 +450,6 @@ test("deploy uses a one-use plan and backs up the target before push", async () 
     { listEnvironments: "site-1" },
     { kind: "capabilities" },
     { listEnvironments: "site-1" },
-    {
-      kind: "create-backup",
-      envId: "env-target",
-      body: { tag: "novamira-hq pre-push safety backup" },
-    },
     {
       kind: "push-environment",
       siteId: "site-1",
@@ -471,7 +466,7 @@ test("deploy uses a one-use plan and backs up the target before push", async () 
   ]);
 });
 
-test("deploy rejects an empty implicit scope before any mutation", async () => {
+test("push rejects an empty implicit scope before any mutation", async () => {
   const { messages, calls } = await session(
     [
       initialize,

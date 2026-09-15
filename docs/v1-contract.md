@@ -448,17 +448,18 @@ self-update, invoke arbitrary provider WP-CLI, manage domains or DNS, or manage
 SSH/SFTP access. Unknown tools are neither advertised nor callable by name. Credentials still come only from configured references, never
 an MCP credential argument.
 
-Environment push is a two-call transaction. The plan call requires different
+Environment push is a two-call confirmation flow. The plan call requires different
 source and target environments plus at least one positive scope: database, all
 files, or a non-empty explicit file list. All-files and explicit files are
 mutually exclusive, and search/replace requires database. It verifies the
-provider advertises both `envs.push` and `backups.create`, resolves both
+provider advertises `envs.push`, resolves both
 environment IDs under the named site, and returns a session-local random
 confirmation ID expiring after five minutes. Apply consumes that ID before any
-provider request, so it is one-use even after failure; it creates a backup of the
-target and requires a verifiable operation ID and positive completion evidence,
-then performs and likewise awaits the push. Apply revalidates provider support
-and environment membership. Missing or synthetic evidence stops the workflow.
+provider request, so it is one-use even after failure; it invokes the provider's
+native push operation and awaits its completion when the provider returns an
+operation ID. Apply revalidates provider support and environment membership.
+Novamira HQ does not create a separate backup or compose backup and push into a
+workflow; any automatic backup is part of the provider's own push contract.
 
 Backup restore is another two-call transaction. Plan requires the target
 environment, a non-empty backup id, and an explicit `allContent: true`; Kinsta
@@ -623,9 +624,9 @@ be given. `hosting activity list --api-key` names a provider-side API key
 requires `--site`, `--source-env`, `--target-env`, and at least one of `--db`,
 `--all-files`, or repeatable `--file`. `--all-files` and `--file` cannot be
 combined; `--search-replace` requires `--db`. HQ confirms both environments
-exist beneath the site, requires provider support for push and backup creation,
-creates and waits for a target safety backup, then starts and awaits the push.
-Kinsta is the only provider currently advertising this safe granular contract;
+exist beneath the site, requires provider support for push, then starts and
+awaits the provider's native push operation. It does not create a separate
+backup. Kinsta is the only provider currently advertising this granular contract;
 Rocket.net's all-or-nothing staging publish and Cloudways' provider-native sync
 are not implemented by their HQ adapters.
 
@@ -1237,9 +1238,10 @@ form to itself and no page reloads.
 - **Push** (`/pushes`, `/pushes/new`) — the saved environment pushes
   with their resolved environment names and domains, and the creation form.
   Push prepares a five-minute, one-use confirmation showing source, target
-  and positive scope. Apply rejects changed pushes and uses the shared verified
-  safety-backup/push workflow. Neither page load issues a provider call: both
-  read the warm inventory only; explicit Plan and Apply actions contact providers.
+  and positive scope. Apply rejects changed pushes and invokes only the provider's
+  native push operation; it does not create a separate backup. Neither page load
+  issues a provider call: both read the warm inventory only; explicit Plan and
+  Apply actions contact providers.
 - **Novamira Setup** (`/novamira-setup`) — the target panel, the AI-Abilities
   toggle and Start button, the live event log, and, when a run has finished, what
   landed on the site plus the `novamira auth login` handoff. `?job=<id>` reopens
@@ -1508,7 +1510,7 @@ share state/hosting-history.json. Reads are local and never poll or replay a
 provider mutation. Actions record intent before dispatch, and atomic writes are
 serialized across processes. Records contain IDs, channel, target, safe scope,
 timestamps and error codes; never commands, PHP, payloads, credentials or raw
-provider output. Setup, push and restore child requests share a workflow ID and
+provider output. Setup and restore child requests share a workflow ID and
 separate running/succeeded/failed workflow outcome. A workflow failure never
 claims earlier requests were undone. A crashed workflow remains unresolved.
 

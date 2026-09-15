@@ -212,8 +212,8 @@ export function providerLabel(provider: ProviderKind): string {
  */
 
 /**
- * Providers whose public HQ capability implements the safe granular
- * `push-environment` contract, including a target safety backup.
+ * Providers whose public HQ capability implements the granular
+ * `push-environment` contract.
  *
  * Rocket.net's provider-native staging publish is all-or-nothing, and
  * Cloudways requires native sync fields, so neither can promise the explicit

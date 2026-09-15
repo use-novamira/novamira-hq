@@ -356,7 +356,7 @@ const TOOL_DEFINITIONS: readonly (McpTool & {})[] = [
   {
     name: "hosting_environment_push_apply",
     description:
-      "Apply a one-use push plan. Novamira HQ first creates and awaits a safety backup of the target environment.",
+      "Apply a one-use push plan through the provider's native environment-push operation.",
     inputSchema: objectSchema(
       {
         confirmationId: nonEmptyString(

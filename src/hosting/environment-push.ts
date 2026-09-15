@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * The safe, provider-neutral environment-push workflow shared by the CLI and
- * MCP. A push never has an implicit scope and never starts before a backup of
- * the target environment has been accepted (and completed when the provider
- * exposes an operation id).
+ * The provider-neutral environment-push operation shared by the CLI and MCP.
+ * A push never has an implicit scope. Novamira HQ validates the selection,
+ * sends one provider-native push mutation, and waits for that operation only;
+ * backup creation is a separate operation and is never orchestrated here.
  */
 
 import { CliError } from "../errors.js";
-import { runHostingWorkflow } from "../operation-context.js";
 import { applyHqCapabilityPolicy } from "./capabilities.js";
 import type { ProviderClient } from "./client.js";
 import type { WaitForOperationOptions } from "./operations.js";
@@ -40,13 +39,10 @@ export interface EnvironmentPushPlan {
   readonly allFiles: boolean;
   readonly files: readonly string[];
   readonly searchReplace: boolean;
-  readonly safetyBackup: "required";
 }
 
 export interface EnvironmentPushExecution {
   readonly plan: EnvironmentPushPlan;
-  readonly safetyBackup: ActionResult;
-  readonly safetyBackupStatus?: OperationStatus;
   readonly push: ActionResult;
   readonly pushStatus?: OperationStatus;
 }
@@ -176,7 +172,6 @@ export async function prepareEnvironmentPush(
   const validated = validateSelection(selection);
   const available = capabilities(await client.read({ kind: "capabilities" }));
   requireCapability(client.provider, available, "envs.push");
-  requireCapability(client.provider, available, "backups.create");
   const environments = await client.listEnvironments(validated.siteId);
   const source = requireEnvironment(
     environments,
@@ -199,7 +194,6 @@ export async function prepareEnvironmentPush(
     allFiles: selection.allFiles,
     files: validated.files,
     searchReplace: selection.searchReplace,
-    safetyBackup: "required",
   };
 }
 
@@ -236,16 +230,6 @@ export async function executeEnvironmentPush(
     timeoutSeconds: 300,
   },
 ): Promise<EnvironmentPushExecution> {
-  return runHostingWorkflow("environment-push", () =>
-    executePushSteps(client, plan, wait),
-  );
-}
-
-async function executePushSteps(
-  client: ProviderClient,
-  plan: EnvironmentPushPlan,
-  wait: WaitForOperationOptions,
-): Promise<EnvironmentPushExecution> {
   if (client.provider !== plan.provider)
     throw new CliError(
       "conflict",
@@ -260,16 +244,6 @@ async function executePushSteps(
     files: plan.files,
     searchReplace: plan.searchReplace,
   });
-  const safetyBackup = await sendGuardedAction(
-    client,
-    {
-      kind: "create-backup",
-      envId: plan.target.id,
-      body: { tag: "novamira-hq pre-push safety backup" },
-    },
-    wait.signal,
-  );
-  const safetyBackupStatus = await waitForAction(client, safetyBackup, wait);
   const push = await sendGuardedAction(
     client,
     {
@@ -282,8 +256,6 @@ async function executePushSteps(
   const pushStatus = await waitForAction(client, push, wait);
   return {
     plan,
-    safetyBackup,
-    ...(safetyBackupStatus === undefined ? {} : { safetyBackupStatus }),
     push,
     ...(pushStatus === undefined ? {} : { pushStatus }),
   };

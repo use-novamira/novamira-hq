@@ -42,12 +42,15 @@ Capability output must pass through
 provider-native operations private by default.
 
 `hosting envs push` is the exceptional high-impact operation: it requires an
-explicit positive scope, validates distinct source/target environments, requires
-provider support for both push and backup creation, and creates and waits for a
-target safety backup before pushing. MCP exposes only typed tools; it has no
-generic CLI/argv bridge. MCP push is a two-step plan/apply flow using a
-short-lived, session-local, one-use confirmation ID. All supported typed MCP
-tools are exposed at launch; there are no access presets.
+explicit positive scope, validates distinct source/target environments and
+requires provider support for push. It invokes and waits for the provider's
+native push operation only: it never creates a separate backup or composes
+backup and push into a workflow. Backups remain explicit standalone operations;
+any backup the provider creates as part of its native push belongs to the
+provider's contract. MCP exposes only typed tools; it has no generic CLI/argv
+bridge. MCP push is a two-step plan/apply flow using a short-lived,
+session-local, one-use confirmation ID. All supported typed MCP tools are
+exposed at launch; there are no access presets.
 
 Backup restore is the recovery-only exception. The CLI requires `--yes` plus an
 explicit full-content acknowledgement; MCP requires a short-lived, session-local, one-use

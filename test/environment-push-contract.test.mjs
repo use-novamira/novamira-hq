@@ -30,12 +30,7 @@ function client({ capabilities, operationStatus, action } = {}) {
     provider: "kinsta",
     async read(request) {
       calls.push(request);
-      return (
-        capabilities ?? [
-          { name: "envs.push", supported: true },
-          { name: "backups.create", supported: true },
-        ]
-      );
+      return capabilities ?? [{ name: "envs.push", supported: true }];
     },
     async listEnvironments(siteId) {
       calls.push({ listEnvironments: siteId });
@@ -103,69 +98,31 @@ test("push planning validates scope before reading provider state", async () => 
   assert.deepEqual(provider.calls, []);
 });
 
-test("push planning requires both push and backup capabilities", async () => {
-  for (const missing of ["envs.push", "backups.create"]) {
-    const provider = client({
-      capabilities: [
-        { name: "envs.push", supported: missing !== "envs.push" },
-        { name: "backups.create", supported: missing !== "backups.create" },
-      ],
-    });
-    await assert.rejects(
-      prepareEnvironmentPush(provider, SELECTION),
-      (error) => {
-        assert.equal(error.code, "provider_unsupported");
-        assert.equal(error.details.capability, missing);
-        return true;
-      },
-    );
-    assert.deepEqual(provider.calls, [{ kind: "capabilities" }]);
-  }
+test("push planning requires only the provider's native push capability", async () => {
+  const provider = client({
+    capabilities: [
+      { name: "envs.push", supported: false },
+      { name: "backups.create", supported: true },
+    ],
+  });
+  await assert.rejects(prepareEnvironmentPush(provider, SELECTION), (error) => {
+    assert.equal(error.code, "provider_unsupported");
+    assert.equal(error.details.capability, "envs.push");
+    return true;
+  });
+  assert.deepEqual(provider.calls, [{ kind: "capabilities" }]);
 });
 
-test("a failed safety backup prevents the push", async () => {
+test("push planning does not require backup creation", async () => {
   const provider = client({
-    action: (request) => ({
-      provider: "kinsta",
-      action: request.kind,
-      status: 202,
-      operationId: "backup-operation",
-      raw: null,
-    }),
-    operationStatus: (operationId) => ({
-      provider: "kinsta",
-      operationId,
-      status: 500,
-      done: true,
-      failed: true,
-      message: "backup failed",
-      raw: null,
-    }),
+    capabilities: [{ name: "envs.push", supported: true }],
   });
   const plan = await prepareEnvironmentPush(provider, SELECTION);
-  provider.calls.length = 0;
-  await assert.rejects(
-    executeEnvironmentPush(provider, plan, {
-      intervalSeconds: 1,
-      timeoutSeconds: 10,
-      now: () => 0,
-      sleep: async () => undefined,
-    }),
-    { code: "provider_error" },
-  );
-  assert.deepEqual(provider.calls, [
-    { kind: "capabilities" },
-    { listEnvironments: "site-1" },
-    {
-      kind: "create-backup",
-      envId: "target",
-      body: { tag: "novamira-hq pre-push safety backup" },
-    },
-    { operationStatus: "backup-operation" },
-  ]);
+  assert.equal(plan.provider, "kinsta");
+  assert.ok(!("safetyBackup" in plan));
 });
 
-test("a successful execution always orders backup before push", async () => {
+test("execution sends only the provider-native push and awaits it", async () => {
   const provider = client();
   const plan = await prepareEnvironmentPush(provider, {
     ...SELECTION,
@@ -177,12 +134,6 @@ test("a successful execution always orders backup before push", async () => {
   assert.deepEqual(provider.calls, [
     { kind: "capabilities" },
     { listEnvironments: "site-1" },
-    {
-      kind: "create-backup",
-      envId: "target",
-      body: { tag: "novamira-hq pre-push safety backup" },
-    },
-    { operationStatus: "create-backup" },
     {
       kind: "push-environment",
       siteId: "site-1",

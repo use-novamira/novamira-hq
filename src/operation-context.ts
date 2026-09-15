@@ -5,8 +5,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { asCliError, type ErrorCode } from "./errors.js";
 
-export type WorkflowKind =
-  "novamira-setup" | "environment-push" | "backup-restore";
+export type WorkflowKind = "novamira-setup" | "backup-restore";
 export type WorkflowStatus = "running" | "succeeded" | "failed";
 export interface OperationContext {
   readonly id: string;

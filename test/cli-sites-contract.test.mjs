@@ -805,7 +805,7 @@ test("envs push requires an explicit scope and performs no provider call otherwi
   assert.equal(harnessed.client.calls.length, 0);
 });
 
-test("envs push backs up the target before its granular push", async () => {
+test("envs push sends only the provider-native granular push", async () => {
   const harnessed = harness({
     client: fakeClient({ environments: [PRODUCTION, STAGING] }),
   });
@@ -831,14 +831,6 @@ test("envs push backs up the target before its granular push", async () => {
     { method: "listEnvironments", siteId: "site-1" },
     { method: "read", request: { kind: "capabilities" } },
     { method: "listEnvironments", siteId: "site-1" },
-    {
-      method: "action",
-      request: {
-        kind: "create-backup",
-        envId: "env-2",
-        body: { tag: "novamira-hq pre-push safety backup" },
-      },
-    },
     {
       method: "action",
       request: {
