@@ -59,7 +59,7 @@
 import type { ErrorCode } from "../../errors.js";
 import type { NovamiraSetupResult } from "../../provisioning/index.js";
 import * as ds from "../datastar.js";
-import { getStream, post } from "../expr.js";
+import { getStream, post, seq, set, jsString, signal } from "../expr.js";
 import { classAttr, hrefAttr, html, idAttr, url, type Html } from "../html.js";
 import type {
   SetupJobEvent,
@@ -168,12 +168,12 @@ export function renderSetupWork(view: SetupView): Html {
  * The **contents** of `#setup-work` — no wrapper, because the stream patches it
  * inner. Go's `renderSetupWorkBody` (`views.go:1194-1267`).
  */
-export function renderSetupWorkBody(view: SetupView): Html {
+export function renderSetupWorkBody(view: SetupView, now = Date.now()): Html {
   const job = view.job;
   const status = job?.status ?? "ready";
   const result = job?.result ?? null;
   return html`<div class="setup-grid">${renderTargetPanel(view, status)}${
-    view.jobId === "" ? renderActionPanel(view) : renderSetupEvents(view)
+    view.jobId === "" ? renderActionPanel(view) : renderSetupEvents(view, now)
   }${result === null ? false : renderSetupResult(result)}${
     job?.status === "error" ? renderSetupFailure(job.error) : false
   }</div>`;
@@ -229,7 +229,7 @@ function renderTargetPanel(view: SetupView, status: SetupDisplayStatus): Html {
  * command that connects the agent.
  */
 const SETUP_DESCRIPTION =
-  "This checks compatibility before changing the plugin. New installations enable AI Abilities; existing installations keep their current setting unless you select the option below. An outdated installation requires an explicit update. Connecting your agent is a separate step: run the printed";
+  "This checks compatibility before changing the plugin. New installations enable AI Abilities; existing installations keep their current setting unless you select the option below. An outdated installation requires an explicit update. After setup, choose Connect this site to authorize access in your browser.";
 
 const AI_ABILITIES_WARNING =
   "When enabled, AI agents can execute PHP code and perform filesystem operations on this site. Use AI Abilities only on development or staging sites with a current backup.";
@@ -249,7 +249,7 @@ function renderActionPanel(view: SetupView): Html {
     }),
     { include: ["setup"] },
   );
-  return html`<section class="panel action-panel"><p class="field-help">${SETUP_DESCRIPTION} <code>novamira auth login</code> command with the Novamira site CLI.</p><label class="toggle setup-ai-toggle"><input type="checkbox"${ds.bind(
+  return html`<section class="panel action-panel"><p class="field-help">${SETUP_DESCRIPTION}</p><label class="toggle setup-ai-toggle"><input type="checkbox"${ds.bind(
     "setup.enableAiAbilities",
   )}><span>Also enable AI Abilities on an existing installation</span></label><p class="field-help setup-warning"><strong>Security note:</strong> ${AI_ABILITIES_WARNING}</p><button class="button primary" type="button"${ds.on(
     "click",
@@ -282,11 +282,15 @@ function eventTime(millis: number): string {
 }
 
 /** Go's `renderSetupEvents` (`views.go:1269-1293`). */
-function renderSetupEvents(view: SetupView): Html {
+function renderSetupEvents(view: SetupView, now: number): Html {
   const events = view.job?.events ?? [];
+  const waiting =
+    view.job?.status === "running"
+      ? html`<div class="setup-wait"><span class="spinner" aria-hidden="true"></span><div><strong>Setup in progress</strong><p>Waiting for your hosting provider. A step can take 30 seconds or longer.</p><span role="timer">${Math.max(0, Math.floor((now - view.job.startedAt) / 1000))} seconds elapsed</span></div></div>`
+      : false;
   return html`<section class="panel"><div class="panel-head"><div><h2>Progress</h2><p>${
     view.jobId
-  }</p></div></div><ol class="events">${
+  }</p></div></div>${waiting}<ol class="events">${
     events.length === 0
       ? html`<li><time></time><span class="event-level">info</span><span>Waiting for progress.</span></li>`
       : events.map(
@@ -350,9 +354,9 @@ function renderSetupResult(result: NovamiraSetupResult): Html {
         : "not checked",
   )}</dl>${result.warnings.map(
     (warning) => html`<div class="notice warn">${warning.message}</div>`,
-  )}<p class="field-help">Connect your agent with the Novamira site CLI:</p><pre class="code-output">${
+  )}<div class="setup-connect"><h3>Connect this site to Novamira</h3><p>Authorize access in your browser to finish connecting this site.</p><button class="button primary" type="button"${ds.on("click", seq(set("cliSites.url", jsString(result.siteUrl)), set("cliSites.name", jsString("")), post(url("/_dashboard/site-profiles/connect", { unified: true }), { include: ["cliSites"] })))}${ds.indicator("cliSites.loading")}${ds.attrs({ disabled: signal("cliSites.loading") })}>Connect this site</button><p class="field-help ds-toggle"${ds.classes({ open: signal("cliSites.loading") })}>Waiting for authorization in your browser…</p><details class="setup-detail"><summary>Connect manually with Novamira CLI</summary><p class="field-help">If Novamira CLI is not installed, install it first.</p><pre>${
     result.handoff.commandLine
-  }</pre></section>`;
+  }</pre></details></div></section>`;
 }
 
 /** `prefix + value`, or nothing when the value is absent. */

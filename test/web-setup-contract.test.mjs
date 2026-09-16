@@ -27,6 +27,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { renderHtml } from "../dist/web/html.js";
+import {
+  renderSetupWorkBody,
+  setupViewForJob,
+} from "../dist/web/views/setup.js";
 
 import { defaultFileSecurity } from "../dist/config/file-security.js";
 import { atomicWriteFile } from "../dist/config/atomic-write.js";
@@ -48,6 +53,29 @@ const TOKEN_HEADER = "x-novamira-dashboard-token";
 const START = 1_700_000_000_000;
 const SITE_URL = "https://example.com";
 const ZIP_URL = NOVAMIRA_DOWNLOAD_URL;
+
+test("setup waiting state shows elapsed time only while running", () => {
+  const job = {
+    id: "job",
+    profile: "dev",
+    envId: "env-1",
+    status: "running",
+    startedAt: START,
+    finishedAt: null,
+    events: [],
+    result: null,
+    error: null,
+  };
+  const render = (status, now) =>
+    renderHtml(renderSetupWorkBody(setupViewForJob({ ...job, status }), now));
+  assert.ok(render("running", START + 30_000).includes("30 seconds elapsed"));
+  assert.ok(render("running", START + 31_000).includes("31 seconds elapsed"));
+  assert.ok(
+    render("running", START).includes("A step can take 30 seconds or longer"),
+  );
+  for (const status of ["done", "error"])
+    assert.ok(!render(status, START + 30_000).includes("seconds elapsed"));
+});
 
 const roots = [];
 const servers = [];
@@ -421,8 +449,8 @@ test("2: the page carries none of the deleted site-profile surface", async () =>
     assert.ok(!forbidden.test(markup), String(forbidden));
   // The action panel says what the run actually does, and says the connect
   // step is a separate one run with the site CLI.
-  assert.ok(markup.includes("Connecting your agent is a separate step"));
-  assert.ok(markup.includes("novamira auth login"));
+  assert.ok(markup.includes("After setup, choose Connect this site"));
+  assert.ok(markup.includes("authorize access in your browser"));
 });
 
 /* -------------------------------------------------------------------------- */
@@ -439,7 +467,7 @@ test("3: start runs provisionNovamira, records the job and repaints the page", a
   });
   const { recorder } = await sse(server, startRequest());
   assert.deepEqual(recorder.order, ["main/outer", "nav/outer", "toast/outer"]);
-  assert.ok(recorder.find("toast").markup.includes("Novamira setup started."));
+  assert.ok(!recorder.find("toast").markup.includes("Novamira setup started."));
   const main = recorder.find("main").markup;
   assert.ok(main.includes('class="main main-novamira-setup"'));
   assert.ok(main.includes("<h2>Progress</h2>"));
@@ -808,7 +836,9 @@ test("9: a finished job renders the handoff and no site credential", async () =>
     "enabled · locked to example.com",
     "supported · WordPress 6.9 · Novamira 1.11.1 · REST v1",
     "<dt>Ready</dt><dd>yes</dd>",
-    "Connect your agent with the Novamira site CLI:",
+    "Connect this site",
+    "/_dashboard/site-profiles/connect",
+    "Connect manually with Novamira CLI",
     "novamira auth login https://example.com",
     ">done</span>",
   ])
@@ -821,6 +851,7 @@ test("9: a finished job renders the handoff and no site credential", async () =>
     "Saved Site Profile",
   ])
     assert.ok(!markup.includes(forbidden), forbidden);
+  assert.ok(!markup.includes("Setup in progress"));
 });
 
 test("9b: an unknown ?job= is a danger notice, not a fabricated job", async () => {

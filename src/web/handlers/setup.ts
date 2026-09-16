@@ -148,7 +148,7 @@ export function createSetupStartHandler(context: RouteContext): RouteHandler {
             siteLabel: requested.siteLabel,
             envName: requested.envName,
           }),
-          { level: "ok", message: "Novamira setup started." },
+          { level: "ok", message: "" },
         );
       } catch (error) {
         const cliError = asCliError(error);
