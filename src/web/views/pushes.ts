@@ -319,7 +319,7 @@ export function renderPushNewPage(view: PushNewView = EMPTY_PUSH_NEW): Html {
   )}>Back to Push</a></header>`;
 
   if (view.envs.length < 2) {
-    return html`<section class="page">${head}<div class="empty empty-block"><p>Open this from Sites, expand a site with more than one environment, then choose “Push from here” beside the source environment.</p><a class="button primary"${hrefAttr(
+    return html`<section class="page">${head}<div class="empty empty-block"><p>Open this from Sites, expand a site with more than one environment, then choose “Configure push…” beside the source environment.</p><a class="button primary"${hrefAttr(
       url("/sites"),
     )}>Open Sites</a></div></section>`;
   }

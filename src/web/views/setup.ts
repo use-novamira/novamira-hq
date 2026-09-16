@@ -59,7 +59,7 @@
 import type { ErrorCode } from "../../errors.js";
 import type { NovamiraSetupResult } from "../../provisioning/index.js";
 import * as ds from "../datastar.js";
-import { getStream, post, seq, set, jsString, signal } from "../expr.js";
+import { getStream, post, seq, set, jsString, signal, not } from "../expr.js";
 import { classAttr, hrefAttr, html, idAttr, url, type Html } from "../html.js";
 import type {
   SetupJobEvent,
@@ -251,7 +251,7 @@ function renderActionPanel(view: SetupView): Html {
   );
   return html`<section class="panel action-panel"><p class="field-help">${SETUP_DESCRIPTION}</p><label class="toggle setup-ai-toggle"><input type="checkbox"${ds.bind(
     "setup.enableAiAbilities",
-  )}><span>I approve enabling AI Abilities on this site</span></label><p class="field-help">AI Abilities will be enabled only if you approve. Without approval, existing settings stay unchanged.</p><p class="field-help setup-warning"><strong>Security note:</strong> ${AI_ABILITIES_WARNING}</p><button class="button primary" type="button"${ds.on(
+  )}><span>I understand and approve enabling AI Abilities on this site</span></label><p class="field-help">Approval is required to start setup. Without it, nothing will be installed or changed.</p><p class="field-help setup-warning"><strong>Security note:</strong> ${AI_ABILITIES_WARNING}</p><button class="button primary" type="button" disabled${ds.attrs({ disabled: not(signal("setup.enableAiAbilities")) })}${ds.on(
     "click",
     action,
   )}>Start Setup</button></section>`;

@@ -739,8 +739,9 @@ The remaining sequence is:
 | 8 | `wp option update novamira_ai_abilities_domain <host>` | existing installation without explicit `--ai-abilities` |
 
 New installations enable AI Abilities by default for CLI callers. The dashboard
-requires an explicit, initially unchecked approval and passes `false` when it
-is not selected, so new installations do not enable them implicitly. Existing installations preserve
+requires an explicit, initially unchecked approval before starting any setup job.
+Without it, Start Setup is disabled and the server rejects the request before
+any provisioning or provider calls. Existing installations preserve
 both options by default; `--ai-abilities` explicitly enables them and binds them
 to the current domain. `--force` is not that option. Connecting a site does not
 change either setting. CLI and MCP require no app acceptance, and MCP may pass

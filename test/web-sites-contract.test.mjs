@@ -795,9 +795,12 @@ test("8: the four connection states render their documented pill and actions", a
       "env-p1": "unavailable",
     },
   });
-  assert.ok(markup.includes('<span class="pill ok">Connected</span>'));
+  assert.ok(
+    markup.includes('<span class="pill ok">Novamira authorized</span>'),
+  );
   assert.ok(markup.includes('<span class="pill warn">Reconnect</span>'));
-  assert.ok(markup.includes('<span class="pill">Not connected</span>'));
+  assert.ok(!markup.includes('<span class="pill">Not connected</span>'));
+  assert.ok(markup.includes(">Authorize Novamira</button>"));
   assert.ok(markup.includes(">Unknown</span>"));
   assert.ok(markup.includes("novamira auth login https://env-c.example.com"));
   assert.ok(markup.includes("/_dashboard/connect?url="));
@@ -811,14 +814,17 @@ test("8: the four connection states render their documented pill and actions", a
     cliAvailable: false,
     states: { "env-a": "connected" },
   });
-  assert.ok(!absent.markup.includes('class="pill ok">Connected'));
+  assert.ok(!absent.markup.includes('class="pill ok">Novamira authorized'));
   assert.equal(
     absent.markup.split(">Unknown</span>").length - 1,
     5,
     "one per environment",
   );
   assert.ok(absent.markup.includes(SITE_CLI_INSTALL_HINT));
-  assert.equal(absent.markup.split(">Connect</button>").length - 1, 5);
+  assert.equal(
+    absent.markup.split(">Authorize Novamira</button>").length - 1,
+    5,
+  );
   assert.equal(absent.markup.split("disabled").length - 1 >= 5, true);
   assert.ok(!absent.markup.includes("novamira auth login"));
 });
@@ -835,7 +841,7 @@ test("9: Push from here appears on each environment of a push-capable multi-env 
     assert.ok(href.includes("source=env-"));
     assert.ok(href.startsWith("/push/new?"));
   }
-  assert.equal(markup.split(">Push from here</a>").length - 1, 2);
+  assert.equal(markup.split(">Configure push…</a>").length - 1, 2);
 });
 
 test("10: Setup Novamira is a link for the three supported providers and a disabled button otherwise", async () => {

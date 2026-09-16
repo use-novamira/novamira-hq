@@ -360,7 +360,7 @@ function renderEnvironment(
             site: site.id,
             source: env.id,
           }),
-        )}>Push from here</a>`
+        )}${attr("title", "Choose a destination environment and what to copy. Nothing is pushed yet.")}>Configure push…</a>`
       : false;
   return html`<div class="env-subrow"><span class="env-name">${name}${
     env.isPremium ? html` <span class="env-tag">premium</span>` : false
@@ -423,7 +423,7 @@ function renderStateCell(
 
   switch (connection.state) {
     case "connected":
-      return html`<span class="pill ok">Connected</span>${renderProfileLink(
+      return html`<span class="pill ok">Novamira authorized</span>${renderProfileLink(
         connection,
         view,
       )}`;
@@ -434,7 +434,7 @@ function renderStateCell(
         : profiles;
     }
     case "not_configured":
-      return html`<span class="pill">Not connected</span>${renderConnectButton(
+      return html`${renderConnectButton(
         connection,
         address,
         view,
@@ -508,12 +508,12 @@ function renderConnectButton(
   if (address === "") {
     return html`<button class="button tiny" type="button"${flagAttr(
       "disabled",
-    )}${attr("title", NO_DOMAIN_TITLE)}>Connect</button>`;
+    )}${attr("title", NO_DOMAIN_TITLE)}>Authorize Novamira</button>`;
   }
   if (connection.state === "unavailable") {
     return html`<button class="button tiny" type="button"${flagAttr(
       "disabled",
-    )}${titleAttr(connection.hint)}>Connect</button>`;
+    )}${titleAttr(connection.hint)}>Authorize Novamira</button>`;
   }
   const action = post(
     url("/_dashboard/connect", {
@@ -525,8 +525,8 @@ function renderConnectButton(
   );
   return html`<button class="button tiny" type="button"${attr(
     "title",
-    `novamira auth login ${address}`,
-  )}${ds.on("click", action)}>Connect</button>`;
+    `Authorize Novamira access in your browser. novamira auth login ${address}`,
+  )}${ds.on("click", action)}>Authorize Novamira</button>`;
 }
 
 /** Go's setup CTA (`views.go:1040-1048`), without `siteprofile` and `replace`. */
@@ -539,7 +539,7 @@ function renderSetupCta(
   if (!NOVAMIRA_SETUP_PROVIDERS.has(group.provider)) {
     return html`<button class="button tiny" type="button"${flagAttr(
       "disabled",
-    )}${attr("title", SETUP_UNSUPPORTED_TITLE)}>Setup Novamira</button>`;
+    )}${attr("title", SETUP_UNSUPPORTED_TITLE)}>Install / check Novamira</button>`;
   }
   const envName = env.displayName === "" ? env.name : env.displayName;
   return html`<a class="button link setup-cta"${hrefAttr(
@@ -549,7 +549,7 @@ function renderSetupCta(
       site: siteLabel === "" ? undefined : siteLabel,
       envname: envName === "" ? undefined : envName,
     }),
-  )}>Setup Novamira</a>`;
+  )}${attr("title", "Check the existing plugin before installing. A compatible installation is kept.")}>Install / check Novamira</a>`;
 }
 
 /**

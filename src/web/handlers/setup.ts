@@ -126,9 +126,13 @@ export function createSetupStartHandler(context: RouteContext): RouteHandler {
     run: async (stream) => {
       const requested = viewFromRequest(request);
       try {
-        // Absent means "keep the default, enabled": only an explicit `false`
-        // from the checkbox disables AI Abilities (`signals.ts:108-118`).
         const setup = parseSetup(await readSignals(request));
+        if (!setup.enableAiAbilities) {
+          throw new CliError(
+            "usage_error",
+            "Approve enabling AI Abilities before starting setup. Nothing has been installed or changed.",
+          );
+        }
         const jobId = await context.setupJobs.start({
           profile: requested.profile,
           envId: requested.envId,
