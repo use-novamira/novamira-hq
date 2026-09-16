@@ -9,9 +9,11 @@ import { MINIMUM_NOVAMIRA_VERSION } from "./compatibility.js";
 import { runWpCliForOutput, type PollBudget } from "./wp-cli.js";
 
 export const EXISTING_NOVAMIRA_COMMAND =
-  "wp plugin list --name=novamira --fields=name,status,version --format=json";
+  "wp plugin list --name=novamira --format=json";
 export const EXISTING_AI_COMMAND =
-  "wp option list --search='novamira_ai_abilities_*' --fields=option_name,option_value --format=json";
+  "wp option list --search=novamira_ai_abilities_enabled --format=json";
+export const EXISTING_AI_DOMAIN_COMMAND =
+  "wp option list --search=novamira_ai_abilities_domain --format=json";
 
 export interface ExistingNovamira {
   readonly version: string;
@@ -74,9 +76,15 @@ export async function inspectExistingNovamira(
     );
   let enabled = false;
   let domain: string | null = null;
-  for (const value of rows(
-    await runWpCliForOutput(client, envId, EXISTING_AI_COMMAND, budget),
-  )) {
+  // Kinsta refuses commas and wildcards, even inside quoted arguments. Read
+  // only the two exact option names; missing options yield an empty list.
+  const options = [];
+  for (const command of [EXISTING_AI_COMMAND, EXISTING_AI_DOMAIN_COMMAND]) {
+    options.push(
+      ...rows(await runWpCliForOutput(client, envId, command, budget)),
+    );
+  }
+  for (const value of options) {
     const option = asRecord(value);
     if (option?.option_name === "novamira_ai_abilities_enabled") {
       if (

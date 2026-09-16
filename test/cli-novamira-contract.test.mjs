@@ -56,6 +56,7 @@ import { PHP_VERSION_COMMAND } from "../dist/provisioning/phpcompat.js";
 import {
   EXISTING_NOVAMIRA_COMMAND,
   EXISTING_AI_COMMAND,
+  EXISTING_AI_DOMAIN_COMMAND,
 } from "../dist/provisioning/existing.js";
 
 test("existing Novamira is preserved unless abilities activation is explicitly requested", async () => {
@@ -148,6 +149,12 @@ test("an existing abilities domain mismatch is reported without rewriting the se
         data: {
           result: JSON.stringify([
             { option_name: "novamira_ai_abilities_enabled", option_value: "1" },
+          ]),
+        },
+      }),
+      [EXISTING_AI_DOMAIN_COMMAND]: sync({
+        data: {
+          result: JSON.stringify([
             {
               option_name: "novamira_ai_abilities_domain",
               option_value: "other.example",
@@ -242,6 +249,7 @@ function operationStatus(operationId, overrides = {}) {
 function fakeClient({ wpCli = {}, operations = {}, observable } = {}) {
   wpCli = {
     [EXISTING_NOVAMIRA_COMMAND]: sync({ data: { result: "[]" } }),
+    [EXISTING_AI_DOMAIN_COMMAND]: sync({ data: { result: "[]" } }),
     ...wpCli,
   };
   const client = {
@@ -270,6 +278,7 @@ function fakeClient({ wpCli = {}, operations = {}, observable } = {}) {
       if (request.kind !== "run-wp-cli")
         throw new Error(`unexpected action ${request.kind}`);
       const command = request.body?.wp_command;
+      assert.match(command, /^[A-Za-z0-9 '_./:=\-]+$/);
       if (!Object.hasOwn(wpCli, command))
         throw new Error(`unexpected wp-cli command ${JSON.stringify(command)}`);
       const answer = wpCli[command];

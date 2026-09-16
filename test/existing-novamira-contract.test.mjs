@@ -7,6 +7,7 @@ import {
   inspectExistingNovamira,
   EXISTING_NOVAMIRA_COMMAND,
   EXISTING_AI_COMMAND,
+  EXISTING_AI_DOMAIN_COMMAND,
 } from "../dist/provisioning/existing.js";
 
 function fixture(plugins, options = []) {
@@ -17,8 +18,13 @@ function fixture(plugins, options = []) {
     action: async (request) => {
       const command = request.body.wp_command;
       calls.push(command);
+      assert.match(command, /^[A-Za-z0-9 '_./:=\-]+$/);
       assert.ok(
-        [EXISTING_NOVAMIRA_COMMAND, EXISTING_AI_COMMAND].includes(command),
+        [
+          EXISTING_NOVAMIRA_COMMAND,
+          EXISTING_AI_COMMAND,
+          EXISTING_AI_DOMAIN_COMMAND,
+        ].includes(command),
       );
       return {
         provider: "kinsta",
@@ -27,7 +33,11 @@ function fixture(plugins, options = []) {
         raw: {
           data: {
             result: JSON.stringify(
-              command === EXISTING_NOVAMIRA_COMMAND ? plugins : options,
+              command === EXISTING_NOVAMIRA_COMMAND
+                ? plugins
+                : options.filter((option) =>
+                    command.includes(`--search=${option.option_name} `),
+                  ),
             ),
           },
         },
@@ -71,6 +81,7 @@ test("existing abilities are read without changing either option", async () => {
     assert.deepEqual(client.calls, [
       EXISTING_NOVAMIRA_COMMAND,
       EXISTING_AI_COMMAND,
+      EXISTING_AI_DOMAIN_COMMAND,
     ]);
   }
 });
