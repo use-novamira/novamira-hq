@@ -427,6 +427,8 @@ test("4: the table hides itself while the form is open, on both paints", async (
   const open = await page(server, "/providers?new=host");
   assert.ok(open.includes('class="panel table-panel hidden"'));
   assert.ok(open.includes('class="panel form-panel ds-toggle open"'));
+  assert.ok(open.includes('class="toolbar inline-toolbar hidden"'));
+  assert.ok(open.includes('data-class="{hidden: $providerForm.open}"'));
 });
 
 test("5: the details row renders the credential reference, never a value", async () => {

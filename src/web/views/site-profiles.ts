@@ -61,7 +61,7 @@ export interface SiteConnectSuccessView {
 
 /** Full-page completion for a newly connected direct site, never for Reconnect. */
 export function renderSiteConnectSuccess(view: SiteConnectSuccessView): Html {
-  return html`<section class="page connect-success-page"><section class="how-to-card connect-success" aria-labelledby="site-connected-title"><span class="connect-success-mark" aria-hidden="true">✓</span><div><span class="eyebrow">Connection complete</span><h1 id="site-connected-title">Site connected</h1><p><strong>${view.profileName ?? view.siteUrl}</strong> is now available through the Novamira site CLI.</p>${view.profileName === undefined ? false : html`<p class="field-help">${view.siteUrl}</p>`}</div><div class="button-row"><a class="button primary"${hrefAttr(
+  return html`<section class="page connect-success-page"><header class="page-head"><div><h1 id="site-connected-title">Site connected</h1><p>Connection complete.</p></div></header><section class="how-to-card connect-success" aria-labelledby="site-connected-title"><span class="connect-success-mark" aria-hidden="true">✓</span><div><p><strong>${view.profileName ?? view.siteUrl}</strong> is now available through the Novamira site CLI.</p>${view.profileName === undefined ? false : html`<p class="field-help">${view.siteUrl}</p>`}</div><div class="button-row"><a class="button primary"${hrefAttr(
     url("/sites"),
   )}>Open Sites</a><a class="button secondary"${hrefAttr(
     url("/sites", { new: "cli" }),

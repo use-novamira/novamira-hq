@@ -329,7 +329,7 @@ export function renderProvidersPage(model: ProvidersPageModel): Html {
     resetProviderForm(true),
     focusElementById("provider-choice-heading"),
   );
-  return html`<section class="page"><header class="page-head"><div><h1>Hosting accounts</h1></div><div class="toolbar inline-toolbar"><button class="button primary" type="button"${ds.on(
+  return html`<section class="page"><header class="page-head"><div><h1>Hosting accounts</h1></div><div${classAttr("toolbar", "inline-toolbar", model.formOpen && "hidden")}${ds.classes({ hidden: signal("providerForm.open") })}><button class="button primary" type="button"${ds.on(
     "click",
     addProfile,
   )}>Connect hosting account</button><a class="button secondary"${hrefAttr(

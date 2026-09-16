@@ -136,9 +136,9 @@ export function renderSetupPage(view: SetupView = EMPTY_SETUP): Html {
     url("/sites"),
   )}>Hosting Sites</a></header>`;
   if (view.profile === "" && view.envId === "" && view.jobId === "") {
-    return html`<section class="page">${head}<div class="empty">Select an environment from Hosting Sites to start setup.</div></section>`;
+    return html`<section class="page flow-page">${head}<div class="empty">Select an environment from Hosting Sites to start setup.</div></section>`;
   }
-  return html`<section class="page">${head}${renderSetupWork(view)}</section>`;
+  return html`<section class="page flow-page">${head}${renderSetupWork(view)}</section>`;
 }
 
 /**

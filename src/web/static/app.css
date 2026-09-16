@@ -242,7 +242,13 @@ select {
   gap: 18px;
   max-width: 1360px;
   margin: 0 auto;
+  width: 100%;
+  --flow-width: 760px;
 }
+
+.flow-panel,
+.flow-page > :not(.page-head),
+.connect-success-page > :not(.page-head) { width: 100%; max-width: var(--flow-width); min-width: 0; justify-self: start; }
 
 .page-head {
   display: flex;
@@ -448,7 +454,10 @@ p {
 
 .form-panel {
   display: grid;
-  max-width: 620px;
+  width: 100%;
+  max-width: var(--flow-width, 760px);
+  min-width: 0;
+  justify-self: start;
 }
 
 .push-form .panel-head {
@@ -1038,7 +1047,7 @@ td.actions .button.link:hover {
   flex-direction: column;
   align-items: flex-start;
   gap: 12px;
-  max-width: 720px;
+  max-width: var(--flow-width, 760px);
 }
 .empty-block p { margin: 0; line-height: 1.55; }
 
@@ -1507,8 +1516,8 @@ dd {
 .profile-rename:not([open]) > form { display: none; }
 .profile-rename[open] > form { display: flex; flex-wrap: wrap; padding: 8px 0; }
 .profile-rename input { flex: 1; min-width: 120px; }
-.connect-success-page { max-width: 760px; margin: 0 auto; padding-top: clamp(24px, 8vh, 88px); }
-.connect-success { justify-items: start; gap: 22px; padding: clamp(28px, 6vw, 56px); }
+.connect-success-page { padding-top: 0; }
+.connect-success { justify-items: start; gap: 22px; padding: 24px; }
 .connect-success h1 { margin: 8px 0 10px; }
 .connect-success-mark {
   display: grid;
