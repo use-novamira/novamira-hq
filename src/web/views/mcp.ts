@@ -72,5 +72,5 @@ export function renderMcpPage(
             : html`<p class="notice warn">Launch configuration is unavailable in this Novamira HQ instance.</p>`
         }`;
 
-  return html`<section${classAttr("page", client !== undefined && "flow-page", "mcp-page")}><header class="page-head"><div><h1>Connect your AI</h1><p>Manage your sites with Novamira.</p></div></header>${content}</section>`;
+  return html`<section${classAttr("page", client !== undefined && "flow-page", "mcp-page")}><header class="page-head"><div><h1>Configure your AI</h1><p>Manage your sites with Novamira.</p></div></header>${content}</section>`;
 }

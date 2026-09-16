@@ -1510,7 +1510,7 @@ stderr is not a terminal. The last is the one that matters most in practice: HQ
 is an agent-facing tool, and a scripted or piped invocation performs no network
 work its caller did not ask for.
 
-## Connect your AI and app acknowledgement
+## Configure your AI and app acknowledgement
 
 `/mcp` first asks for the AI client, then renders only that client's setup.
 The token-protected POST `/_dashboard/mcp/connect` uses the client's official

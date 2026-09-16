@@ -23,7 +23,7 @@ test("primary navigation no longer includes the generic how-to page", () => {
   const markup = renderHtml(renderNav("sites"));
   assert.ok(!markup.includes("How to use it"));
   assert.ok(!markup.includes('href="/how-to-use"'));
-  assert.ok(markup.includes("Connect your AI"));
+  assert.ok(markup.includes("Configure your AI"));
 });
 
 test("all page types share an outer container and left-aligned narrow content", () => {
@@ -42,6 +42,10 @@ test("all page types share an outer container and left-aligned narrow content", 
   assert.match(css, /\.flow-page > :not\(\.page-head\)/);
   assert.ok(!css.includes("max-width: 620px"));
   assert.ok(!css.includes(".connect-success-page { max-width:"));
+  assert.match(
+    css,
+    /input::placeholder,\s*textarea::placeholder\s*\{[^}]*color: #757575;[^}]*font-weight: 400;[^}]*opacity: 1;/,
+  );
 });
 
 test("connection success uses the shared page header above its result panel", () => {

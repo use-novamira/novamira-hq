@@ -218,7 +218,7 @@ What it does:
   Start directly from a source environment on Sites, save the direction and
   scope, then review them before invoking the provider's native push operation.
   It does not create a separate backup. A changed or reused confirmation is refused.
-- **Connect your AI** — choose ChatGPT/Codex or Claude, then connect with one
+- **Configure your AI** — choose ChatGPT/Codex or Claude, then connect with one
   click through the client's official command-line setup when available.
   Generated JSON or TOML is kept as a manual fallback.
   Claude Desktop uses a downloadable `.mcpb` extension: open the file and
@@ -355,7 +355,7 @@ Connect action require it.
 
 ## MCP server
 
-In the dashboard, open **Connect your AI** for installation-specific
+In the dashboard, open **Configure your AI** for installation-specific
 configurations for Claude Desktop and ChatGPT Desktop. Copying a configuration
 does not connect the client: merge it without overwriting other servers and
 restart that client. The local verification button checks initialization and

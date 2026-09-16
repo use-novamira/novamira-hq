@@ -653,8 +653,11 @@ select {
   padding: 8px 10px;
 }
 
-input::placeholder {
-  color: var(--muted);
+input::placeholder,
+textarea::placeholder {
+  color: #757575;
+  font-weight: 400;
+  opacity: 1;
 }
 
 input:focus,

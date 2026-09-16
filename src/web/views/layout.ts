@@ -117,7 +117,7 @@ export function renderSidebar(
   )}><button class="button primary new-button" type="button" aria-haspopup="menu"${ds.on(
     "click",
     toggle("sites.newMenuOpen"),
-  )}>Connect</button><div${classAttr(
+  )}>Connect a site</button><div${classAttr(
     "new-pop",
   )}${ds.classes({ open: signal("sites.newMenuOpen") })} role="menu"><a${hrefAttr(
     url("/sites", { new: "cli" }),
@@ -146,7 +146,7 @@ export function renderNav(page: DashboardPage, showActive = true): Html {
     navLink(current, "sites", "/sites", "Sites"),
     navLink(current, "pushes", "/push", "Push"),
     navLink(current, "providers", "/providers", "Hosting accounts"),
-    navLink(current, "mcp", "/mcp", "Connect your AI"),
+    navLink(current, "mcp", "/mcp", "Configure your AI"),
     navLink(current, "diagnostics", "/diagnostics", "Diagnostics"),
     navLink(current, "settings", "/settings", "Settings"),
   ]}</nav>`;

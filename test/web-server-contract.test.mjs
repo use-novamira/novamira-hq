@@ -512,7 +512,7 @@ test("the sidebar Connect menu puts an existing site before a hosting account", 
     // Go rendered a <button>, which is inline-block; HQ renders an <a>, which is
     // inline. The pair that keeps it a full-width 38px button is this element
     // plus `.new-button`'s `display` in app.css, so pin both together.
-    assert.ok(markup.includes(">Connect</button>"));
+    assert.ok(markup.includes(">Connect a site</button>"));
     assert.ok(markup.includes('class="new-pop"'));
     assert.ok(markup.includes('href="/providers?new=host"'));
     assert.ok(markup.includes('href="/sites?new=cli"'));
