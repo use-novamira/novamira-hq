@@ -768,6 +768,11 @@ select:focus {
 }
 
 .sites-refresh { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.settings-tabs { display: flex; flex-wrap: wrap; gap: 8px 24px; border-bottom: 1px solid var(--border); }
+.settings-tab { display: inline-flex; align-items: center; min-height: 40px; padding: 8px 2px; border-bottom: 2px solid transparent; color: var(--muted); font-size: 14px; font-weight: 600; text-decoration: none; }
+.settings-tab:hover { color: var(--text); }
+.settings-tab[aria-current="page"] { color: var(--text); border-bottom-color: var(--gold); }
+.settings-tab:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 2px; }
 .sites-refresh .sites-status { margin-left: 0; }
 .sites-filter-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .sites-filter-bar .seg { margin: 0; max-width: 100%; }

@@ -217,6 +217,22 @@ test("Settings tabs isolate updates and uninstall instructions", async () => {
   assert.ok(!uninstall.includes("Configuration file"));
 });
 
+test("Settings navigation uses compact CSP-compatible tabs with one active section", async () => {
+  const { server } = await fixture();
+  for (const tab of ["general", "updates", "uninstall"]) {
+    const markup = await page(server, `/settings?tab=${tab}`);
+    const nav = markup.match(
+      /<nav class="settings-tabs" aria-label="Settings sections">(.*?)<\/nav>/s,
+    )?.[0];
+    assert.ok(nav);
+    assert.ok(!nav.includes("style="));
+    assert.ok(!nav.includes('class="button'));
+    assert.equal((nav.match(/aria-current="page"/g) ?? []).length, 1);
+    assert.ok(nav.includes(`href="/settings?tab=${tab}" aria-current="page"`));
+    assert.equal((nav.match(/class="settings-tab"/g) ?? []).length, 3);
+  }
+});
+
 test("1: the page renders the catalogued card and its self-check", async () => {
   const { server } = await fixture();
   const markup = await page(server, "/settings?tab=updates");
