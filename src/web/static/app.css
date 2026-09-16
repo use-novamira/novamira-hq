@@ -1662,8 +1662,8 @@ dd {
   font-family: var(--font-mono);
   font-size: 12px;
 }
-.hosting-account-heading { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.hosting-account-heading .eyebrow { width: 100%; font-size: 10px; }
+.inventory-group-heading { min-width: 0; }
+.inventory-group-heading h2 { overflow-wrap: anywhere; }
 .provider-sites .group-head { padding: 16px 20px; }
 .provider-sites .site-row-multi > .site-main { padding: 18px 20px; }
 .env-subrows { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 12px; padding: 0 20px 20px; background: var(--panel, #fff); }

@@ -1068,6 +1068,13 @@ test("18: the unified list renders unmatched CLI profiles as an inventory group"
   });
   assert.ok(markup.includes('<section class="provider-sites cli-sites">'));
   assert.ok(markup.includes("<h2>Sites added by URL</h2>"));
+  assert.ok(
+    markup.includes(
+      'class="inventory-group-heading"><h2>Sites added by URL</h2>',
+    ),
+  );
+  assert.ok(markup.includes("<p>Hosting account · "));
+  assert.ok(!markup.includes('class="hosting-account-heading"'));
   assert.ok(markup.includes("same site may appear here"));
   assert.ok(markup.includes("direct.example.com"));
   assert.ok(

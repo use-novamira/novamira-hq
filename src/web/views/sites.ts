@@ -264,9 +264,9 @@ function renderCliOnly(
   view: SitesResultView,
 ): Html | false {
   if (profiles.length === 0) return false;
-  return html`<section class="provider-sites cli-sites"><div class="group-head"><div><h2>Sites added by URL</h2><p>Not matched to an environment above. The same site may appear here when its connected URL uses a different domain.</p></div><span class="pill">${String(
+  return html`<section class="provider-sites cli-sites"><div class="group-head"><div class="inventory-group-heading"><h2>Sites added by URL</h2><p>Not matched to a hosting environment. The same site may appear here when its connected URL uses a different domain.</p></div><span class="pill">${String(
     profiles.length,
-  )} sites</span></div><div class="site-grid cli-site-grid">${profiles.map(
+  )} ${profiles.length === 1 ? "site" : "sites"}</span></div><div class="site-grid cli-site-grid">${profiles.map(
     (profile) =>
       renderSiteProfileRow(siteProfileRowView(profile), {
         profile: view.profile,
@@ -277,9 +277,9 @@ function renderCliOnly(
 
 /** Go's `renderSiteGroup` (`views.go:927-953`). */
 function renderSiteGroup(group: SiteGroup, view: SitesResultView): Html {
-  const head = html`<div class="group-head"><div class="hosting-account-heading"><span class="eyebrow">Hosting account</span><h2>${group.profile}</h2><span class="env-tag">${providerLabel(
+  const head = html`<div class="group-head"><div class="inventory-group-heading"><h2>${group.profile}</h2><p>Hosting account · ${providerLabel(
     group.provider,
-  )}</span></div>`;
+  )}</p></div>`;
   if (group.stale) {
     return html`<section class="provider-sites">${head}<span class="pill warn">API unavailable</span></div>${renderNotice(
       {
