@@ -3,7 +3,6 @@
 
 import type { Command } from "commander";
 import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
 import type { McpLaunch } from "./mcp-connection.js";
 import { createMcpConnectionService } from "./mcp/configuration.js";
 import { createCommandHandlers } from "./cli/commands.js";
@@ -63,6 +62,17 @@ import { historyClient } from "./history/client.js";
  * including `test/cli-program-contract.test.mjs`, already looks for it.
  */
 export { VERSION };
+
+/**
+ * The installed package entry point is stable across Node upgrades and package
+ * relocation. The MCP configuration carries the dashboard process' PATH so a
+ * desktop client can resolve the global shim even when it did not inherit the
+ * user's interactive shell environment.
+ */
+export const DEFAULT_MCP_LAUNCH: McpLaunch = {
+  command: PROGRAM_NAME,
+  args: ["mcp"],
+};
 
 export interface RuntimeEnvironment extends PathEnvironment {
   readonly NO_COLOR?: string;
@@ -271,10 +281,7 @@ export async function main(
     const handlers = createCommandHandlers({
       distribution: overrides.distribution ?? "npm",
       mcpConnection: createMcpConnectionService(
-        overrides.mcpLaunch ?? {
-          command: process.execPath,
-          args: [fileURLToPath(new URL("./index.js", import.meta.url)), "mcp"],
-        },
+        overrides.mcpLaunch ?? DEFAULT_MCP_LAUNCH,
         environment,
       ),
       history,

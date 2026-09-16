@@ -55,7 +55,7 @@ function resetFormSignals(): Readonly<Record<string, JsonValue>> {
 }
 
 /**
- * Repaint `/pushes`.
+ * Repaint `/push`.
  *
  * `loadConfigView` is re-read rather than mutated in place, so the table shows
  * what is actually on disk — including the environment names resolved from the

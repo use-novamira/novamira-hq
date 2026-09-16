@@ -66,8 +66,16 @@ export function createMcpConnectionService(
       command: base.command,
       args: [...base.args],
     };
-    // Only HQ path overrides, never provider credentials or arbitrary env values.
+    // Only executable lookup and HQ path overrides, never provider credentials
+    // or arbitrary environment values. GUI clients on macOS and Linux commonly
+    // start with a smaller PATH than the dashboard, so a bare installed command
+    // must carry the PATH in which Novamira HQ is already known to run.
     const env: Record<string, string> = {};
+    if (!/[\\/]/u.test(launch.command)) {
+      const executablePath =
+        environment.PATH ?? environment.Path ?? environment.path;
+      if (executablePath) env.PATH = executablePath;
+    }
     for (const name of [
       "NOVAMIRA_HQ_HOME",
       "NOVAMIRA_HQ_CONFIG",

@@ -355,7 +355,7 @@ function renderEnvironment(
     ENVIRONMENT_PUSH_PROVIDERS.has(group.provider) &&
     (site.environments?.length ?? 0) > 1
       ? html`<a class="push-hint"${hrefAttr(
-          url("/pushes/new", {
+          url("/push/new", {
             profile: group.profile,
             site: site.id,
             source: env.id,

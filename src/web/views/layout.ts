@@ -144,7 +144,7 @@ export function renderNav(page: DashboardPage, showActive = true): Html {
     : undefined;
   return html`<nav${idAttr("nav")} class="nav" aria-label="Dashboard sections">${[
     navLink(current, "sites", "/sites", "Sites"),
-    navLink(current, "pushes", "/pushes", "Push"),
+    navLink(current, "pushes", "/push", "Push"),
     navLink(current, "providers", "/providers", "Hosting Providers"),
     navLink(current, "mcp", "/mcp", "Connect your AI"),
     navLink(current, "how-to-use", "/how-to-use", "How to use it"),

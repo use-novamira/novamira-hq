@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * The two push pages: the list at `/pushes` and the form at
- * `/pushes/new`.
+ * The two push pages: the list at `/push` and the form at `/push/new`.
  *
  * **What the Go did.** `pushesStatusLine` (`views.go:737-773`) worked out
  * *why* an operator cannot create a push yet and said so in one sentence;
@@ -22,7 +21,7 @@
  * **Neither page may trigger a provider call.** Both read the **warm** sites
  * cache and nothing else — Go did the same (`server.go:782`, `:931`) — because a
  * page render that fanned out across every hosting API would make navigating to
- * `/pushes` cost an operator their rate limit. A cold cache is not an
+ * `/push` cost an operator their rate limit. A cold cache is not an
  * error: the status line has a sentence for exactly that state, and the new-path
  * form falls back to the "open this from the Sites page" guidance.
  *
@@ -144,7 +143,7 @@ export function pushesStatusLine(
 }
 
 /* -------------------------------------------------------------------------- */
-/* /pushes                                                              */
+/* /push                                                                */
 /* -------------------------------------------------------------------------- */
 
 export function renderPushesPage(
@@ -173,18 +172,18 @@ export function renderPushesPage(
         : [],
     );
     if (eligibleSites.length > 0) {
-      return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Create a reusable push between two environments of the same site.</p></div></header><section class="panel"><div class="panel-head"><div><h2>Choose a site</h2><p>Select the site whose environments you want to push between.</p></div></div><div class="compact-list">${eligibleSites.map(
+      return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Reusable push configurations between environments.</p></div></header><section class="panel"><div class="panel-head"><div><h2>Choose a site</h2><p>Select the site whose environments you want to push between.</p></div></div><div class="compact-list">${eligibleSites.map(
         (site) =>
           html`<article><div><strong>${site.label}</strong><small>${
             site.domain === "" ? false : `${site.domain} · `
           }${site.profile} (${site.provider}) · ${String(
             site.environmentCount,
           )} environments</small></div><a class="button primary"${hrefAttr(
-            url("/pushes/new", {
+            url("/push/new", {
               profile: site.profile,
               site: site.siteId,
             }),
-          )}>Configure push</a></article>`,
+          )}>Set up a push</a></article>`,
       )}</div></section></section>`;
     }
     const hasHostingProvider = view.profiles.length > 0;
@@ -193,7 +192,7 @@ export function renderPushesPage(
       view.profiles.some((profile) =>
         environmentPushSupported(profile.provider),
       );
-    return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Create a reusable push between two environments of the same site.</p></div></header><div class="empty empty-block"><h2>${
+    return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Reusable push configurations between environments.</p></div></header><div class="empty empty-block"><h2>${
       needsSiteLoad ? "Load sites to continue" : "No sites available for push"
     }</h2><p>${pushesStatusLine(
       view.profiles,
@@ -208,9 +207,9 @@ export function renderPushesPage(
         : "Connect a hosting provider"
     }</a></div></section>`;
   }
-  return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Saved directions between environments. Review the destination and content before starting one.</p></div><a class="button secondary"${hrefAttr(
+  return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Reusable push configurations between environments. Nothing runs until you review and confirm it.</p></div><a class="button secondary"${hrefAttr(
     url("/sites"),
-  )}>Configure another push</a></header><div class="push-card-list">${view.pushes.map(
+  )}>Set up a push</a></header><div class="push-card-list">${view.pushes.map(
     (push) => renderPushCard(push),
   )}</div></section>`;
 }
@@ -269,7 +268,7 @@ function renderPushCard(push: PushView): Html {
     push.supported
       ? "Review the target and scope before pushing"
       : PUSH_UNSUPPORTED_TITLE,
-  )}>Review push</button><button class="button link" type="button"${ds.on(
+  )}>Review and run</button><button class="button link" type="button"${ds.on(
     "click",
     confirmThen(
       `Remove push ${push.name}?`,
@@ -277,11 +276,11 @@ function renderPushCard(push: PushView): Html {
         include: [],
       }),
     ),
-  )}>Remove</button></footer></article>`;
+  )}>Remove setup</button></footer></article>`;
 }
 
 /* -------------------------------------------------------------------------- */
-/* /pushes/new                                                          */
+/* /push/new                                                            */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -311,13 +310,13 @@ const EMPTY_PUSH_NEW: PushNewView = Object.freeze({
 });
 
 export function renderPushNewPage(view: PushNewView = EMPTY_PUSH_NEW): Html {
-  const head = html`<header class="page-head"><div><h1>Configure push</h1>${
+  const head = html`<header class="page-head"><div><h1>Set up a push</h1>${
     view.siteLabel === ""
       ? false
       : html`<p class="lede">Choose what moves between two environments of ${view.siteLabel}.</p>`
   }</div><a class="button secondary"${hrefAttr(
-    url("/sites"),
-  )}>Back to Sites</a></header>`;
+    url("/push"),
+  )}>Back to Push</a></header>`;
 
   if (view.envs.length < 2) {
     return html`<section class="page">${head}<div class="empty empty-block"><p>Open this from Sites, expand a site with more than one environment, then choose “Push from here” beside the source environment.</p><a class="button primary"${hrefAttr(
@@ -375,7 +374,7 @@ export function renderPushNewPage(view: PushNewView = EMPTY_PUSH_NEW): Html {
   )} type="text"${ds.bind(
     "pushForm.name",
   )} placeholder="staging-to-live" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" maxlength="64" autocomplete="off" required><small class="field-help">Use this name to find and run the push later. Letters, numbers, dots, dashes, and underscores only.</small></label></div><div class="button-row"><button class="button primary" type="submit">Save push</button><a class="button secondary"${hrefAttr(
-    url("/sites"),
+    url("/push"),
   )}>Cancel</a></div></form></section>`;
 }
 

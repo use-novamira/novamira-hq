@@ -85,12 +85,12 @@ export interface PageModel {
    */
   readonly signals: DashboardSignals;
   /**
-   * The warm sites inventory, for `/pushes`'s status line. Absent means
+   * The warm sites inventory, for `/push`'s status line. Absent means
    * "nobody has listed sites in this process yet", which is a state the sentence
    * has words for — not a missing value to be invented.
    */
   readonly pushes?: WarmSitesView;
-  /** The site and environments `/pushes/new` was opened for. */
+  /** The site and environments `/push/new` was opened for. */
   readonly pushNew?: PushNewView;
   /**
    * The setup target and, when one exists, the job running against it. Absent

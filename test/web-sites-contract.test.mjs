@@ -833,7 +833,7 @@ test("9: Push from here appears on each environment of a push-capable multi-env 
     assert.ok(href.includes("profile=prod"));
     assert.ok(href.includes("site=s1"));
     assert.ok(href.includes("source=env-"));
-    assert.ok(href.startsWith("/pushes/new?"));
+    assert.ok(href.startsWith("/push/new?"));
   }
   assert.equal(markup.split(">Push from here</a>").length - 1, 2);
 });

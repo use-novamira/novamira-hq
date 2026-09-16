@@ -376,24 +376,31 @@ Native desktop updates require installing a newer desktop release. The npm
 updater only updates a separately installed CLI and is unavailable in the
 standalone app.
 
-HQ can be configured as a local stdio MCP server in AI agents. The server writes
+Novamira HQ can be configured as a local stdio MCP server in AI agents. The server writes
 only newline-delimited JSON-RPC messages to stdout and performs no background
-update check. Configure the package directly through `npx`:
+update check. After installing `@novamira/hq`, configure its stable command:
 
 ```json
 {
   "mcpServers": {
     "novamira-hq": {
-      "command": "npx",
-      "args": ["-y", "@novamira/hq", "mcp"]
+      "command": "novamira-hq",
+      "args": ["mcp"]
     }
   }
 }
 ```
 
+The dashboard-generated configuration also carries the executable search path,
+which lets a graphical client find the installed command without embedding a
+versioned Node path or the package's `dist/` location. Moving or updating the
+package therefore does not require editing the client configuration. The
+optional `novamira` site CLI is discovered separately by Novamira HQ; it is not
+another MCP server and does not belong in this JSON.
+
 MCP exposes a deliberately smaller, typed operational surface rather than a
 generic CLI bridge. All supported MCP tools are available at launch; there are no access presets.
-Run `npx -y @novamira/hq mcp`. Typed tools cover
+Run `novamira-hq mcp`. Typed tools cover
 profile and hosting inventory, provider validation, operation status, backup
 creation and guarded restoration, Novamira setup, and environment push. There is
 no arbitrary argv tool, no configuration mutation, no self-update, no provider

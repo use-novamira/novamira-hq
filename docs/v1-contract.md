@@ -1017,8 +1017,8 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 | `/providers` | GET | no |
 | `/sites` | GET | no |
 | `/how-to-use` | GET | no |
-| `/pushes` | GET | no |
-| `/pushes/new` | GET | no |
+| `/push` | GET | no |
+| `/push/new` | GET | no |
 | `/novamira-setup` | GET | no |
 | `/diagnostics` | GET | no |
 | `/history` | GET | no |
@@ -1243,7 +1243,7 @@ form to itself and no page reloads.
   installs and for registering the packaged `novamira-hq` instructions with a
   different agent; the dashboard does not spawn that interactive third-party
   installer itself.
-- **Push** (`/pushes`, `/pushes/new`) — the saved environment pushes
+- **Push** (`/push`, `/push/new`) — the saved environment push configurations
   as direction cards with resolved environment names, domains and scope. Sites
   offers Push from here beside every environment of an eligible site; that
   source is preselected, and a two-environment site also preselects the only
@@ -1480,8 +1480,15 @@ command-line registration command: `codex mcp add` for the configuration shared
 by ChatGPT Desktop, Codex CLI and the IDE extension, or `claude mcp add` at user
 scope for Claude Code. It spawns an argv array with `shell: false`, displays no
 child output and copies no provider credential. Claude Desktop JSON and Codex
-TOML remain hidden in Manual configuration disclosures as fallbacks; they use
-the actual executable path, fixed argv, and only Novamira HQ path overrides.
+TOML remain hidden in Manual configuration disclosures as fallbacks. The npm
+distribution launches the stable installed command `novamira-hq mcp`, never a
+versioned Node executable or a package-internal `dist/index.js`; it includes the
+dashboard process' executable search path so a GUI client can resolve that
+installed command. The standalone desktop distribution keeps using its own
+embedded executable and `--mcp`. Both forms use fixed argv and copy only the
+executable search path and Novamira HQ path overrides, never provider secrets.
+The optional `novamira` site CLI is resolved separately by Novamira HQ and is
+not another MCP server or part of the generated client configuration.
 The page never claims the external client is connected. Hosting profiles and
 the distinction between MCP and skills are secondary information under one
 About this connection disclosure.

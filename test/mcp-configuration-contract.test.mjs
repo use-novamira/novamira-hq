@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createMcpConnectionService } from "../dist/mcp/configuration.js";
+import { DEFAULT_MCP_LAUNCH } from "../dist/main.js";
 import { renderMcpPage } from "../dist/web/views/mcp.js";
 import { renderHtml } from "../dist/web/html.js";
 import { createDashboardUpdates } from "../dist/cli/dashboard.js";
@@ -35,6 +36,27 @@ test("client configs contain only fixed launch arguments and HQ path overrides",
     /must-not-copy-this|KINSTA_API_KEY/,
   );
   assert.doesNotMatch(JSON.stringify(config), /--access|--allow|--deny/);
+});
+
+test("the npm MCP launch survives Node upgrades and package relocation", () => {
+  assert.deepEqual(DEFAULT_MCP_LAUNCH, {
+    command: "novamira-hq",
+    args: ["mcp"],
+  });
+  const config = createMcpConnectionService(DEFAULT_MCP_LAUNCH, {
+    PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+    KINSTA_API_KEY: "must-not-copy-this",
+  }).configuration();
+  const server = JSON.parse(config.claude).mcpServers["novamira-hq"];
+  assert.deepEqual(server, {
+    command: "novamira-hq",
+    args: ["mcp"],
+    env: { PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" },
+  });
+  assert.doesNotMatch(
+    JSON.stringify(config),
+    /KINSTA_API_KEY|must-not-copy-this/,
+  );
 });
 
 test("real local MCP handshake lists tools without configuring profiles or writing state", async (t) => {

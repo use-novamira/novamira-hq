@@ -309,7 +309,7 @@ async function warmCache(server) {
 /* -------------------------------------------------------------------------- */
 
 test("1: the empty page exposes the next useful action for every state", async () => {
-  const line = async (server) => unescapeHtml(await page(server, "/pushes"));
+  const line = async (server) => unescapeHtml(await page(server, "/push"));
 
   const none = await fixture({ hostingProfiles: {} });
   assert.ok(
@@ -351,9 +351,7 @@ test("1: the empty page exposes the next useful action for every state", async (
   assert.ok(warmMarkup.includes("Multi Site"));
   assert.ok(warmMarkup.includes("multi.example.com · prod (Kinsta)"));
   assert.ok(
-    warmMarkup.includes(
-      'href="/pushes/new?profile=prod&site=s1">Configure push',
-    ),
+    warmMarkup.includes('href="/push/new?profile=prod&site=s1">Set up a push'),
   );
   assert.ok(!warmMarkup.includes("expand one of your"));
 
@@ -374,7 +372,7 @@ test("1: the empty page exposes the next useful action for every state", async (
 test("2: saved pushes render as reviewable direction cards", async () => {
   const { server } = await fixture({ pushes: PUSHES });
   await warmCache(server);
-  const markup = await page(server, "/pushes");
+  const markup = await page(server, "/push");
   for (const want of [
     'class="push-card"',
     'class="push-route"',
@@ -383,8 +381,8 @@ test("2: saved pushes render as reviewable direction cards", async () => {
     ">Database</span>",
     ">Files</span>",
     ">No content selected</span>",
-    ">Review push</button>",
-    ">Configure another push</a>",
+    ">Review and run</button>",
+    ">Set up a push</a>",
     'title="Review the target and scope before pushing"',
     'title="This provider does not support environment push"',
     "/_dashboard/pushes/remove?push=stage-to-live",
@@ -400,7 +398,7 @@ test("2: saved pushes render as reviewable direction cards", async () => {
 test("3: environments resolve from the warm cache, then the stored name, then the id", async () => {
   const { server } = await fixture({ pushes: PUSHES });
   await warmCache(server);
-  const markup = await page(server, "/pushes");
+  const markup = await page(server, "/push");
   // Resolved from the inventory, so a rename in the console shows through.
   for (const value of [
     "env-a display",
@@ -417,7 +415,7 @@ test("3: environments resolve from the warm cache, then the stored name, then th
 
   // With a cold cache both fall back to the stored names.
   const cold = await fixture({ pushes: PUSHES });
-  const coldMarkup = await page(cold.server, "/pushes");
+  const coldMarkup = await page(cold.server, "/push");
   assert.ok(coldMarkup.includes("stored-a"));
   assert.ok(coldMarkup.includes("stored-b"));
   assert.equal(cold.listCalls.length, 0);
@@ -467,7 +465,7 @@ test("3b: environment display resolution keeps profile and site ownership", asyn
     },
   });
   await warmCache(server);
-  const markup = await page(server, "/pushes");
+  const markup = await page(server, "/push");
   for (const owner of ["Alpha", "Beta", "Other"]) {
     assert.ok(markup.includes(`${owner} source`), owner);
     assert.ok(markup.includes(`${owner} target`), owner);
@@ -487,10 +485,10 @@ test("4: the form renders with the cached environments and highlights Push", asy
   const { server, listCalls } = await fixture();
   await warmCache(server);
   const before = listCalls.length;
-  const markup = await page(server, "/pushes/new?profile=prod&site=s1");
+  const markup = await page(server, "/push/new?profile=prod&site=s1");
   assert.equal(listCalls.length, before, "the form reads the warm cache only");
   for (const want of [
-    "Configure push",
+    "Set up a push",
     'data-bind="pushForm.name"',
     'data-bind="pushForm.sourceEnvId"',
     'data-bind="pushForm.targetEnvId"',
@@ -506,7 +504,7 @@ test("4: the form renders with the cached environments and highlights Push", asy
     "/_dashboard/pushes/save",
     ">Save push</button>",
     "Choose what moves between two environments of Multi Site.",
-    'class="nav-link active" href="/pushes"',
+    'class="nav-link active" href="/push"',
   ])
     assert.ok(markup.includes(want), want);
   // The submit sets the three fields the selects do not carry.
@@ -519,7 +517,7 @@ test("4a: opening from an environment preselects the source and the only other t
   await warmCache(server);
   const markup = await page(
     server,
-    "/pushes/new?profile=prod&site=s1&source=env-a",
+    "/push/new?profile=prod&site=s1&source=env-a",
   );
   assert.ok(markup.includes("$pushForm.sourceEnvId = &quot;env-a&quot;"));
   assert.ok(markup.includes("$pushForm.targetEnvId = &quot;env-b&quot;"));
@@ -557,7 +555,7 @@ test("4b: the form resolves a duplicate site id only within its requested profil
   });
   await warmCache(server);
 
-  const beta = await page(server, "/pushes/new?profile=beta&site=shared");
+  const beta = await page(server, "/push/new?profile=beta&site=shared");
   assert.ok(
     beta.includes("Choose what moves between two environments of Beta Site."),
   );
@@ -568,7 +566,7 @@ test("4b: the form resolves a duplicate site id only within its requested profil
   );
   assert.ok(!beta.includes("Alpha Source"));
 
-  const missing = await page(server, "/pushes/new?profile=gamma&site=shared");
+  const missing = await page(server, "/push/new?profile=gamma&site=shared");
   assert.ok(missing.includes("Open this from Sites"));
   assert.ok(!missing.includes("pushForm.sourceEnvId"));
 });
@@ -576,9 +574,9 @@ test("4b: the form resolves a duplicate site id only within its requested profil
 test("5: without two resolvable environments the page is guidance, not a form", async () => {
   const { server } = await fixture();
   for (const path of [
-    "/pushes/new",
-    "/pushes/new?profile=prod&site=s1",
-    "/pushes/new?profile=prod&site=nope",
+    "/push/new",
+    "/push/new?profile=prod&site=s1",
+    "/push/new?profile=prod&site=nope",
   ]) {
     const markup = await page(server, path);
     assert.ok(markup.includes("Open this from Sites"), path);
@@ -586,7 +584,7 @@ test("5: without two resolvable environments the page is guidance, not a form", 
   }
   // A single-environment site is still fewer than two.
   await warmCache(server);
-  const single = await page(server, "/pushes/new?profile=prod&site=s2");
+  const single = await page(server, "/push/new?profile=prod&site=s2");
   assert.ok(single.includes("Open this from Sites"));
   assert.ok(!single.includes("pushForm.sourceEnvId"));
 });
