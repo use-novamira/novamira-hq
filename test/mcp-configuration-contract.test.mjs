@@ -4,6 +4,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
+import { runInNewContext } from "node:vm";
 import { mkdtemp, rm, readdir, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -112,6 +114,46 @@ test("the downloaded MCP bundle runs after relocation and lists real tools", asy
     ["manifest.json", "launch.json", "server/index.cjs"],
   );
   const manifest = JSON.parse(files.get("manifest.json"));
+  // Claude's embedded runtime exposes JS streams rather than ordinary file
+  // descriptors. An inherited-stdio child silently misses this initialize.
+  const child = Object.assign(new EventEmitter(), {
+    stdin: new PassThrough(),
+    stdout: new PassThrough(),
+    stderr: new PassThrough(),
+    kill() {},
+  });
+  const runtime = Object.assign(new EventEmitter(), {
+    stdin: new PassThrough(),
+    stdout: new PassThrough(),
+    stderr: new PassThrough(),
+    platform: "darwin",
+    env: {},
+  });
+  runInNewContext(files.get("server/index.cjs").toString(), {
+    process: runtime,
+    require(name) {
+      if (name === "node:child_process")
+        return {
+          spawn(command, args, options) {
+            assert.equal(options.stdio, "pipe");
+            assert.equal(options.shell, false);
+            return child;
+          },
+        };
+      if (name === "../launch.json")
+        return JSON.parse(files.get("launch.json"));
+      return {};
+    },
+  });
+  runtime.stdin.write("initialize\n");
+  assert.equal(child.stdin.read().toString(), "initialize\n");
+  child.stdout.write("reply\n");
+  assert.equal(runtime.stdout.read().toString(), "reply\n");
+  child.stderr.write("diagnostic\n");
+  assert.equal(runtime.stderr.read().toString(), "diagnostic\n");
+  assert.equal(runtime.stdout.read(), null);
+  child.emit("close", 0);
+  assert.equal(runtime.exitCode, 0);
   assert.equal(manifest.description, "Manage your sites with Novamira.");
   assert.equal(manifest.server.mcp_config.command, "node");
   assert.deepEqual(manifest.server.mcp_config.args, [

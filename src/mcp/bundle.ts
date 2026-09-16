@@ -69,9 +69,14 @@ if (process.platform === 'win32' && command === 'novamira-hq') {
   command = process.execPath;
   args = [entry, ...args];
 }
-const child = spawn(command, args, { shell: false, stdio: 'inherit' });
+// Claude's embedded runtime supplies JS streams, not necessarily OS fds 0/1/2.
+const child = spawn(command, args, { shell: false, stdio: 'pipe' });
+process.stdin.pipe(child.stdin);
+child.stdout.pipe(process.stdout);
+child.stderr.pipe(process.stderr);
+child.stdin.on('error', () => {});
 child.on('error', () => { process.stderr.write('Novamira HQ could not start. Check its installation.\\n'); process.exitCode = 1; });
-child.on('exit', code => { process.exitCode = code ?? 1; });
+child.on('close', code => { process.stdin.unpipe(child.stdin); process.stdin.pause(); process.exitCode = code ?? 1; });
 for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => child.kill(signal));
 `;
 
