@@ -229,7 +229,7 @@ function renderTargetPanel(view: SetupView, status: SetupDisplayStatus): Html {
  * command that connects the agent.
  */
 const SETUP_DESCRIPTION =
-  "This checks compatibility before changing the plugin. New installations enable AI Abilities; existing installations keep their current setting unless you select the option below. An outdated installation requires an explicit update. After setup, choose Connect this site to authorize access in your browser.";
+  "This checks compatibility before changing the plugin. An outdated installation requires an explicit update. After setup, choose Connect this site to authorize access in your browser.";
 
 const AI_ABILITIES_WARNING =
   "When enabled, AI agents can execute PHP code and perform filesystem operations on this site. Use AI Abilities only on development or staging sites with a current backup.";
@@ -251,7 +251,7 @@ function renderActionPanel(view: SetupView): Html {
   );
   return html`<section class="panel action-panel"><p class="field-help">${SETUP_DESCRIPTION}</p><label class="toggle setup-ai-toggle"><input type="checkbox"${ds.bind(
     "setup.enableAiAbilities",
-  )}><span>Also enable AI Abilities on an existing installation</span></label><p class="field-help setup-warning"><strong>Security note:</strong> ${AI_ABILITIES_WARNING}</p><button class="button primary" type="button"${ds.on(
+  )}><span>I approve enabling AI Abilities on this site</span></label><p class="field-help">AI Abilities will be enabled only if you approve. Without approval, existing settings stay unchanged.</p><p class="field-help setup-warning"><strong>Security note:</strong> ${AI_ABILITIES_WARNING}</p><button class="button primary" type="button"${ds.on(
     "click",
     action,
   )}>Start Setup</button></section>`;

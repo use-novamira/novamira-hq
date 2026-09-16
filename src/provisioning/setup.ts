@@ -128,7 +128,7 @@ export interface NovamiraSetupRequest {
   readonly validateSource?: boolean;
   /** Defaults to true. */
   readonly wait?: boolean;
-  /** Explicit true enables on an existing install; otherwise preserve its state. */
+  /** Defaults on for new installs. Explicit true enables existing installs; false preserves existing settings. */
   readonly aiAbilities?: boolean;
   /** Defaults to true. */
   readonly compatCheck?: boolean;
@@ -475,11 +475,10 @@ async function provisionNovamiraSteps(
   // B7/B8. The AI-Abilities options. B8's host goes through `shellJoin`: a
   // hostile hostname refused by `shellQuote` is the only thing standing between
   // untrusted site metadata and a provider's shell.
-  const enableAiAbilities =
-    existing === undefined || request.aiAbilities === true;
+  const enableAiAbilities = request.aiAbilities ?? existing === undefined;
   const aiAbilities =
     enableAiAbilities ||
-    (existing.aiEnabled && existing.aiDomain === site.host);
+    (existing?.aiEnabled === true && existing.aiDomain === site.host);
   if (enableAiAbilities) {
     report("info", "Enabling Novamira AI Abilities.");
     const domainCommand = shellJoin([
@@ -592,7 +591,7 @@ async function provisionNovamiraSteps(
     },
     aiAbilities: {
       enabled: aiAbilities,
-      domain: enableAiAbilities ? site.host : existing.aiDomain,
+      domain: enableAiAbilities ? site.host : (existing?.aiDomain ?? null),
     },
     compatibility,
     ready,

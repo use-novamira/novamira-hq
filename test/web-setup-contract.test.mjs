@@ -370,7 +370,10 @@ async function sse(server, incoming) {
   return { response, recorder };
 }
 
-function startRequest(query = "profile=dev&env=env-1", signals = {}) {
+function startRequest(
+  query = "profile=dev&env=env-1",
+  signals = { setup: { enableAiAbilities: true } },
+) {
   return authorized(`/_dashboard/setup/start?${query}`, {
     method: "POST",
     body: JSON.stringify({ token: TOKEN, ...signals }),
@@ -414,7 +417,7 @@ test("1: the page is an empty state without a target and a work panel with one",
   for (const want of [
     'id="setup-work"',
     'data-bind="setup.enableAiAbilities"',
-    "Also enable AI Abilities on an existing installation",
+    "I approve enabling AI Abilities on this site",
     "Security note:",
     "When enabled, AI agents can execute PHP code",
     ">Start Setup</button>",
@@ -683,7 +686,18 @@ test("3g: dashboard close cancels and awaits setup jobs", async () => {
   assert.deepEqual(client.commands, [PHP_VERSION_COMMAND]);
 });
 
-test("4: new installs enable abilities even without an existing-site activation request", async () => {
+test("4: dashboard new installs enable AI Abilities only with explicit approval", async () => {
+  const omitted = await fixture({ setupPollMs: 1 });
+  const missing = await sse(
+    omitted.server,
+    startRequest("profile=dev&env=env-1", {}),
+  );
+  await drain(omitted.server, jobIdFrom(missing.recorder));
+  assert.ok(
+    !omitted.client.commands.includes(
+      "wp option update novamira_ai_abilities_enabled 1",
+    ),
+  );
   const off = await fixture({ setupPollMs: 1 });
   const started = await sse(
     off.server,
@@ -693,13 +707,18 @@ test("4: new installs enable abilities even without an existing-site activation 
   );
   await drain(off.server, jobIdFrom(started.recorder));
   assert.ok(
-    off.client.commands.includes(
+    !off.client.commands.includes(
       "wp option update novamira_ai_abilities_enabled 1",
     ),
   );
 
   const on = await fixture({ setupPollMs: 1 });
-  const kept = await sse(on.server, startRequest());
+  const kept = await sse(
+    on.server,
+    startRequest("profile=dev&env=env-1", {
+      setup: { enableAiAbilities: true },
+    }),
+  );
   await drain(on.server, jobIdFrom(kept.recorder));
   assert.ok(
     on.client.commands.includes(

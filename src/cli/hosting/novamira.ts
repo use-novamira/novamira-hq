@@ -147,9 +147,8 @@ function setupRequest(
     preflight: options.preflight ?? true,
     validateSource: options.validateSource ?? true,
     wait: options.wait ?? true,
-    ...(options.aiAbilities === undefined
-      ? {}
-      : { aiAbilities: options.aiAbilities }),
+    // CLI false means preserve existing settings; new installs retain the CLI default.
+    ...(options.aiAbilities === true ? { aiAbilities: true } : {}),
     compatCheck: options.compatCheck ?? true,
     intervalSeconds: options.intervalSeconds ?? DEFAULT_POLL_INTERVAL_SECONDS,
     timeoutSeconds: options.timeoutSeconds ?? DEFAULT_POLL_TIMEOUT_SECONDS,
