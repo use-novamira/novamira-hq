@@ -334,12 +334,12 @@ const TOOL_DEFINITIONS: readonly (McpTool & {})[] = [
         url: nonEmptyString("Optional WordPress site URL override."),
         enableAiAbilities: {
           type: "boolean",
-          default: false,
+          const: true,
           description:
-            "Explicitly enable AI Abilities on an existing installation. New installations enable automatically; existing settings are otherwise preserved.",
+            "Required approval to enable AI Abilities on this site, including existing installations. Set true only after the user explicitly approves enabling AI Abilities for the target site. Without approval, do not run setup.",
         },
       },
-      ["profile", "environmentId"],
+      ["profile", "environmentId", "enableAiAbilities"],
     ),
     annotations: annotations(false, false),
   },
@@ -592,6 +592,11 @@ async function setupNovamira(
 ): Promise<Readonly<Record<string, unknown>>> {
   const profile = requiredString(argumentsValue, "profile");
   const environmentId = requiredString(argumentsValue, "environmentId");
+  if (argumentsValue.enableAiAbilities !== true)
+    throw new CliError(
+      "usage_error",
+      "Approve enabling AI Abilities on this site before starting setup. Nothing has been installed or changed.",
+    );
   const argv = [
     "--profile",
     profile,

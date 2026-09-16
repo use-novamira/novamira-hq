@@ -55,6 +55,7 @@ import {
   seq,
   set,
   signal,
+  suggestPushName,
 } from "../expr.js";
 import {
   attr,
@@ -156,67 +157,97 @@ export function renderPushesPage(
   warm: WarmSitesView = COLD,
   jobs: readonly PushJob[] = [],
 ): Html {
-  if (view.pushes.length === 0) {
-    const eligibleSites = warm.groups.flatMap((group) =>
-      environmentPushSupported(group.provider)
-        ? group.sites.flatMap((site) => {
-            const environments = site.environments ?? [];
-            return environments.length > 1
-              ? [
-                  {
-                    profile: group.profile,
-                    provider: providerLabelFor(group.provider),
-                    siteId: site.id,
-                    label: displayLabel(site.displayName, site.name, site.id),
-                    domain: site.primaryDomain ?? "",
-                    environmentCount: environments.length,
-                  },
-                ]
-              : [];
-          })
-        : [],
-    );
-    if (eligibleSites.length > 0) {
-      return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Reusable push configurations between environments.</p></div></header>${renderPushJobs(jobs)}<section class="panel"><div class="panel-head"><div><h2>Choose a site</h2><p>Select the site whose environments you want to push between.</p></div></div><div class="compact-list">${eligibleSites.map(
-        (site) =>
-          html`<article><div><strong>${site.label}</strong><small>${
-            site.domain === "" ? false : `${site.domain} · `
-          }${site.profile} (${site.provider}) · ${String(
-            site.environmentCount,
-          )} environments</small></div><a class="button primary"${hrefAttr(
-            url("/push/new", {
-              profile: site.profile,
-              site: site.siteId,
-            }),
-          )}>Set up a push</a></article>`,
-      )}</div></section></section>`;
-    }
-    const hasHostingProvider = view.profiles.length > 0;
-    const needsSiteLoad =
-      !warm.cacheWarm &&
-      view.profiles.some((profile) =>
-        environmentPushSupported(profile.provider),
+  return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Reusable push configurations between environments. Nothing runs until you review and confirm it.</p></div></header>${renderPushJobs(jobs)}${view.pushes.length ? html`<div class="push-card-list">${view.pushes.map((push) => renderPushCard(push))}</div>` : false}${renderAvailableDirections(view, warm)}</section>`;
+}
+
+function renderAvailableDirections(
+  view: ConfigView,
+  warm: WarmSitesView,
+): Html {
+  const capable = view.profiles.filter((profile) =>
+    environmentPushSupported(profile.provider),
+  );
+  const incomplete =
+    warm.cacheWarm &&
+    capable.some((profile) => {
+      const group = warm.groups.find((group) => group.profile === profile.name);
+      return (
+        !group ||
+        Boolean(group.error) ||
+        group.stale === true ||
+        group.sites.some((site) => site.environments === undefined)
       );
-    return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Reusable push configurations between environments.</p></div></header>${renderPushJobs(jobs)}<div class="empty empty-block"><h2>${
-      needsSiteLoad ? "Load sites to continue" : "No sites available for push"
-    }</h2><p>${pushesStatusLine(
-      view.profiles,
-      warm,
-    )}</p><a class="button primary"${hrefAttr(
-      url(hasHostingProvider ? "/sites" : "/providers"),
-    )}>${
-      hasHostingProvider
-        ? needsSiteLoad
-          ? "Load hosting sites"
-          : "Review hosting sites"
-        : "Connect a hosting provider"
-    }</a></div></section>`;
+    });
+  const directions = warm.cacheWarm
+    ? warm.groups.flatMap((group) =>
+        capable.some((profile) => profile.name === group.profile) &&
+        !group.error &&
+        !group.stale
+          ? group.sites.flatMap((site) =>
+              (site.environments ?? []).flatMap((source) =>
+                (site.environments ?? [])
+                  .filter((target) => target.id !== source.id)
+                  .map((target) => ({
+                    profile: group.profile,
+                    siteId: site.id,
+                    siteLabel: displayLabel(
+                      site.displayName,
+                      site.name,
+                      site.id,
+                    ),
+                    source,
+                    target,
+                  })),
+              ),
+            )
+          : [],
+      )
+    : [];
+  const available = directions.filter(
+    (direction) =>
+      !view.pushes.some(
+        (push) =>
+          push.hostingProfile === direction.profile &&
+          push.siteId === direction.siteId &&
+          push.sourceEnvId === direction.source.id &&
+          push.targetEnvId === direction.target.id,
+      ),
+  );
+  const loadNotice =
+    !warm.cacheWarm || incomplete
+      ? html`<p>Open Sites, click Refresh to update hosting environments, then return to Push. No new directions can be confirmed for accounts whose inventory is unavailable.</p><a class="button secondary"${hrefAttr(url("/sites"))}>Refresh hosting sites</a>`
+      : false;
+  if (available.length) {
+    return html`<section class="panel"><div class="panel-head"><div><h2>Available directions</h2><p>Choose a direction to configure. Reverse directions are separate setups; saving does not run a push.</p></div></div>${incomplete ? html`<div class="empty">${loadNotice}</div>` : false}<div class="compact-list">${available.map((direction) => html`<article><div><strong>${direction.siteLabel} · ${displayLabel(direction.source.displayName, direction.source.name, direction.source.id)} → ${displayLabel(direction.target.displayName, direction.target.name, direction.target.id)}</strong><small>${direction.profile} · From: ${direction.source.primaryDomain ?? "URL unavailable"} → To: ${direction.target.primaryDomain ?? "URL unavailable"}</small></div><a class="button secondary"${hrefAttr(url("/push/new", { profile: direction.profile, site: direction.siteId, source: direction.source.id, target: direction.target.id }))}>Set up a push</a></article>`)}</div></section>`;
   }
-  return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Reusable push configurations between environments. Nothing runs until you review and confirm it.</p></div><a class="button secondary"${hrefAttr(
-    url("/sites"),
-  )}>Set up a push</a></header>${renderPushJobs(jobs)}<div class="push-card-list">${view.pushes.map(
-    (push) => renderPushCard(push),
-  )}</div></section>`;
+  let title: string;
+  let message: string;
+  let action: Html | false = false;
+  if (!view.profiles.length) {
+    title = "Connect a hosting account";
+    message = pushesStatusLine(view.profiles, warm);
+    action = html`<a class="button primary"${hrefAttr(url("/providers"))}>Connect a hosting provider</a>`;
+  } else if (!capable.length) {
+    title = "Environment push is not supported";
+    message = pushesStatusLine(view.profiles, warm);
+    action = html`<a class="button secondary"${hrefAttr(url("/providers"))}>Review hosting accounts</a>`;
+  } else if (!warm.cacheWarm || incomplete) {
+    title = warm.cacheWarm
+      ? "Hosting inventory needs updating"
+      : "Load sites to continue";
+    message =
+      "Available directions could not be determined from the current inventory.";
+    action = loadNotice;
+  } else if (directions.length) {
+    title = "All directions are already configured";
+    message =
+      "Every direction in the current hosting inventory, including reverse directions, has a saved setup. Use the saved pushes above to review and run them.";
+  } else {
+    title = "At least two environments are needed";
+    message = pushesStatusLine(view.profiles, warm);
+    action = html`<p>Add another environment with your hosting provider, then refresh Sites and return here.</p><a class="button secondary"${hrefAttr(url("/sites"))}>Refresh hosting sites</a>`;
+  }
+  return html`<section class="empty empty-block"><h2>${title}</h2><p>${message}</p>${action}</section>`;
 }
 
 /** Go's `pushScopeSummary` (`views.go:864-879`). */
@@ -343,13 +374,20 @@ export function renderPushNewPage(view: PushNewView = EMPTY_PUSH_NEW): Html {
     post(url("/_dashboard/pushes/save"), { include: ["pushForm"] }),
   );
 
+  const suggestName = suggestPushName(
+    view.envs.map((env) => ({
+      id: env.id,
+      name: displayLabel(env.displayName, env.name, env.id),
+    })),
+  );
   const initialDirection =
     view.sourceEnvId === ""
-      ? false
+      ? ds.init(suggestName)
       : ds.init(
           seq(
             set("pushForm.sourceEnvId", jsString(view.sourceEnvId)),
             set("pushForm.targetEnvId", jsString(view.targetEnvId)),
+            suggestName,
           ),
         );
 
@@ -382,7 +420,7 @@ export function renderPushNewPage(view: PushNewView = EMPTY_PUSH_NEW): Html {
     "push-name",
   )} type="text"${ds.bind(
     "pushForm.name",
-  )} placeholder="staging-to-live" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" maxlength="64" autocomplete="off" required><small class="field-help">Use this name to find and run the push later. Letters, numbers, dots, dashes, and underscores only.</small></label></div><div class="button-row"><button class="button primary" type="submit">Save push</button><a class="button secondary"${hrefAttr(
+  )} placeholder="staging-to-live" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" maxlength="64" autocomplete="off" required><small class="field-help">Suggested from the selected environments. Change it if you prefer a custom name.</small></label></div><div class="button-row"><button class="button primary" type="submit">Save push</button><a class="button secondary"${hrefAttr(
     url("/push"),
   )}>Cancel</a></div></form></section>`;
 }
@@ -397,9 +435,15 @@ function renderEnvSelect(
     path === "pushForm.sourceEnvId"
       ? "Choose source environment"
       : "Choose target environment";
+  const suggestion = suggestPushName(
+    envs.map((env) => ({
+      id: env.id,
+      name: displayLabel(env.displayName, env.name, env.id),
+    })),
+  );
   return html`<label><span>${label}</span><select${ds.bind(
     path,
-  )}${path === "pushForm.sourceEnvId" ? ds.on("change", set("pushForm.targetEnvId", jsString(""))) : false} required><option value="" disabled>${placeholder}</option>${envs.map(
+  )}${ds.on("change", path === "pushForm.sourceEnvId" ? seq(set("pushForm.targetEnvId", jsString("")), suggestion) : suggestion)} required><option value="" disabled>${placeholder}</option>${envs.map(
     (env) => {
       const name = displayLabel(env.displayName, env.name, env.id);
       const optionLabel =

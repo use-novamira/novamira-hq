@@ -60,7 +60,10 @@ test("app acknowledgement and MCP connection use token-protected POST routes", a
         chatgpt: "",
         launch: { command: "test", args: [] },
       }),
-      connect: async (client) => connected.push(client),
+      connect: async (client) => {
+        connected.push(client);
+        return "configured";
+      },
       verify: async () => {
         checks++;
         return { toolCount: 11 };
@@ -106,6 +109,13 @@ test("app acknowledgement and MCP connection use token-protected POST routes", a
     const page = await server.dispatch(request("/mcp"));
     assert.doesNotMatch(renderHtml(page.body), /Before you start/);
     assert.match(renderHtml(page.body), /Claude Desktop/);
+    const review = await server.dispatch(request("/?review-notice=1"));
+    assert.match(renderHtml(review.body), /Before you start/);
+    assert.doesNotMatch(
+      renderHtml(review.body),
+      /I understand and accept|\/_dashboard\/app\/acknowledge/,
+    );
+    assert.equal(accepted, true);
     const bundle = await server.dispatch(request("/mcp/novamira-hq.mcpb"));
     assert.equal(bundle.kind, "asset");
     assert.equal(bundle.status, 200);
@@ -131,6 +141,7 @@ test("app acknowledgement and MCP connection use token-protected POST routes", a
     );
     await connect.run(stream);
     assert.deepEqual(connected, ["chatgpt"]);
+    assert.equal(checks, 2);
   } finally {
     await cleanup();
   }

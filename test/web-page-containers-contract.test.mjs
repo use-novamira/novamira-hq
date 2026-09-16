@@ -6,13 +6,17 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { renderHtml } from "../dist/web/html.js";
 import { renderSiteConnectSuccess } from "../dist/web/views/site-profiles.js";
-import { renderMcpPage } from "../dist/web/views/mcp.js";
+import { renderMcpPage, MCP_PAGE_CLIENTS } from "../dist/web/views/mcp.js";
+import { createMcpConnectionService } from "../dist/mcp/configuration.js";
 import { renderNav } from "../dist/web/views/layout.js";
 
 test("AI client selection and every instruction page share the same full-width container", () => {
   const view = { profiles: [], pushes: [] };
-  const configuration = { chatgpt: "x".repeat(2000), claude: "y".repeat(2000) };
-  for (const client of [undefined, "chatgpt", "claude"]) {
+  const configuration = createMcpConnectionService(
+    { command: "novamira-hq", args: ["mcp"] },
+    {},
+  ).configuration();
+  for (const client of [undefined, ...MCP_PAGE_CLIENTS]) {
     for (const config of [undefined, configuration]) {
       const markup = renderHtml(renderMcpPage(view, config, client));
       assert.ok(markup.includes('class="page mcp-page"'));
@@ -20,9 +24,9 @@ test("AI client selection and every instruction page share the same full-width c
       if (config || client === undefined) {
         assert.equal(
           markup.split("<svg ").length - 1,
-          client === undefined ? 2 : 1,
+          client === undefined ? 7 : 1,
         );
-        assert.ok(markup.includes('aria-hidden="true" focusable="false"'));
+        assert.ok(markup.includes('aria-hidden="true"'));
         assert.ok(!markup.includes('class="mcp-choice-mark">O</span>'));
         assert.ok(!markup.includes('class="mcp-choice-mark">A</span>'));
       }

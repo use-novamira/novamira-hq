@@ -391,7 +391,7 @@ test("maintenance and provisioning are fixed typed mutations", async () => {
         profile: "production",
         environmentId: "env-target",
         url: "https://example.test",
-        enableAiAbilities: false,
+        enableAiAbilities: true,
       },
     }),
   ]);
@@ -414,10 +414,30 @@ test("maintenance and provisioning are fixed typed mutations", async () => {
       "env-target",
       "--url",
       "https://example.test",
+      "--ai-abilities",
     ],
   ]);
   assert.equal(messages[1].result.isError, undefined);
   assert.equal(messages[2].result.isError, undefined);
+});
+
+test("AI setup requires positive approval before any CLI or provider call", async () => {
+  for (const approval of [undefined, false]) {
+    const { messages, calls } = await session([
+      initialize,
+      initialized,
+      request(2, "tools/call", {
+        name: "hosting_novamira_setup",
+        arguments: {
+          profile: "production",
+          environmentId: "env-target",
+          ...(approval === undefined ? {} : { enableAiAbilities: approval }),
+        },
+      }),
+    ]);
+    assert.deepEqual(calls, []);
+    assert.ok(messages.at(-1).error || messages.at(-1).result?.isError);
+  }
 });
 
 test("push uses a one-use plan and invokes only the provider-native push", async () => {

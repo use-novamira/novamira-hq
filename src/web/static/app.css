@@ -447,6 +447,8 @@ p {
   box-shadow: var(--shadow);
 }
 
+.provider-action-list { margin: 0; padding: 16px 36px; display: grid; gap: 8px; }
+
 .panel-head {
   display: flex;
   gap: 12px;

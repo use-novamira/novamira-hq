@@ -80,6 +80,7 @@ export interface PushFormSignals {
   readonly submitting: boolean;
   readonly open: boolean;
   readonly name: string;
+  readonly suggestedName: string;
   readonly hostingProfile: string;
   readonly siteId: string;
   readonly siteLabel: string;
@@ -266,6 +267,7 @@ export function defaultPushFormSignals(): PushFormSignals {
     submitting: false,
     open: false,
     name: "",
+    suggestedName: "",
     hostingProfile: "",
     siteId: "",
     siteLabel: "",

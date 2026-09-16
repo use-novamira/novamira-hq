@@ -13,10 +13,11 @@ export interface McpConfiguration {
   readonly chatgpt: string;
 }
 
-export type McpClient = "chatgpt" | "claude-code";
+export type McpClient = "chatgpt" | "codex" | "claude-code" | "vscode";
+export type McpConnectOutcome = "configured" | "existing" | "sent";
 
 export interface McpConnectionService {
   configuration(): McpConfiguration;
-  connect(client: McpClient): Promise<void>;
+  connect(client: McpClient): Promise<McpConnectOutcome>;
   verify(): Promise<{ readonly toolCount: number }>;
 }

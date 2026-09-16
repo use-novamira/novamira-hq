@@ -3,8 +3,11 @@
 
 import { asCliError, CliError } from "../../errors.js";
 import { createMcpBundle } from "../../mcp/bundle.js";
-import { patchToast } from "../patch.js";
+import { patchPage, patchToast } from "../patch.js";
 import type { RouteContext, RouteHandler } from "../routes.js";
+import { defaultDashboardSignals } from "../signals.js";
+import type { McpClient } from "../../mcp-connection.js";
+import type { McpSetupState } from "../views/mcp.js";
 
 export function createMcpBundleHandler(context: RouteContext): RouteHandler {
   return () => {
@@ -34,28 +37,57 @@ export function createMcpConnectHandler(context: RouteContext): RouteHandler {
   return (request) => ({
     kind: "sse",
     run: async (stream) => {
+      let client: McpClient | undefined;
+      const repaint = async (state: McpSetupState): Promise<void> => {
+        const notice = { level: "neutral" as const, message: "" };
+        patchPage(stream, {
+          page: "mcp",
+          notice,
+          model: {
+            view: await context.loadConfigView(),
+            notice,
+            signals: defaultDashboardSignals(context.token),
+            ...(client ? { mcpClient: client } : {}),
+            ...(context.mcpConnection
+              ? { mcp: context.mcpConnection.configuration() }
+              : {}),
+            mcpSetup: state,
+          },
+        });
+      };
       try {
         if (!context.mcpConnection)
           throw new CliError(
             "provider_unsupported",
             "Automatic AI client setup is unavailable in this Novamira HQ instance.",
           );
-        const client = request.query.get("client");
-        if (client !== "chatgpt" && client !== "claude-code")
+        const requested = request.query.get("client");
+        if (
+          requested !== "chatgpt" &&
+          requested !== "codex" &&
+          requested !== "claude-code" &&
+          requested !== "vscode"
+        )
           throw new CliError("usage_error", "Choose a supported AI client.");
-        await context.mcpConnection.connect(client);
-        patchToast(stream, {
-          level: "ok",
-          message:
-            client === "chatgpt"
-              ? "Novamira HQ is connected to ChatGPT Desktop and Codex. Restart the client if it is already open."
-              : "Novamira HQ is connected to Claude Code. Start a new session to use it.",
-        });
+        client = requested;
+        await repaint({ status: "checking" });
+        await context.mcpConnection.verify();
+        await repaint({ status: "configuring" });
+        const status = await context.mcpConnection.connect(client);
+        await repaint({ status });
       } catch (error) {
-        patchToast(stream, {
-          level: "danger",
-          message: asCliError(error).message,
-        });
+        try {
+          await repaint({
+            status: "failed",
+            message: asCliError(error).message,
+          });
+        } catch {
+          patchToast(stream, {
+            level: "danger",
+            message:
+              "Configuration could not be completed. Refresh the page and try again.",
+          });
+        }
       }
       stream.close();
     },

@@ -21,7 +21,16 @@ function connectorArgv(
     "--env",
     `${name}=${value}`,
   ]);
-  if (client === "chatgpt") {
+  if (client === "vscode") {
+    return {
+      command: "code",
+      args: [
+        "--add-mcp",
+        JSON.stringify({ name: "novamira-hq", type: "stdio", ...launch, env }),
+      ],
+    };
+  }
+  if (client === "chatgpt" || client === "codex") {
     return {
       command: "codex",
       args: [
@@ -66,16 +75,8 @@ export function createMcpConnectionService(
       command: base.command,
       args: [...base.args],
     };
-    // Only executable lookup and HQ path overrides, never provider credentials
-    // or arbitrary environment values. GUI clients on macOS and Linux commonly
-    // start with a smaller PATH than the dashboard, so a bare installed command
-    // must carry the PATH in which Novamira HQ is already known to run.
+    // Preserve only explicit HQ location settings, never the captured PATH.
     const env: Record<string, string> = {};
-    if (!/[\\/]/u.test(launch.command)) {
-      const executablePath =
-        environment.PATH ?? environment.Path ?? environment.path;
-      if (executablePath) env.PATH = executablePath;
-    }
     for (const name of [
       "NOVAMIRA_HQ_HOME",
       "NOVAMIRA_HQ_CONFIG",
@@ -120,10 +121,17 @@ export function createMcpConnectionService(
     async connect(client) {
       const config = configuration();
       const launchEnvironment = JSON.parse(config.claude) as {
-        mcpServers: Record<string, { env?: Record<string, string> }>;
+        mcpServers: Record<
+          string,
+          McpLaunch & { env?: Record<string, string> }
+        >;
       };
       const inherited = launchEnvironment.mcpServers["novamira-hq"]?.env ?? {};
-      const connector = connectorArgv(client, config.launch, inherited);
+      const connector = connectorArgv(
+        client,
+        launchEnvironment.mcpServers["novamira-hq"] ?? config.launch,
+        inherited,
+      );
       const run = (args: readonly string[]): Promise<boolean> =>
         new Promise((resolve) => {
           const child = spawnProcess(connector.command, [...args], {
@@ -150,11 +158,13 @@ export function createMcpConnectionService(
           });
         });
 
-      if (await run(["mcp", "get", "novamira-hq"])) return;
-      if (await run(connector.args)) return;
+      if (client !== "vscode" && (await run(["mcp", "get", "novamira-hq"])))
+        return "existing";
+      if (await run(connector.args))
+        return client === "vscode" ? "sent" : "configured";
       throw new CliError(
         "integration_unavailable",
-        `${client === "chatgpt" ? "ChatGPT/Codex" : "Claude Code"} could not be configured automatically. Make sure its command-line client is installed, or use manual setup.`,
+        `${client === "vscode" ? "VS Code" : client === "claude-code" ? "Claude Code" : "Codex"} could not be configured automatically. Make sure its command-line client is installed, or use manual setup.`,
       );
     },
     async verify() {
@@ -176,7 +186,7 @@ export function createMcpConnectionService(
           reject(
             new CliError(
               "provider_error",
-              "Local MCP startup verification failed. Check the executable and installation. No provider operation was requested.",
+              "Novamira HQ could not start or did not respond. Check that Novamira HQ is installed and available, then try again. No client settings or sites were changed.",
             ),
           );
         };

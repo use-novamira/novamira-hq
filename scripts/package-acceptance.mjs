@@ -148,6 +148,7 @@ try {
     "LICENSE",
     "README.md",
     "dist/index.js",
+    "dist/mcp/icon.png",
     "skills/novamira-hq/SKILL.md",
     "skills/core/SKILL.md",
     "skills/hosting/SKILL.md",

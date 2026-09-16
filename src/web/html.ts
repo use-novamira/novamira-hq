@@ -501,13 +501,15 @@ export function hrefAttr(target: Url): Attr {
   return attr("href", renderUrl(target));
 }
 
-/** Fixed external documentation links; never usable for Datastar requests. */
-export function documentationHref(client: "claude" | "chatgpt"): Attr {
+/** Fixed app-install destination, never an arbitrary external URL or SSE target. */
+export function cursorInstallHref(configuration: string): Attr {
+  const query = new URLSearchParams({
+    name: "novamira-hq",
+    config: Buffer.from(configuration, "utf8").toString("base64"),
+  });
   return attr(
     "href",
-    client === "claude"
-      ? "https://modelcontextprotocol.io/docs/develop/connect-local-servers"
-      : "https://learn.chatgpt.com/docs/extend/mcp",
+    `cursor://anysphere.cursor-deeplink/mcp/install?${query.toString()}`,
   );
 }
 

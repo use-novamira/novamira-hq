@@ -75,7 +75,10 @@ function fakeProviderClient(behaviour = {}) {
     listSites: async () => [],
     getSite: async () => ({}),
     listEnvironments: async () => [],
-    read: async () => [],
+    read: async (request) => {
+      if (behaviour.read) return behaviour.read(request);
+      return [];
+    },
     action: async () => ({}),
     operationStatus: async () => ({}),
   };
@@ -364,16 +367,14 @@ test("2: the form chooses a provider before requesting account details", async (
     ">Cancel</button>",
     'data-bind="providerForm.companyId"',
     'autocomplete="new-password"',
-    "Stored on this device",
-    "never sends this information to Novamira servers",
-    "contact your hosting provider directly",
-    "operating system's credential store",
-    "owner-only local file",
-    "not encrypted by Novamira HQ",
+    "Your hosting credentials are stored only on this computer.",
   ])
     assert.ok(markup.includes(want), want);
   // Fields Go never had. `force` is set by Edit alone.
   for (const gone of [
+    "local-storage-note",
+    "operating system's credential store",
+    "not encrypted by Novamira HQ",
     "Credential env",
     "API base URL",
     "Overwrite if it exists",
@@ -414,6 +415,47 @@ test("3: the table has Go's four columns and no invented ones", async () => {
   assert.ok(markup.includes(">Check connection</button>"));
   assert.ok(!markup.includes(">Validate</button>"));
   assert.ok(markup.includes("1 provider profiles"));
+  assert.ok(
+    markup.includes('href="/providers?actions=prod">Available actions</a>'),
+  );
+});
+
+test("account actions page reads capabilities only for the selected account", async () => {
+  const calls = [];
+  const { server } = await fixture({
+    config: PROFILE_CONFIG,
+    client: {
+      read: async (request) => {
+        calls.push(request);
+        return [{ name: "sites.list", supported: true }];
+      },
+      validateError: new Error("must not validate"),
+    },
+  });
+  await page(server, "/providers");
+  assert.equal(calls.length, 0);
+  const markup = await page(server, "/providers?actions=prod");
+  assert.deepEqual(calls, [{ kind: "capabilities" }]);
+  assert.ok(markup.includes("List sites"));
+  assert.ok(markup.includes("prod · Kinsta"));
+  assert.ok(!markup.includes("env:KINSTA_API_KEY"));
+  const missing = await server.dispatch(request("/providers?actions=missing"));
+  assert.equal(missing.status, 404);
+  assert.equal(calls.length, 1);
+});
+
+test("account actions loading failure does not leak adapter errors", async () => {
+  const { server } = await fixture({
+    config: PROFILE_CONFIG,
+    client: {
+      read: async () => {
+        throw new Error("private-error-detail");
+      },
+    },
+  });
+  const markup = await page(server, "/providers?actions=prod");
+  assert.ok(markup.includes("Available actions could not be loaded"));
+  assert.ok(!markup.includes("private-error-detail"));
 });
 
 test("4: the table hides itself while the form is open, on both paints", async () => {

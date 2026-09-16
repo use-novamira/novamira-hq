@@ -88,6 +88,10 @@ import { connCellId } from "../patches.js";
 import { connCheckingSignal, providerDetailsSignal } from "../signals.js";
 import { renderNotice } from "./layout.js";
 import {
+  renderProviderActionsPage,
+  type ProviderActionsView,
+} from "./provider-actions.js";
+import {
   providerLabelFor,
   type ConfigView,
   type DashboardNotice,
@@ -313,6 +317,7 @@ function providerAction(path: string, profile: string): Expr {
 /* -------------------------------------------------------------------------- */
 
 export interface ProvidersPageModel {
+  readonly actions?: ProviderActionsView;
   readonly view: ConfigView;
   readonly notice: DashboardNotice;
   /** True only for `/` when neither hosting nor the site CLI has any sites. */
@@ -322,6 +327,7 @@ export interface ProvidersPageModel {
 }
 
 export function renderProvidersPage(model: ProvidersPageModel): Html {
+  if (model.actions) return renderProviderActionsPage(model.actions);
   if (model.onboarding) {
     return renderOnboarding(model);
   }
@@ -431,7 +437,7 @@ export function renderProviderForm(open: boolean): Html {
     "providerForm.credentialValue",
   )} autocomplete="new-password" required><small class="field-help"${ds.text(
     meta("credentialHelp"),
-  )}></small></label><label><span${idAttr("company-id-label")}${ds.text(
+  )}></small><small class="field-help">Your hosting credentials are stored only on this computer.</small></label><label><span${idAttr("company-id-label")}${ds.text(
     meta("companyLabel"),
   )}>Company or account ID</span><input${idAttr("company-id")} type="text"${ds.bind(
     "providerForm.companyId",
@@ -439,7 +445,7 @@ export function renderProviderForm(open: boolean): Html {
     placeholder: meta("companyPlaceholder"),
   })}><small class="field-help"${ds.text(
     meta("companyHelp"),
-  )}></small></label></div><aside class="local-storage-note"><strong>Stored on this device</strong><span>Novamira HQ never sends this information to Novamira servers; it uses the credential locally to contact your hosting provider directly. The credential uses the operating system's credential store when available. Otherwise Novamira HQ warns before using an owner-only local file; that fallback is not encrypted by Novamira HQ.</span></aside><div class="button-row"><button class="button primary" type="submit">Save account</button><button class="button secondary" type="button"${ds.on(
+  )}></small></label></div><div class="button-row"><button class="button primary" type="submit">Save account</button><button class="button secondary" type="button"${ds.on(
     "click",
     resetProviderForm(false),
   )}>Cancel</button></div></section></form>`;
@@ -485,7 +491,7 @@ export function renderProviderRow(profile: HostingProfileView): Html {
     profile.name,
     pageConnState(profile),
     profile.lastCheckedMillis,
-  )}<td class="actions"><button class="button link" type="button"${ds.on(
+  )}<td class="actions"><a class="button link"${hrefAttr(url("/providers", { actions: profile.name }))}>Available actions</a><button class="button link" type="button"${ds.on(
     "click",
     editProviderForm(profile),
   )}>Edit</button><button class="button link" type="button"${ds.on(

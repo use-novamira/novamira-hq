@@ -36,8 +36,13 @@
 
 import { CliError } from "../../errors.js";
 import { renderAboutPage } from "./about.js";
+import type { ProviderActionsView } from "./provider-actions.js";
 import type { McpConfiguration } from "../../mcp-connection.js";
-import { renderMcpPage } from "./mcp.js";
+import {
+  renderMcpPage,
+  type McpPageClient,
+  type McpSetupState,
+} from "./mcp.js";
 import { renderPushConfirmation } from "./push-confirmation.js";
 import { renderPushJob } from "./push-job.js";
 import type { PushJob } from "../services/push-execution.js";
@@ -65,6 +70,7 @@ import {
 import type { ConfigView, DashboardNotice, DashboardPage } from "./types.js";
 
 export interface PageModel {
+  readonly providerActions?: ProviderActionsView;
   readonly settingsTab?: SettingsTab;
   readonly sitesSnapshot?: SitesResult;
   readonly siteConnectSuccess?: SiteConnectSuccessView;
@@ -72,7 +78,8 @@ export interface PageModel {
   readonly pushJob?: PushJob;
   readonly pushJobs?: readonly PushJob[];
   readonly mcp?: McpConfiguration;
-  readonly mcpClient?: "chatgpt" | "claude";
+  readonly mcpClient?: McpPageClient;
+  readonly mcpSetup?: McpSetupState;
   readonly history?: HistoryView;
   readonly view: ConfigView;
   readonly notice: DashboardNotice;
@@ -110,11 +117,17 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
     case "about":
       return renderAboutPage(model.view);
     case "mcp":
-      return renderMcpPage(model.view, model.mcp, model.mcpClient);
+      return renderMcpPage(
+        model.view,
+        model.mcp,
+        model.mcpClient,
+        model.mcpSetup,
+      );
     case "history":
       return renderHistoryPage(model.history ?? []);
     case "providers":
       return renderProvidersPage({
+        ...(model.providerActions ? { actions: model.providerActions } : {}),
         view: model.view,
         notice: model.notice,
         onboarding: model.providerOnboarding ?? false,

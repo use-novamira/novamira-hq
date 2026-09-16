@@ -64,10 +64,8 @@ import { historyClient } from "./history/client.js";
 export { VERSION };
 
 /**
- * The installed package entry point is stable across Node upgrades and package
- * relocation. The MCP configuration carries the dashboard process' PATH so a
- * desktop client can resolve the global shim even when it did not inherit the
- * user's interactive shell environment.
+ * Launch the public command, independent of package manager or install layout.
+ * It must be available in the AI client's own execution environment.
  */
 export const DEFAULT_MCP_LAUNCH: McpLaunch = {
   command: PROGRAM_NAME,

@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { McpConfiguration } from "../mcp-connection.js";
+import { readFileSync } from "node:fs";
 
 /** Small ZIP STORE writer for the fixed, in-memory MCPB files. No user filenames. */
-function archive(files: Readonly<Record<string, string>>): Buffer {
+function archive(files: Readonly<Record<string, string | Buffer>>): Buffer {
   const local: Buffer[] = [];
   const central: Buffer[] = [];
   let offset = 0;
@@ -45,37 +46,17 @@ function archive(files: Readonly<Record<string, string>>): Buffer {
   return Buffer.concat([...local, directory, end]);
 }
 
-// The installed extension forwards stdio to the existing installation. On
-// Windows npm's .cmd shim cannot be spawned without a shell: use its JS entry
-// with Claude's Node runtime instead, as the site CLI integration does.
+// Forward stdio to the installed command, independent of its package manager.
 const LAUNCHER = `// SPDX-License-Identifier: AGPL-3.0-or-later
 const { spawn } = require('node:child_process');
-const { existsSync } = require('node:fs');
-const { join } = require('node:path');
 const launch = require('../launch.json');
-let command = launch.command;
-let args = launch.args;
-if (process.platform === 'win32' && command === 'novamira-hq') {
-  let entry;
-  for (const dir of (process.env.PATH || '').split(';')) {
-    if (!dir) continue;
-    for (const relative of ['node_modules/@novamira/hq/dist/index.js', '../lib/node_modules/@novamira/hq/dist/index.js']) {
-      const candidate = join(dir.replace(/^"|"$/g, ''), relative);
-      if (existsSync(candidate)) { entry = candidate; break; }
-    }
-    if (entry) break;
-  }
-  if (!entry) { process.stderr.write('Install Novamira HQ before connecting Claude Desktop.\\n'); process.exit(1); }
-  command = process.execPath;
-  args = [entry, ...args];
-}
 // Claude's embedded runtime supplies JS streams, not necessarily OS fds 0/1/2.
-const child = spawn(command, args, { shell: false, stdio: 'pipe' });
+const child = spawn(launch.command, launch.args, { shell: false, stdio: 'pipe' });
 process.stdin.pipe(child.stdin);
 child.stdout.pipe(process.stdout);
 child.stderr.pipe(process.stderr);
 child.stdin.on('error', () => {});
-child.on('error', () => { process.stderr.write('Novamira HQ could not start. Check its installation.\\n'); process.exitCode = 1; });
+child.on('error', () => { process.stderr.write('Novamira HQ could not start. Make sure novamira-hq is installed and available to your AI client.\\n'); process.exit(1); });
 child.on('close', code => { process.stdin.unpipe(child.stdin); process.stdin.pause(); process.exitCode = code ?? 1; });
 for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => child.kill(signal));
 `;
@@ -90,12 +71,18 @@ export function createMcpBundle(
       mcpServers: Record<string, { env?: Record<string, string> }>;
     }
   ).mcpServers["novamira-hq"];
+  const env = Object.fromEntries(
+    Object.entries(server?.env ?? {}).filter(
+      ([name]) => name.toUpperCase() !== "PATH",
+    ),
+  );
   const manifest = {
     manifest_version: "0.3",
     name: "novamira-hq",
     display_name: "Novamira HQ",
     version,
-    description: "Manage your sites with Novamira.",
+    description: "Manage your sites with Novamira HQ.",
+    icon: "icon.png",
     author: { name: "Ovation S.r.l." },
     license: "AGPL-3.0-or-later",
     tools_generated: true,
@@ -105,7 +92,7 @@ export function createMcpBundle(
       mcp_config: {
         command: "node",
         args: ["${__dirname}/server/index.cjs"],
-        ...(server?.env ? { env: server.env } : {}),
+        ...(Object.keys(env).length ? { env } : {}),
       },
     },
   };
@@ -113,5 +100,6 @@ export function createMcpBundle(
     "manifest.json": JSON.stringify(manifest, null, 2),
     "launch.json": JSON.stringify(configuration.launch),
     "server/index.cjs": LAUNCHER,
+    "icon.png": readFileSync(new URL("./icon.png", import.meta.url)),
   });
 }

@@ -58,6 +58,7 @@
  */
 
 import { PROVIDER_KINDS } from "../config/schema.js";
+import { isMcpPageClient } from "./views/mcp.js";
 import { CliError } from "../errors.js";
 import {
   createMcpBundleHandler,
@@ -358,11 +359,16 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
       )
         ? requestedSource
         : "";
+      const requestedTarget = (request.query.get("target") ?? "").trim();
       const targetEnvId =
-        sourceEnvId !== "" && site?.envs.length === 2
-          ? (site.envs.find((environment) => environment.id !== sourceEnvId)
-              ?.id ?? "")
-          : "";
+        sourceEnvId !== "" &&
+        requestedTarget !== sourceEnvId &&
+        site?.envs.some((environment) => environment.id === requestedTarget)
+          ? requestedTarget
+          : sourceEnvId !== "" && site?.envs.length === 2
+            ? (site.envs.find((environment) => environment.id !== sourceEnvId)
+                ?.id ?? "")
+            : "";
       return {
         pushNew: {
           profile,
@@ -378,9 +384,7 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
     }
     if (page === "mcp") {
       const client = request.query.get("client");
-      return client === "chatgpt" || client === "claude"
-        ? { mcpClient: client }
-        : {};
+      return isMcpPageClient(client) ? { mcpClient: client } : {};
     }
     if (page === "novamira-setup") {
       return setupExtras(request);
@@ -430,9 +434,11 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
   const pageHandler = (page: DashboardPage): RouteHandler => {
     return async (request) => {
       const view = await context.loadConfigView();
+      const reviewNotice = request.query.get("review-notice") === "1";
       if (
-        context.appAcknowledgement &&
-        !(await context.appAcknowledgement.accepted())
+        reviewNotice ||
+        (context.appAcknowledgement &&
+          !(await context.appAcknowledgement.accepted()))
       ) {
         const signals = defaultDashboardSignals(context.token);
         return htmlResponse(
@@ -442,7 +448,7 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
             signals,
             notice: EMPTY_NOTICE,
             activeNav: false,
-            body: renderAcknowledgement(),
+            body: renderAcknowledgement(reviewNotice),
           }),
         );
       }
@@ -471,6 +477,28 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
         firstProviderKind: PROVIDER_KINDS[0],
       });
       const extras = pageExtras(renderedPage, request);
+      const actionProfile = request.query.get("actions");
+      if (renderedPage === "providers" && actionProfile !== null) {
+        const profile = view.profiles.find(
+          (profile) => profile.name === actionProfile,
+        );
+        if (!profile)
+          throw new CliError("not_found", "Hosting account not found.");
+        let capabilities: unknown;
+        try {
+          capabilities = await context.providers.capabilities(profile.name);
+        } catch {
+          // Do not expose credential references or adapter diagnostics here.
+          capabilities = undefined;
+        }
+        Object.assign(extras, {
+          providerActions: {
+            profile: profile.name,
+            provider: profile.provider,
+            capabilities,
+          },
+        });
+      }
       // The extras go first so the three fields every page must have cannot be
       // overwritten by one, and so the notice reaching the toast and the notice
       // reaching the body are one value.

@@ -6,8 +6,16 @@ import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { runInNewContext } from "node:vm";
-import { mkdtemp, rm, readdir, mkdir, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  rm,
+  readdir,
+  mkdir,
+  writeFile,
+  readFile,
+} from "node:fs/promises";
 import { join } from "node:path";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -54,7 +62,6 @@ test("the npm MCP launch survives Node upgrades and package relocation", () => {
   assert.deepEqual(server, {
     command: "novamira-hq",
     args: ["mcp"],
-    env: { PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" },
   });
   assert.doesNotMatch(
     JSON.stringify(config),
@@ -111,9 +118,14 @@ test("the downloaded MCP bundle runs after relocation and lists real tools", asy
   assert.equal(zip.readUInt32LE(offset), 0x02014b50);
   assert.deepEqual(
     [...files.keys()],
-    ["manifest.json", "launch.json", "server/index.cjs"],
+    ["manifest.json", "launch.json", "server/index.cjs", "icon.png"],
   );
   const manifest = JSON.parse(files.get("manifest.json"));
+  assert.equal(manifest.icon, "icon.png");
+  assert.deepEqual(
+    files.get(manifest.icon),
+    await readFile(new URL("../scripts/macos/icon.png", import.meta.url)),
+  );
   // Claude's embedded runtime exposes JS streams rather than ordinary file
   // descriptors. An inherited-stdio child silently misses this initialize.
   const child = Object.assign(new EventEmitter(), {
@@ -127,6 +139,7 @@ test("the downloaded MCP bundle runs after relocation and lists real tools", asy
     stdout: new PassThrough(),
     stderr: new PassThrough(),
     platform: "darwin",
+    execPath: process.execPath,
     env: {},
   });
   runInNewContext(files.get("server/index.cjs").toString(), {
@@ -135,14 +148,16 @@ test("the downloaded MCP bundle runs after relocation and lists real tools", asy
       if (name === "node:child_process")
         return {
           spawn(command, args, options) {
+            assert.equal(command, "novamira-hq");
+            assert.deepEqual(Array.from(args), ["mcp"]);
+            assert.equal(options.env, undefined);
             assert.equal(options.stdio, "pipe");
             assert.equal(options.shell, false);
             return child;
           },
         };
-      if (name === "../launch.json")
-        return JSON.parse(files.get("launch.json"));
-      return {};
+      if (name === "../launch.json") return DEFAULT_MCP_LAUNCH;
+      return createRequire(import.meta.url)(name);
     },
   });
   runtime.stdin.write("initialize\n");
@@ -154,8 +169,26 @@ test("the downloaded MCP bundle runs after relocation and lists real tools", asy
   assert.equal(runtime.stdout.read(), null);
   child.emit("close", 0);
   assert.equal(runtime.exitCode, 0);
-  assert.equal(manifest.description, "Manage your sites with Novamira.");
+  assert.equal(manifest.description, "Manage your sites with Novamira HQ.");
   assert.equal(manifest.server.mcp_config.command, "node");
+  const portableConfig = {
+    ...config,
+    launch: DEFAULT_MCP_LAUNCH,
+    claude: JSON.stringify({
+      mcpServers: { "novamira-hq": { env: { PATH: "/private/old-node/bin" } } },
+    }),
+  };
+  assert.ok(
+    !createMcpBundle(portableConfig, "1.0.0").includes(
+      Buffer.from("/private/old-node/bin"),
+    ),
+  );
+  const defaultLaunch = JSON.parse(files.get("launch.json"));
+  assert.doesNotMatch(
+    files.get("server/index.cjs").toString(),
+    /node_modules|process.execPath|existsSync|NVM|homebrew/,
+  );
+  assert.ok(defaultLaunch.command);
   assert.deepEqual(manifest.server.mcp_config.args, [
     "${__dirname}/server/index.cjs",
   ]);
@@ -220,8 +253,8 @@ test("MCP page chooses a client before showing its setup", () => {
     ),
   );
   for (const text of [
-    "ChatGPT &amp; Codex",
-    "Connect with one click",
+    "ChatGPT Desktop",
+    "Configure with one click",
     "Manual configuration",
     "Copy configuration",
     "Choose another AI client",

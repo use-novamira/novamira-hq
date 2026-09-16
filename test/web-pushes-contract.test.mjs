@@ -336,22 +336,26 @@ test("1: the empty page exposes the next useful action for every state", async (
   const cold = await fixture();
   assert.ok(
     (await line(cold.server)).includes(
-      "You have a push-capable host: prod (Kinsta). Open Sites",
+      "Available directions could not be determined from the current inventory.",
     ),
   );
   assert.ok((await line(cold.server)).includes("Load sites to continue"));
-  assert.ok((await line(cold.server)).includes(">Load hosting sites</a>"));
+  assert.ok((await line(cold.server)).includes(">Refresh hosting sites</a>"));
   assert.equal(cold.listCalls.length, 0, "a page render lists no sites");
 
   // Warm cache with an eligible site.
   const warm = await fixture();
   await warmCache(warm.server);
   const warmMarkup = await line(warm.server);
-  assert.ok(warmMarkup.includes("Choose a site"));
+  assert.ok(warmMarkup.includes("Available directions"));
   assert.ok(warmMarkup.includes("Multi Site"));
-  assert.ok(warmMarkup.includes("multi.example.com · prod (Kinsta)"));
   assert.ok(
-    warmMarkup.includes('href="/push/new?profile=prod&site=s1">Set up a push'),
+    warmMarkup.includes("From: staging.example.com → To: live.example.com"),
+  );
+  assert.ok(
+    warmMarkup.includes(
+      'href="/push/new?profile=prod&site=s1&source=env-a&target=env-b">Set up a push',
+    ),
   );
   assert.ok(!warmMarkup.includes("expand one of your"));
 
@@ -548,6 +552,34 @@ test("4a: opening from an environment preselects the source and the only other t
   );
   assert.ok(markup.includes("$pushForm.sourceEnvId = &quot;env-a&quot;"));
   assert.ok(markup.includes("$pushForm.targetEnvId = &quot;env-b&quot;"));
+});
+
+test("direction links validate and preselect a target on sites with three environments", async () => {
+  const { server } = await fixture({
+    kinstaSites: [
+      {
+        ...KINSTA_SITES[0],
+        environments: [
+          ...KINSTA_SITES[0].environments,
+          env("env-c", "third.example.com"),
+        ],
+      },
+    ],
+  });
+  await warmCache(server);
+  for (const [target, expected] of [
+    ["env-c", "env-c"],
+    ["env-a", ""],
+    ["unknown", ""],
+  ]) {
+    const markup = await page(
+      server,
+      `/push/new?profile=prod&site=s1&source=env-a&target=${target}`,
+    );
+    assert.ok(
+      markup.includes(`$pushForm.targetEnvId = &quot;${expected}&quot;`),
+    );
+  }
 });
 
 test("4b: the form resolves a duplicate site id only within its requested profile", async () => {

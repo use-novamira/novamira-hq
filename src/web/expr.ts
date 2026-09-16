@@ -85,6 +85,21 @@ export function copyText(value: string): Expr {
   );
 }
 
+/** Suggest a push name without replacing an operator's custom name. */
+export function suggestPushName(
+  environments: readonly { id: string; name: string }[],
+): Expr {
+  return makeExpr(`(() => {
+    const environments = ${jsJson(environments).source};
+    const source = environments.find(env => env.id === $pushForm.sourceEnvId)?.name;
+    const target = environments.find(env => env.id === $pushForm.targetEnvId)?.name;
+    const slug = value => value.normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[^a-z0-9]+|[-._]+$/g, '').slice(0, 30) || 'environment';
+    const next = source && target && $pushForm.sourceEnvId !== $pushForm.targetEnvId ? slug(source) + '-to-' + slug(target) : '';
+    if (!$pushForm.name || $pushForm.name === $pushForm.suggestedName) $pushForm.name = next;
+    $pushForm.suggestedName = next;
+  })()`);
+}
+
 const EXPR_FORM = Symbol("novamira.web.expr");
 
 interface ExprNode {

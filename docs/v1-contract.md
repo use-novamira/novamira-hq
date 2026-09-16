@@ -755,11 +755,15 @@ The remaining sequence is:
 New installations enable AI Abilities by default for CLI callers. The dashboard
 requires an explicit, initially unchecked approval before starting any setup job.
 Without it, Start Setup is disabled and the server rejects the request before
-any provisioning or provider calls. Existing installations preserve
+any provisioning or provider calls. MCP setup also requires `enableAiAbilities: true`;
+its tool instructions require explicit user approval for the target site before
+setting this value. Missing or false approval is rejected before execution.
+Dashboard and MCP setup therefore enable AI Abilities on existing sites too.
+Direct CLI callers on existing installations preserve
 both options by default; `--ai-abilities` explicitly enables them and binds them
 to the current domain. `--force` is not that option. Connecting a site does not
-change either setting. CLI and MCP require no app acceptance, and MCP may pass
-`enableAiAbilities: true` without an additional human-confirmation gate.
+change either setting. The general app acknowledgement is separate from this
+setup approval and is not checked by CLI or MCP.
 
 Step 1 always precedes step 3. The minimum is **PHP 8.0**; a lower major is
 `server_unsupported` and the gate exists to prevent a doomed mutation, so a
@@ -1280,6 +1284,13 @@ form to itself and no page reloads.
   installer itself.
 - **Push** (`/push`, `/push/new`) — the saved environment push configurations
   as direction cards with resolved environment names, domains and scope. Sites
+  and the Push page offer configuration entry points. Push lists unsaved ordered
+  source/target pairs from the warm inventory, with URLs; the reverse is a
+  separate direction. It distinguishes all directions configured, unsupported
+  hosting accounts, insufficient environments and unavailable/incomplete inventory.
+  Direction links preselect both source and target after validating their IDs.
+  The saved name is suggested as `source-to-target` and remains editable.
+  Sites
   offers Configure push in the menu of every eligible environment; that
   source is preselected, and a two-environment site also preselects the only
   possible target. The form then collects direction, positive scope and saved name.
@@ -1513,33 +1524,64 @@ work its caller did not ask for.
 
 ## Configure your AI and app acknowledgement
 
+Each hosting account has an **Available actions** link to
+`/providers?actions=<profile>`. This read-only view uses the existing provider
+capabilities service and public HQ allowlist, displaying only actions actually
+exposed through the dashboard or typed AI tools for that account. Internal-only
+operations and unsupported actions are omitted. It does not compare providers,
+validate credentials, or execute hosting actions. Provider permissions and plan
+limits still apply; the view distinguishes HQ support from dashboard controls.
+Capability-loading failures show an unavailable state, not a fabricated list.
+
 The sidebar footer links to `/about` (About Novamira HQ), which shows the running
 version, Ovation S.r.l. attribution, copyright, AGPL-3.0-or-later license and fixed
 product/source/license links. Version and legal information live on that page,
 not repeated in the sidebar. The page links to the existing Updates settings tab.
 
 `/mcp` first asks for the AI client, then renders only that client's setup.
+Automatic registration first verifies local MCP startup with `initialize` and
+`tools/list`, without running tools or checking npm. The page displays checking
+and configuring states, then a dedicated result for configured, already present
+(unchanged and unverified), or sent to VS Code (review required there). Failure
+leaves a persistent inline error with the setup controls available to retry.
+These results do not claim that the external AI client connection was verified.
+`/?review-notice=1` reopens the initial application notice in read-only mode,
+with a back link instead of the acceptance button; it never resets acceptance.
+The choices are Claude Desktop, Claude Code CLI, ChatGPT Desktop, Codex CLI, Cursor,
+VS Code (GitHub Copilot) and OpenCode. Each has the same page container and its
+own instructions. Cursor uses a fixed-scheme install deep link carrying only the
+generated launch configuration; OpenCode offers `opencode mcp add` guided setup.
+All client configurations omit the dashboard's captured `PATH`. The default
+launch is `novamira-hq mcp`: the public command must already be directly executable
+in the AI client's environment. There is no Node, npm, nvm or install-directory
+discovery. Explicit standalone executable overrides are preserved. Existing
+client registrations must be updated to use the new configuration.
+Client-specific JSON/TOML stays in a closed Manual configuration disclosure.
+Existing `client=claude` and `client=chatgpt` links retain their meaning.
 The token-protected POST `/_dashboard/mcp/connect` uses the client's official
 command-line registration command: `codex mcp add` for the configuration shared
 by ChatGPT Desktop, Codex CLI and the IDE extension, or `claude mcp add` at user
-scope for Claude Code. It spawns an argv array with `shell: false`, displays no
+scope for Claude Code, or `code --add-mcp` for VS Code. It spawns an argv array with `shell: false`, displays no
 child output and copies no provider credential. Claude Desktop JSON and Codex
-TOML remain hidden in Manual configuration disclosures as fallbacks. The npm
-distribution launches the stable installed command `novamira-hq mcp`, never a
-versioned Node executable or a package-internal `dist/index.js`; it includes the
-dashboard process' executable search path so a GUI client can resolve that
-installed command. The standalone desktop distribution keeps using its own
-embedded executable and `--mcp`. Both forms use fixed argv and copy only the
-executable search path and Novamira HQ path overrides, never provider secrets.
+TOML remain hidden in Manual configuration disclosures as fallbacks. The standalone
+desktop distribution keeps using its own embedded executable and `--mcp`.
+Both forms use fixed argv and copy only HQ location overrides, never provider
+secrets or the executable search path. No shell is used to reinterpret commands;
+on Windows, a shell-only `.cmd` shim is not a directly executable command.
 The optional `novamira` site CLI is resolved separately by Novamira HQ and is
 not another MCP server or part of the generated client configuration.
 Claude Desktop's primary action downloads `/mcp/novamira-hq.mcpb`, a ZIP
 generated in memory using the manifest-and-launcher format from Novamira.
-It contains a manifest, fixed launch settings and a stdio launcher for the
+It contains a manifest, the official app icon (copied from the desktop master at
+build time), fixed launch settings and a stdio launcher for the
 existing installation. No package is downloaded or installed by the launcher.
 The read-only download uses the dashboard's loopback and origin guards and is
 served as an attachment with `Cache-Control: no-store`. It contains only the
-same launch information as the manual configuration. The user opens the file
+launch settings and HQ location overrides, but no captured `PATH`. The launcher
+forwards stdio to that public command using the client environment, without
+searching for runtime binaries, running a shell or installing packages. A spawn
+failure exits immediately with an installation/command-availability hint.
+The user opens the file
 in Claude Desktop and confirms installation. The page explains that action and
 suggests asking the AI to list sites; provider diagnostics and skill details
 remain on their dedicated pages. It never claims an external connection was verified.
@@ -1554,8 +1596,10 @@ Success proves local startup only, not an external client connection or working
 provider credentials. The desktop's `--mcp` role calls the existing `mcpMain`
 without importing webview or depending on a running dashboard.
 
-The dashboard shows an initial explanation of PHP/filesystem/data access and
-autonomous AI Abilities activation. POST `/_dashboard/app/acknowledge` records
+The dashboard explains hosting setup approval, PHP/filesystem/data access,
+push and restore overwrites, and keeping an up-to-date, separately stored backup
+that the user knows how to restore. It does not list excluded operations as a
+safety assurance. POST `/_dashboard/app/acknowledge` records
 version 1 and acceptedAt in the owner-only state/app-acknowledgement.json, resolved
 through config/paths.ts. This is application onboarding, not an authorization
 checked by CLI/MCP, not per hosting, and not revocable. Connecting a site does
