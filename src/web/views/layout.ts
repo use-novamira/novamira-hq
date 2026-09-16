@@ -147,7 +147,6 @@ export function renderNav(page: DashboardPage, showActive = true): Html {
     navLink(current, "pushes", "/push", "Push"),
     navLink(current, "providers", "/providers", "Hosting accounts"),
     navLink(current, "mcp", "/mcp", "Connect your AI"),
-    navLink(current, "how-to-use", "/how-to-use", "How to use it"),
     navLink(current, "diagnostics", "/diagnostics", "Diagnostics"),
     navLink(current, "settings", "/settings", "Settings"),
   ]}</nav>`;

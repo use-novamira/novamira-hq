@@ -464,7 +464,7 @@ test("the nav active link follows the two page aliases", async () => {
       ["/", "/sites"],
       ["/providers", "/providers"],
       ["/sites", "/sites"],
-      ["/how-to-use", "/how-to-use"],
+      ["/how-to-use", undefined],
       ["/novamira-setup", "/sites"],
       ["/push", "/push"],
       ["/push/new", "/push"],

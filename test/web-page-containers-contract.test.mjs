@@ -6,6 +6,25 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { renderHtml } from "../dist/web/html.js";
 import { renderSiteConnectSuccess } from "../dist/web/views/site-profiles.js";
+import { renderMcpPage } from "../dist/web/views/mcp.js";
+import { renderNav } from "../dist/web/views/layout.js";
+
+test("client selection uses full page width and instructions use narrow content", () => {
+  const view = { profiles: [], pushes: [] };
+  assert.ok(renderHtml(renderMcpPage(view)).includes('class="page mcp-page"'));
+  assert.ok(
+    renderHtml(renderMcpPage(view, undefined, "claude")).includes(
+      'class="page flow-page mcp-page"',
+    ),
+  );
+});
+
+test("primary navigation no longer includes the generic how-to page", () => {
+  const markup = renderHtml(renderNav("sites"));
+  assert.ok(!markup.includes("How to use it"));
+  assert.ok(!markup.includes('href="/how-to-use"'));
+  assert.ok(markup.includes("Connect your AI"));
+});
 
 test("all page types share an outer container and left-aligned narrow content", () => {
   const css = readFileSync(
