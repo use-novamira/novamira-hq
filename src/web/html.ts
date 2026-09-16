@@ -513,6 +513,18 @@ export function documentationHref(client: "claude" | "chatgpt"): Attr {
 
 const SAFE_PATH = /^\/[A-Za-z0-9\-._~!$&'()*+,;=:@%/]*$/;
 
+/** Fixed product links; no caller-supplied external URLs. */
+export function aboutHref(link: "website" | "source" | "license"): Attr {
+  return attr(
+    "href",
+    {
+      website: "https://novamira.ai",
+      source: "https://github.com/use-novamira/novamira-hq",
+      license: "https://www.gnu.org/licenses/agpl-3.0.html",
+    }[link],
+  );
+}
+
 /**
  * The only `Url` constructor.
  *

@@ -49,7 +49,15 @@
  */
 
 import * as ds from "../datastar.js";
-import { classAttr, hrefAttr, html, idAttr, url, type Html } from "../html.js";
+import {
+  attr,
+  classAttr,
+  hrefAttr,
+  html,
+  idAttr,
+  url,
+  type Html,
+} from "../html.js";
 import { jsBoolean, set, signal, toggle } from "../expr.js";
 import { toSignalRecord, type DashboardSignals } from "../signals.js";
 import {
@@ -106,7 +114,7 @@ ${renderToast(input.notice)}
  * profile and push counts back without changing the signature.
  */
 export function renderSidebar(
-  view: ConfigView,
+  _view: ConfigView,
   page: DashboardPage,
   activeNav = true,
 ): Html {
@@ -123,7 +131,7 @@ export function renderSidebar(
     url("/sites", { new: "cli" }),
   )}><strong>Site by URL</strong><span>Connect an existing Novamira site</span></a><a${hrefAttr(
     url("/providers", { new: "host" }),
-  )}><strong>Hosting account</strong><span>Connect an account and discover its sites</span></a></div></div>${renderNav(page, activeNav)}<div class="sidebar-foot"><div class="sidebar-legal"><span>Novamira HQ v${view.version}</span><span>© 2026 Ovation S.r.l.</span><span>AGPL-3.0-or-later</span></div></div></aside>`;
+  )}><strong>Hosting account</strong><span>Connect an account and discover its sites</span></a></div></div>${renderNav(page, activeNav)}<div class="sidebar-foot"><a class="sidebar-about"${hrefAttr(url("/about"))}${page === "about" ? attr("aria-current", "page") : false}>About Novamira HQ</a></div></aside>`;
 }
 
 /**

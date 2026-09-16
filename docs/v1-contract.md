@@ -1031,6 +1031,7 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 | --- | --- | --- |
 | `/assets/…` | GET, HEAD | no |
 | `/` | GET | no |
+| `/about` | GET | no |
 | `/providers` | GET | no |
 | `/sites` | GET | no |
 | `/how-to-use` | GET | no |
@@ -1511,6 +1512,11 @@ is an agent-facing tool, and a scripted or piped invocation performs no network
 work its caller did not ask for.
 
 ## Configure your AI and app acknowledgement
+
+The sidebar footer links to `/about` (About Novamira HQ), which shows the running
+version, Ovation S.r.l. attribution, copyright, AGPL-3.0-or-later license and fixed
+product/source/license links. Version and legal information live on that page,
+not repeated in the sidebar. The page links to the existing Updates settings tab.
 
 `/mcp` first asks for the AI client, then renders only that client's setup.
 The token-protected POST `/_dashboard/mcp/connect` uses the client's official

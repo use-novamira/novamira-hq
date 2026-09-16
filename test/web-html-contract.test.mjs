@@ -200,6 +200,7 @@ async function page(server, path) {
 
 /** Every 6a page, including the two query-string variants Go's rule 5 used. */
 const CORPUS_PATHS = [
+  "/about",
   "/history",
   "/mcp",
   "/",

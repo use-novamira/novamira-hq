@@ -261,6 +261,7 @@ export interface DeferredRoute {
 export const DEFERRED_ROUTES: readonly DeferredRoute[] = Object.freeze([]);
 
 const PAGE_PATHS: Readonly<Record<string, DashboardPage>> = {
+  "/about": "about",
   "/": "providers",
   "/providers": "providers",
   "/sites": "sites",

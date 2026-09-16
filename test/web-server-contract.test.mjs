@@ -988,6 +988,7 @@ test("the build ships all nine assets under dist/web/static", async () => {
  * a reviewer's attention fails here.
  */
 const SHIPPED_ROUTES = [
+  "GET /about",
   "GET /",
   "GET /_dashboard/connect",
   "GET /_dashboard/pushes/remove",

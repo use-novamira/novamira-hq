@@ -35,6 +35,7 @@
  */
 
 import { CliError } from "../../errors.js";
+import { renderAboutPage } from "./about.js";
 import type { McpConfiguration } from "../../mcp-connection.js";
 import { renderMcpPage } from "./mcp.js";
 import { renderPushConfirmation } from "./push-confirmation.js";
@@ -106,6 +107,8 @@ export interface PageModel {
 /** Go's `renderMainWithSignals` switch, made exhaustive. */
 export function renderPageBody(page: DashboardPage, model: PageModel): Html {
   switch (page) {
+    case "about":
+      return renderAboutPage(model.view);
     case "mcp":
       return renderMcpPage(model.view, model.mcp, model.mcpClient);
     case "history":
