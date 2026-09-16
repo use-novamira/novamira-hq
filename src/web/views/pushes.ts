@@ -47,6 +47,7 @@ import type { HostingEnvironment } from "../../hosting/types.js";
 import * as ds from "../datastar.js";
 import {
   confirmThen,
+  equal,
   jsBoolean,
   jsString,
   not,
@@ -398,14 +399,14 @@ function renderEnvSelect(
       : "Choose target environment";
   return html`<label><span>${label}</span><select${ds.bind(
     path,
-  )} required><option value="" disabled>${placeholder}</option>${envs.map(
+  )}${path === "pushForm.sourceEnvId" ? ds.on("change", set("pushForm.targetEnvId", jsString(""))) : false} required><option value="" disabled>${placeholder}</option>${envs.map(
     (env) => {
       const name = displayLabel(env.displayName, env.name, env.id);
       const optionLabel =
         env.primaryDomain === undefined || env.primaryDomain === name
           ? name
           : `${name} — ${env.primaryDomain}`;
-      return html`<option${attr("value", env.id)}>${optionLabel}</option>`;
+      return html`<option${attr("value", env.id)}${path === "pushForm.targetEnvId" ? ds.attrs({ disabled: equal(signal("pushForm.sourceEnvId"), jsString(env.id)) }) : false}>${optionLabel}</option>`;
     },
   )}</select></label>`;
 }

@@ -505,6 +505,14 @@ test("4: the form renders with the cached environments and highlights Push", asy
   await warmCache(server);
   const before = listCalls.length;
   const markup = await page(server, "/push/new?profile=prod&site=s1");
+  assert.ok(markup.includes("data-on:change"));
+  assert.ok(markup.includes("$pushForm.targetEnvId = &quot;&quot;"));
+  assert.ok(
+    markup.includes("disabled: ($pushForm.sourceEnvId === &quot;env-a&quot;)"),
+  );
+  assert.ok(
+    markup.includes("disabled: ($pushForm.sourceEnvId === &quot;env-b&quot;)"),
+  );
   assert.equal(listCalls.length, before, "the form reads the warm cache only");
   for (const want of [
     "Set up a push",

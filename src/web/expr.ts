@@ -203,6 +203,11 @@ export function not(value: Expr): Expr {
   return makeExpr(`!${renderExpr(value)}`);
 }
 
+/** Strict equality between two typed expressions. */
+export function equal(left: Expr, right: Expr): Expr {
+  return makeExpr(`(${renderExpr(left)} === ${renderExpr(right)})`);
+}
+
 /**
  * `(<a> || <b> || …)` — Go's `"$updates.loading || $updates.installing"`
  * (views.go:1414, 1425), which was a hand-written attribute string.
