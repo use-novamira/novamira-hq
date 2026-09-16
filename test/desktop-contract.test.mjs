@@ -214,6 +214,28 @@ test("the smoke test holds the pipe the server's life depends on", () => {
   assert.ok(!/https?:\/\/(?!127\.0\.0\.1)/.test(smoke));
 });
 
+test("desktop CI offers tested artifacts without publishing a release", async () => {
+  const workflow = await readFile(
+    join(root, ".github/workflows/package.yml"),
+    "utf8",
+  );
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /actions\/upload-artifact@/);
+  assert.match(workflow, /retention-days: 7/);
+  assert.match(workflow, /if-no-files-found: error/);
+  assert.match(workflow, /macos-arm64-unsigned\.tar\.gz/);
+  assert.ok(
+    workflow.indexOf("Smoke-test the compiled server role") <
+      workflow.indexOf("actions/upload-artifact@"),
+  );
+  assert.doesNotMatch(
+    workflow,
+    /npm publish|gh release|macos-sign\.sh|secrets\./,
+  );
+  assert.match(smoke, /body\.length < 8192/);
+  assert.match(smoke, /answered \$\{status\}: \$\{diagnostic\}/);
+});
+
 test("the server role stops deterministically on every platform", () => {
   // Windows has no deliverable SIGTERM, and an unhandled throw in the stdin
   // watcher would be the only thing stopping the server there.

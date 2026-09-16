@@ -8,6 +8,7 @@ name: Package acceptance
 # every provider test that runs in CI is a recorded or offline test.
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches: [main]
@@ -107,3 +108,18 @@ jobs:
       - run: bun run desktop:build
       - name: Smoke-test the compiled server role
         run: node scripts/desktop-smoke.mjs
+      - name: Package Linux application
+        if: runner.os == 'Linux'
+        run: node scripts/desktop-build.mjs --package
+      - name: Archive unsigned macOS executable
+        if: runner.os == 'macOS'
+        run: tar -czf dist-desktop/novamira-hq-desktop-macos-arm64-unsigned.tar.gz -C dist-desktop novamira-hq-desktop
+      # These are test builds, not releases. Signing stays in macos-signing.yml.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: novamira-hq-desktop-${{ runner.os }}-${{ runner.arch }}-test
+          path: |
+            dist-desktop/*.tar.gz
+            dist-desktop/*.exe
+          retention-days: 7
+          if-no-files-found: error

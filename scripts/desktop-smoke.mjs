@@ -69,12 +69,13 @@ try {
   stdout.write(`desktop-smoke: serving at ${url}\n`);
 
   for (const path of PATHS) {
-    const status = await withTimeout(
+    const { status, diagnostic } = await withTimeout(
       request(new URL(path, url)),
       STARTUP_TIMEOUT_MS,
       `GET ${path} did not answer`,
     );
-    if (status !== 200) throw new Error(`GET ${path} answered ${status}`);
+    if (status !== 200)
+      throw new Error(`GET ${path} answered ${status}: ${diagnostic}`);
     stdout.write(`desktop-smoke: GET ${path} -> ${status}\n`);
   }
 
@@ -164,12 +165,25 @@ function verifyMcp(process_) {
   });
 }
 
-/** Loopback only, and the body is drained so the connection closes. */
+/** Isolated, credential-free loopback only; retain bounded error text, not pages. */
 function request(url) {
   return new Promise((resolve_, reject) => {
     get(url, (response) => {
-      response.resume();
-      response.on("end", () => resolve_(response.statusCode));
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => {
+        if (response.statusCode !== 200 && body.length < 8192)
+          body += chunk.slice(0, 8192 - body.length);
+      });
+      response.on("end", () =>
+        resolve_({
+          status: response.statusCode,
+          diagnostic: [...body.matchAll(/<p>([^<]*)<\/p>/g)]
+            .map((match) => match[1])
+            .join("; ")
+            .slice(0, 1000),
+        }),
+      );
       response.on("error", reject);
     }).on("error", reject);
   });

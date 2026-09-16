@@ -148,6 +148,16 @@ If `APPLE_SIGNING_IDENTITY` is unset the job emits a warning annotation and
 uploads an unsigned executable rather than failing the release. Before
 announcing a release, check the `desktop / macos-latest` job for that warning.
 
+### Downloading test builds without a release
+
+**Package acceptance** runs on pushes to `main` and can also be dispatched
+manually. Each desktop job uploads its build only after the server and MCP
+smoke tests pass. Download it from the run's **Artifacts** section within seven
+days. Linux includes its installation archive; Windows includes the unsigned
+executable. The macOS test artifact is an unsigned arm64 executable in a tarball,
+not a signed `.app` suitable for sharing with colleagues. Use the signing
+workflow below for that. Neither workflow publishes to npm or creates a release.
+
 ### Proving the signing path without a release
 
 `.github/workflows/macos-signing.yml` — **Verify macOS signing** — is that job
