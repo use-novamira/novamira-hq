@@ -494,7 +494,7 @@ test("1: the page is an empty state without a target and a work panel with one",
     "/_dashboard/setup/start?profile=dev\\u0026env=env-1",
     "<dt>Site</dt><dd>Example</dd>",
     "<dt>Environment</dt><dd>Live</dd>",
-    "<dt>Hosting profile</dt><dd>dev</dd>",
+    "<dt>Hosting account</dt><dd>dev</dd>",
     ">ready</span>",
   ])
     assert.ok(targeted.includes(want), want);

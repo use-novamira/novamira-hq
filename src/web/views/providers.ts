@@ -329,7 +329,7 @@ export function renderProvidersPage(model: ProvidersPageModel): Html {
     resetProviderForm(true),
     focusElementById("provider-choice-heading"),
   );
-  return html`<section class="page"><header class="page-head"><div><h1>Hosting Providers</h1></div><div class="toolbar inline-toolbar"><button class="button primary" type="button"${ds.on(
+  return html`<section class="page"><header class="page-head"><div><h1>Hosting accounts</h1></div><div class="toolbar inline-toolbar"><button class="button primary" type="button"${ds.on(
     "click",
     addProfile,
   )}>Connect hosting account</button><a class="button secondary"${hrefAttr(
@@ -421,7 +421,7 @@ export function renderProviderForm(open: boolean): Html {
   )}></span> account details</h3></div><button class="button quiet" type="button"${ds.on(
     "click",
     returnToProviderChoice(),
-  )}>Change provider</button></div><div class="form-grid"><label><span>Profile name</span><input${idAttr(
+  )}>Change provider</button></div><div class="form-grid"><label><span>Account name</span><input${idAttr(
     "profile",
   )} type="text"${ds.bind("providerForm.profile")}${ds.attrs({
     placeholder: selectedProviderProfilePlaceholder(),
@@ -439,7 +439,7 @@ export function renderProviderForm(open: boolean): Html {
     placeholder: meta("companyPlaceholder"),
   })}><small class="field-help"${ds.text(
     meta("companyHelp"),
-  )}></small></label></div><aside class="local-storage-note"><strong>Stored on this device</strong><span>Novamira HQ never sends this information to Novamira servers; it uses the credential locally to contact your hosting provider directly. The credential uses the operating system's credential store when available. Otherwise Novamira HQ warns before using an owner-only local file; that fallback is not encrypted by Novamira HQ.</span></aside><div class="button-row"><button class="button primary" type="submit">Save profile</button><button class="button secondary" type="button"${ds.on(
+  )}></small></label></div><aside class="local-storage-note"><strong>Stored on this device</strong><span>Novamira HQ never sends this information to Novamira servers; it uses the credential locally to contact your hosting provider directly. The credential uses the operating system's credential store when available. Otherwise Novamira HQ warns before using an owner-only local file; that fallback is not encrypted by Novamira HQ.</span></aside><div class="button-row"><button class="button primary" type="submit">Save account</button><button class="button secondary" type="button"${ds.on(
     "click",
     resetProviderForm(false),
   )}>Cancel</button></div></section></form>`;
@@ -463,7 +463,7 @@ export function renderProviderTable(
     hidden: signal("providerForm.open"),
   })}><div class="panel-head"><div><h2>Configured</h2><p>${count}</p></div></div>${
     profiles.length === 0
-      ? html`<div class="empty">No provider profiles configured.</div>`
+      ? html`<div class="empty">No hosting accounts connected.</div>`
       : html`<div class="table-wrap"><table><thead><tr><th>Name</th><th>Provider</th><th>Connection</th><th></th></tr></thead><tbody>${profiles.map(
           (profile) => renderProviderRow(profile),
         )}</tbody></table></div>`
@@ -496,7 +496,7 @@ export function renderProviderRow(profile: HostingProfileView): Html {
   )}<button class="button link" type="button"${ds.on(
     "click",
     confirmThen(
-      `Remove provider profile ${profile.name}?`,
+      `Remove hosting account ${profile.name} from Novamira HQ?`,
       providerAction("/_dashboard/providers/remove", profile.name),
     ),
   )}>Remove</button></td></tr><tr class="details-row ds-toggle"${ds.classes({

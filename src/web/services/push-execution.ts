@@ -6,6 +6,7 @@ import type { ConfigStore } from "../../config/profiles.js";
 import type { SavedPush } from "../../config/schema.js";
 import { CliError } from "../../errors.js";
 import type { HostingClientFactory } from "../../hosting/factory.js";
+import { normalizeSiteUrl } from "../../provisioning/site-url.js";
 import {
   prepareEnvironmentPush,
   executeEnvironmentPush,
@@ -18,6 +19,8 @@ export interface PushConfirmation {
   readonly profile: string;
   readonly source: string;
   readonly target: string;
+  readonly sourceUrl: string;
+  readonly targetUrl: string;
   readonly scope: string;
   readonly expiresAt: string;
 }
@@ -55,6 +58,30 @@ export function createPushExecutionService(
         searchReplace: push.searchReplace,
       });
       controller.signal.throwIfAborted();
+      if (
+        !plan.source.primaryDomain?.trim() ||
+        !plan.target.primaryDomain?.trim()
+      ) {
+        throw new CliError(
+          "provider_error",
+          "The hosting provider did not supply both environment URLs. No push can be confirmed until the source and destination can be identified.",
+        );
+      }
+      const sourceUrl = normalizeSiteUrl(
+        plan.source.primaryDomain,
+        {},
+        "--url",
+      ).siteUrl;
+      const targetUrl = normalizeSiteUrl(
+        plan.target.primaryDomain,
+        {},
+        "--url",
+      ).siteUrl;
+      if (sourceUrl === targetUrl)
+        throw new CliError(
+          "conflict",
+          "The source and destination report the same URL. Verify the hosting environments before pushing.",
+        );
       const id = randomUUID();
       if (plans.size >= 100)
         throw new CliError(
@@ -69,6 +96,8 @@ export function createPushExecutionService(
         profile: push.hostingProfile,
         source: `${plan.source.displayName || plan.source.id} (${plan.source.id})`,
         target: `${plan.target.displayName || plan.target.id} (${plan.target.id})`,
+        sourceUrl,
+        targetUrl,
         scope: [
           plan.database ? "database" : "",
           plan.allFiles ? "all files" : "",

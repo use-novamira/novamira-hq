@@ -169,9 +169,9 @@ export function renderSitesPage(
     refresh,
   )}><label class="search"><input type="search"${ds.bind(
     "sites.search",
-  )} placeholder="Search by name or domain…"></label><label><span>Hosting</span><select${ds.bind(
+  )} placeholder="Search by name or domain…"></label><label><span>Hosting account</span><select${ds.bind(
     "sites.profile",
-  )}><option value="__all__">All hosting</option>${view.profiles.map(
+  )}><option value="__all__">All accounts</option>${view.profiles.map(
     (profile) =>
       html`<option${attr("value", profile.name)}>${profile.name} (${providerLabelFor(
         profile.provider,
@@ -180,7 +180,7 @@ export function renderSitesPage(
     "sites-status",
   )} class="sites-status">${renderSitesStatus(
     snapshot?.storedAt ?? null,
-  )}</div></div></form><div class="seg" role="group" aria-label="Novamira status"><button type="button" class="seg-btn on"${ds.sitesFilterStatus(
+  )}</div></div></form><div class="sites-filter-bar"><div class="seg" role="group" aria-label="Novamira status"><button type="button" class="seg-btn on"${ds.sitesFilterStatus(
     "all",
   )}>All</button><button type="button" class="seg-btn"${ds.sitesFilterStatus(
     "with",
@@ -190,7 +190,7 @@ export function renderSitesPage(
     "without",
   )}>Needs attention <span class="seg-count"${ds.sitesFilterCount(
     "without",
-  )}>0</span></button></div><label class="hosting-hidden-toggle"><input type="checkbox" class="show-hidden-sites"> Show hidden sites <small>(saved in this browser)</small></label>${snapshot ? renderSitesResult({ ...snapshot, notice: { level: "neutral", message: "" } }) : html`<div${idAttr("sites-result")} class="results empty">Loading sites…</div>`}</section>`;
+  )}>0</span></button></div><label class="hosting-hidden-toggle" title="Visibility preferences are saved in this browser"><input type="checkbox" class="show-hidden-sites"> Show hidden sites</label></div>${snapshot ? renderSitesResult({ ...snapshot, notice: { level: "neutral", message: "" } }) : html`<div${idAttr("sites-result")} class="results empty">Loading sites…</div>`}</section>`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -354,16 +354,16 @@ function renderEnvironment(
   const pushFromHere =
     ENVIRONMENT_PUSH_PROVIDERS.has(group.provider) &&
     (site.environments?.length ?? 0) > 1
-      ? html`<a class="push-hint"${hrefAttr(
+      ? html`<a class="profile-menu-action"${hrefAttr(
           url("/push/new", {
             profile: group.profile,
             site: site.id,
             source: env.id,
           }),
-        )}${attr("title", "Choose a destination environment and what to copy. Nothing is pushed yet.")}>Configure push…</a>`
+        )}>Configure push…</a>`
       : false;
   return html`<div class="env-subrow"><span class="env-name">${name}${
-    env.isPremium ? html` <span class="env-tag">premium</span>` : false
+    env.isPremium ? html` <span class="env-tag">Premium</span>` : false
   }</span><span class="site-domain">${
     env.primaryDomain ?? ""
   }</span><span class="site-state">${

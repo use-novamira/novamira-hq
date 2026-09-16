@@ -397,7 +397,7 @@ test("1: the toolbar refreshes in background on mount and offers one Refresh act
     ">Refresh</button>",
     "Last updated: never",
     'class="spinner"',
-    '<option value="__all__">All hosting</option>',
+    '<option value="__all__">All accounts</option>',
     ">prod (Kinsta)<",
   ])
     assert.ok(markup.includes(want), want);
@@ -439,6 +439,13 @@ test("3: the search box is the selector sites-filter.js delegates on", async () 
   assert.ok(markup.includes('data-bind="sites.search"'));
   assert.ok(markup.includes('<div id="sites-result" class="results empty">'));
   assert.ok(markup.includes('<div id="sites-status" class="sites-status">'));
+  assert.ok(markup.includes('<div class="sites-filter-bar"><div class="seg"'));
+  assert.ok(
+    markup.includes(
+      'class="hosting-hidden-toggle" title="Visibility preferences are saved in this browser"',
+    ),
+  );
+  assert.ok(!markup.includes("(saved in this browser)"));
 });
 
 /* -------------------------------------------------------------------------- */
@@ -746,7 +753,7 @@ test("6: a multi-environment site is a <details>, a single one a plain row", asy
   assert.ok(markup.includes('<details class="site-row site-row-multi"'));
   assert.ok(markup.includes('<span class="pill">2 environments</span>'));
   assert.equal(markup.split('class="env-subrow"').length - 1, 4);
-  assert.ok(markup.includes('<span class="env-tag">premium</span>'));
+  assert.ok(markup.includes('<span class="env-tag">Premium</span>'));
   assert.ok(markup.includes(">env-a display<"));
   // The single-environment site is a div with no summary of its own.
   assert.ok(markup.includes('<div class="site-row" data-hosting-site-key='));
@@ -833,9 +840,9 @@ test("8: the four connection states render their documented pill and actions", a
 
 test("9: Push from here appears on each environment of a push-capable multi-env site", async () => {
   const { markup } = await resultMarkup();
-  const hints = [...markup.matchAll(/class="push-hint" href="([^"]*)"/g)].map(
-    (match) => match[1],
-  );
+  const hints = [
+    ...markup.matchAll(/class="profile-menu-action" href="([^"]*)"/g),
+  ].map((match) => match[1]);
   assert.equal(hints.length, 2, "kinsta's two eligible environments only");
   for (const href of hints) {
     assert.ok(href.includes("profile=prod"));

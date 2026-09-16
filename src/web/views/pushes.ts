@@ -116,7 +116,7 @@ export function pushesStatusLine(
   warm: WarmSitesView,
 ): string {
   if (profiles.length === 0) {
-    return "You haven't connected a hosting provider yet — add one on the Hosting Providers page.";
+    return "You haven't connected a hosting account yet — add one on the Hosting accounts page.";
   }
   const capable = profiles
     .filter((profile) => environmentPushSupported(profile.provider))

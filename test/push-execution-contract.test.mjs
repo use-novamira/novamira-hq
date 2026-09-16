@@ -4,8 +4,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createPushExecutionService } from "../dist/web/services/push-execution.js";
+import { renderHtml } from "../dist/web/html.js";
+import { renderPushConfirmation } from "../dist/web/views/push-confirmation.js";
 
-function fixture() {
+function fixture(targetDomain = "live.example.com") {
   const calls = [];
   let path = {
     name: "stage-live",
@@ -25,8 +27,12 @@ function fixture() {
         provider: "kinsta",
         read: async () => [{ name: "envs.push", supported: true }],
         listEnvironments: async () => [
-          { id: "source", displayName: "Stage" },
-          { id: "target", displayName: "Live" },
+          {
+            id: "source",
+            displayName: "Stage",
+            primaryDomain: "stage.example.com",
+          },
+          { id: "target", displayName: "Live", primaryDomain: targetDomain },
         ],
         action: async (request) => {
           calls.push(request);
@@ -71,6 +77,25 @@ test("dashboard push plans are read-only, explicit and one-use", async () => {
   assert.deepEqual(f.calls, []);
   assert.equal(plan.scope, "database");
   assert.match(plan.target, /Live.*target/);
+  assert.equal(plan.sourceUrl, "https://stage.example.com");
+  assert.equal(plan.targetUrl, "https://live.example.com");
+  const markup = renderHtml(renderPushConfirmation(plan));
+  assert.ok(markup.startsWith('<section class="page">'));
+  assert.ok(
+    markup.includes(
+      'class="push-review-url">https://live.example.com</strong>',
+    ),
+  );
+  assert.ok(
+    markup.includes("Destination — selected content will be overwritten"),
+  );
+  assert.ok(
+    markup.indexOf("https://live.example.com") <
+      markup.indexOf("Technical details"),
+  );
+  assert.ok(
+    markup.indexOf("Live (target)") > markup.indexOf("Technical details"),
+  );
   await f.service.apply(plan.id);
   assert.deepEqual(
     f.calls.map((call) => call.kind ?? call.operationId),
@@ -78,6 +103,15 @@ test("dashboard push plans are read-only, explicit and one-use", async () => {
   );
   await assert.rejects(f.service.apply(plan.id), { code: "not_found" });
   await f.service.shutdown();
+});
+
+test("dashboard cannot confirm a push with a missing or ambiguous destination URL", async () => {
+  for (const domain of ["", "stage.example.com"]) {
+    const f = fixture(domain);
+    await assert.rejects(f.service.plan("stage-live"));
+    assert.deepEqual(f.calls, []);
+    await f.service.shutdown();
+  }
 });
 
 test("changed and expired push plans cannot mutate targets", async () => {

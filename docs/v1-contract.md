@@ -1217,7 +1217,7 @@ form to itself and no page reloads.
 
 - **Home** (`/`) — the first-run onboarding only when both the hosting-profile
   list and the site CLI's site list are empty; otherwise it opens **Sites**.
-- **Hosting Providers** (`/providers`) — the provider form, the configured
+- **Hosting accounts** (`/providers`) — the provider form, the configured
   table, and a per-row connection cell driven by `/_dashboard/providers/validate`.
   A new account is configured in two local steps: choose from a freshly shuffled
   provider list first, then enter the profile name and provider-specific account
@@ -1264,11 +1264,15 @@ form to itself and no page reloads.
   installer itself.
 - **Push** (`/push`, `/push/new`) — the saved environment push configurations
   as direction cards with resolved environment names, domains and scope. Sites
-  offers Push from here beside every environment of an eligible site; that
+  offers Configure push in the menu of every eligible environment; that
   source is preselected, and a two-environment site also preselects the only
   possible target. The form then collects direction, positive scope and saved name.
-  Push prepares a five-minute, one-use confirmation showing source, target
-  and positive scope. Apply rejects changed pushes and invokes only the provider's
+  Push prepares a five-minute, one-use confirmation on a dedicated review page,
+  showing source and destination URLs from the provider's current environment
+  inventory and the positive scope. IDs and labels are secondary technical details.
+  Dashboard planning refuses missing URLs or identical normalized source and
+  destination URLs, rather than allowing confirmation based on labels alone.
+  Apply rejects changed pushes and invokes only the provider's
   native push operation; it does not create a separate backup. Neither page load
   issues a provider call: both read the warm inventory only; explicit Plan and
   Apply actions contact providers.

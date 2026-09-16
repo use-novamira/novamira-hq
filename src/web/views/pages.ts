@@ -39,7 +39,6 @@ import type { McpConfiguration } from "../../mcp-connection.js";
 import { renderMcpPage } from "./mcp.js";
 import { renderPushConfirmation } from "./push-confirmation.js";
 import type { PushConfirmation } from "../services/push-execution.js";
-import { html } from "../html.js";
 import type { Html } from "../html.js";
 import type { DashboardSignals } from "../signals.js";
 import {
@@ -125,7 +124,9 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
     case "how-to-use":
       return renderHowToUsePage();
     case "pushes":
-      return html`${model.pushConfirmation ? renderPushConfirmation(model.pushConfirmation) : false}${renderPushesPage(model.view, model.notice, model.pushes)}`;
+      return model.pushConfirmation
+        ? renderPushConfirmation(model.pushConfirmation)
+        : renderPushesPage(model.view, model.notice, model.pushes);
     case "push-new":
       return renderPushNewPage(model.pushNew);
     case "novamira-setup":

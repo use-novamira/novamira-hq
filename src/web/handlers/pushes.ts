@@ -115,8 +115,8 @@ export function createPushExecutionHandler(
             context,
             stream,
             {
-              level: "warn",
-              message: "Review the target and scope before confirming.",
+              level: "neutral",
+              message: "",
             },
             undefined,
             confirmation,

@@ -314,7 +314,7 @@ test("1: the empty page exposes the next useful action for every state", async (
   const none = await fixture({ hostingProfiles: {} });
   assert.ok(
     (await line(none.server)).includes(
-      "You haven't connected a hosting provider yet",
+      "You haven't connected a hosting account yet",
     ),
   );
   assert.ok(

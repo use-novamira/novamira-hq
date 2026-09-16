@@ -214,7 +214,7 @@ function renderTargetPanel(view: SetupView, status: SetupDisplayStatus): Html {
   )}>${status}</span></div><dl class="details-list">${
     view.siteLabel === "" ? false : dlField("Site", view.siteLabel)
   }${dlField("Environment", envDisplay)}${dlField(
-    "Hosting profile",
+    "Hosting account",
     view.profile,
   )}${view.jobId === "" ? false : dlField("Job", view.jobId)}</dl></section>`;
 }

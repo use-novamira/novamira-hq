@@ -297,7 +297,7 @@ test("1: only an empty root shows onboarding; Providers remains a section", asyn
   assert.ok(!/application[-_ ]?password/i.test(markup));
 
   const providers = await page(server, "/providers");
-  assert.ok(providers.includes("<h1>Hosting Providers</h1>"));
+  assert.ok(providers.includes("<h1>Hosting accounts</h1>"));
   assert.ok(providers.includes("nav-link active"));
   assert.ok(!providers.includes('class="page onboarding"'));
 
@@ -354,7 +354,7 @@ test("2: the form chooses a provider before requesting account details", async (
     'data-class="{hidden: !$providerForm.detailsOpen}"',
     "$providerForm.detailsOpen = true",
     "$providerForm.provider = &quot;kinsta&quot;",
-    "Profile name",
+    "Account name",
     "e.g. my-kinsta",
     "e.g. my-wpengine",
     ">Credential</span>",
