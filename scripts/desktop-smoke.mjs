@@ -29,6 +29,7 @@ import { join, resolve } from "node:path";
 import { argv, env, exit, platform, stderr, stdout } from "node:process";
 import { clearTimeout, setTimeout } from "node:timers";
 import { fileURLToPath, URL } from "node:url";
+import { defaultFileSecurity } from "../dist/config/file-security.js";
 
 const STARTUP_TIMEOUT_MS = 90_000;
 const SHUTDOWN_TIMEOUT_MS = 30_000;
@@ -49,6 +50,10 @@ const home = await mkdtemp(join(tmpdir(), "novamira-hq-smoke-"));
 let child;
 let mcpChild;
 try {
+  // mkdtemp is private on POSIX, but inherits its parent's ACL on Windows.
+  // HQ deliberately rejects an existing config root with inherited access.
+  // Secure our own throwaway root; never weaken the application's checks.
+  await defaultFileSecurity().secureDirectory(home);
   child = spawn(resolve(executable), ["--serve"], {
     // Piped and never written to, exactly as the window holds it.
     stdio: ["pipe", "pipe", "inherit"],

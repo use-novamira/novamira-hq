@@ -236,6 +236,17 @@ test("desktop CI offers tested artifacts without publishing a release", async ()
   assert.match(smoke, /answered \$\{status\}: \$\{diagnostic\}/);
 });
 
+test("desktop smoke secures its temporary config root before starting HQ", () => {
+  assert.match(
+    smoke,
+    /import \{ defaultFileSecurity \} from "\.\.\/dist\/config\/file-security\.js"/,
+  );
+  assert.match(smoke, /await defaultFileSecurity\(\)\.secureDirectory\(home\)/);
+  assert.ok(
+    smoke.indexOf("secureDirectory(home)") < smoke.indexOf("child = spawn("),
+  );
+});
+
 test("the server role stops deterministically on every platform", () => {
   // Windows has no deliverable SIGTERM, and an unhandled throw in the stdin
   // watcher would be the only thing stopping the server there.
