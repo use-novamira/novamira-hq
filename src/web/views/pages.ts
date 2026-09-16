@@ -38,6 +38,8 @@ import { CliError } from "../../errors.js";
 import type { McpConfiguration } from "../../mcp-connection.js";
 import { renderMcpPage } from "./mcp.js";
 import { renderPushConfirmation } from "./push-confirmation.js";
+import { renderPushJob } from "./push-job.js";
+import type { PushJob } from "../services/push-execution.js";
 import type { PushConfirmation } from "../services/push-execution.js";
 import type { Html } from "../html.js";
 import type { DashboardSignals } from "../signals.js";
@@ -66,6 +68,8 @@ export interface PageModel {
   readonly sitesSnapshot?: SitesResult;
   readonly siteConnectSuccess?: SiteConnectSuccessView;
   readonly pushConfirmation?: PushConfirmation;
+  readonly pushJob?: PushJob;
+  readonly pushJobs?: readonly PushJob[];
   readonly mcp?: McpConfiguration;
   readonly mcpClient?: "chatgpt" | "claude";
   readonly history?: HistoryView;
@@ -124,9 +128,16 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
     case "how-to-use":
       return renderHowToUsePage();
     case "pushes":
-      return model.pushConfirmation
-        ? renderPushConfirmation(model.pushConfirmation)
-        : renderPushesPage(model.view, model.notice, model.pushes);
+      return model.pushJob
+        ? renderPushJob(model.pushJob)
+        : model.pushConfirmation
+          ? renderPushConfirmation(model.pushConfirmation)
+          : renderPushesPage(
+              model.view,
+              model.notice,
+              model.pushes,
+              model.pushJobs,
+            );
     case "push-new":
       return renderPushNewPage(model.pushNew);
     case "novamira-setup":

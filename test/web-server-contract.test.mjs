@@ -1028,6 +1028,7 @@ const SHIPPED_ROUTES = [
   "GET /_dashboard/app/acknowledge",
   "GET /_dashboard/pushes/plan",
   "GET /_dashboard/pushes/apply",
+  "GET /_dashboard/pushes/status",
 ];
 
 test("the deferred-route list is empty and the shipped surface is frozen", async () => {

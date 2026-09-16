@@ -72,6 +72,7 @@ import {
   createPushRemoveHandler,
   createPushSaveHandler,
   createPushExecutionHandler,
+  createPushStatusHandler,
 } from "./handlers/pushes.js";
 import {
   createDiagnosticsCapabilitiesHandler,
@@ -326,7 +327,20 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
     }
     if (page === "pushes") {
       const warm = context.sites.warm(ALL_PROFILES_SENTINEL, true);
+      const jobId = request.query.get("job");
+      const job = jobId ? context.pushExecution?.snapshot(jobId) : undefined;
       return {
+        ...(job ? { pushJob: job } : {}),
+        ...(jobId && !job
+          ? {
+              notice: {
+                level: "warn" as const,
+                message:
+                  "This job is no longer in this dashboard session. Check History and your hosting provider before retrying.",
+              },
+            }
+          : {}),
+        pushJobs: context.pushExecution?.list() ?? [],
         pushes: {
           groups: warm?.groups ?? [],
           cacheWarm: warm !== undefined,
@@ -541,6 +555,12 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
       path: "/_dashboard/pushes/apply",
       auth: "token",
       handler: createPushExecutionHandler(context, "apply"),
+    },
+    {
+      method: "GET",
+      path: "/_dashboard/pushes/status",
+      auth: "token",
+      handler: createPushStatusHandler(context),
     },
     {
       method: "POST",

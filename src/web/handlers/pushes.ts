@@ -32,7 +32,7 @@
  */
 
 import { asCliError, CliError } from "../../errors.js";
-import type { PushConfirmation } from "../services/push-execution.js";
+import type { PushConfirmation, PushJob } from "../services/push-execution.js";
 import type { JsonValue } from "../expr.js";
 import { patchPage } from "../patch.js";
 import { readSignals, type DashboardRequest } from "../request.js";
@@ -67,6 +67,7 @@ async function patchPushesPage(
   notice: DashboardNotice,
   signals?: Readonly<Record<string, JsonValue>>,
   confirmation?: PushConfirmation,
+  job?: PushJob,
 ): Promise<void> {
   const view = await context.loadConfigView();
   const warm = context.sites.warm(ALL_PROFILES_SENTINEL, true);
@@ -75,6 +76,8 @@ async function patchPushesPage(
     notice,
     model: {
       ...(confirmation ? { pushConfirmation: confirmation } : {}),
+      ...(job ? { pushJob: job } : {}),
+      pushJobs: context.pushExecution?.list() ?? [],
       view,
       notice,
       signals: defaultDashboardSignals(context.token, {
@@ -118,17 +121,21 @@ export function createPushExecutionHandler(
               level: "neutral",
               message: "",
             },
-            undefined,
+            { pushForm: { submitting: false } },
             confirmation,
           );
         } else {
-          await context.pushExecution.apply(
+          const job = context.pushExecution.start(
             request.query.get("confirmation") ?? "",
           );
-          await patchPushesPage(context, stream, {
-            level: "ok",
-            message: "Push completed according to the provider.",
-          });
+          await patchPushesPage(
+            context,
+            stream,
+            { level: "neutral", message: "" },
+            { pushForm: { submitting: false } },
+            undefined,
+            job,
+          );
         }
       } catch (error) {
         await patchPushesPage(
@@ -136,6 +143,48 @@ export function createPushExecutionHandler(
           stream,
           danger(asCliError(error).message),
         );
+      }
+      stream.close();
+    },
+  });
+}
+
+/** Observes the accepted job only. Never starts or repeats a provider operation. */
+export function createPushStatusHandler(context: RouteContext): RouteHandler {
+  return (request) => ({
+    kind: "sse",
+    run: async (stream) => {
+      try {
+        const id = request.query.get("job") ?? "";
+        if (!context.pushExecution?.snapshot(id))
+          throw new CliError(
+            "not_found",
+            "Push job not found. Check History and the provider before retrying.",
+          );
+        await context.pushExecution.wait(id, request.signal);
+        if (!request.signal.aborted) {
+          const job = context.pushExecution.snapshot(id);
+          if (!job)
+            throw new CliError(
+              "not_found",
+              "Push job no longer available. Check History.",
+            );
+          await patchPushesPage(
+            context,
+            stream,
+            { level: "neutral", message: "" },
+            undefined,
+            undefined,
+            job,
+          );
+        }
+      } catch (error) {
+        if (!request.signal.aborted)
+          await patchPushesPage(
+            context,
+            stream,
+            danger(asCliError(error).message),
+          );
       }
       stream.close();
     },

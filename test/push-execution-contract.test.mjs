@@ -6,8 +6,12 @@ import test from "node:test";
 import { createPushExecutionService } from "../dist/web/services/push-execution.js";
 import { renderHtml } from "../dist/web/html.js";
 import { renderPushConfirmation } from "../dist/web/views/push-confirmation.js";
+import { renderPushJob } from "../dist/web/views/push-job.js";
 
-function fixture(targetDomain = "live.example.com") {
+function fixture(
+  targetDomain = "live.example.com",
+  operation = async () => {},
+) {
   const calls = [];
   let path = {
     name: "stage-live",
@@ -46,6 +50,7 @@ function fixture(targetDomain = "live.example.com") {
         },
         operationStatus: async (operationId) => {
           calls.push({ operationId });
+          await operation();
           return {
             provider: "kinsta",
             operationId,
@@ -103,6 +108,67 @@ test("dashboard push plans are read-only, explicit and one-use", async () => {
   );
   await assert.rejects(f.service.apply(plan.id), { code: "not_found" });
   await f.service.shutdown();
+});
+
+test("push jobs acknowledge immediately, survive observer disconnect and never replay", async () => {
+  let finish;
+  const gate = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const f = fixture("live.example.com", () => gate);
+  const plan = await f.service.plan("stage-live");
+  const job = f.service.start(plan.id);
+  assert.equal(job.status, "running");
+  assert.equal(f.service.start(plan.id), job);
+  const markup = renderHtml(renderPushJob(job));
+  assert.ok(markup.includes("/_dashboard/pushes/status"));
+  assert.ok(markup.includes(plan.sourceUrl));
+  assert.ok(markup.includes(plan.targetUrl));
+  const controller = new AbortController();
+  const observer = f.service.wait(plan.id, controller.signal);
+  controller.abort();
+  await observer;
+  assert.equal(f.service.snapshot(plan.id).status, "running");
+  finish();
+  await f.service.wait(plan.id);
+  assert.equal(f.service.start(plan.id).status, "completed");
+  assert.equal(
+    f.calls.filter((call) => call.kind === "push-environment").length,
+    1,
+  );
+  assert.ok(
+    !renderHtml(renderPushJob(f.service.snapshot(plan.id))).includes(
+      "/_dashboard/pushes/status",
+    ),
+  );
+  await f.service.shutdown();
+});
+
+test("push jobs distinguish pre-dispatch failure from uncertain provider outcomes", async () => {
+  const failed = fixture();
+  const plan = await failed.service.plan("stage-live");
+  failed.change();
+  failed.service.start(plan.id);
+  await failed.service.wait(plan.id);
+  assert.equal(failed.service.snapshot(plan.id).status, "failed");
+  assert.equal(failed.calls.length, 0);
+  await failed.service.shutdown();
+  const uncertain = fixture("live.example.com", async () => {
+    throw new Error("Lost response");
+  });
+  const other = await uncertain.service.plan("stage-live");
+  uncertain.service.start(other.id);
+  await uncertain.service.wait(other.id);
+  assert.equal(
+    uncertain.service.snapshot(other.id).status,
+    "needs_verification",
+  );
+  assert.equal(uncertain.service.start(other.id).status, "needs_verification");
+  assert.equal(
+    uncertain.calls.filter((call) => call.kind === "push-environment").length,
+    1,
+  );
+  await uncertain.service.shutdown();
 });
 
 test("dashboard cannot confirm a push with a missing or ambiguous destination URL", async () => {

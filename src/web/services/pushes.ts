@@ -31,6 +31,7 @@ import type { ConfigStore } from "../../config/profiles.js";
 import { validateSavedPushName, type SavedPush } from "../../config/schema.js";
 import { CliError } from "../../errors.js";
 import type { PushFormInput } from "../signals-input.js";
+import type { EnvResolver } from "./sites.js";
 
 export interface PushService {
   /** Validate and persist; returns the saved name. */
@@ -41,6 +42,7 @@ export interface PushService {
 
 export interface PushServiceOptions {
   readonly store: ConfigStore;
+  readonly resolve?: () => EnvResolver;
 }
 
 export function createPushService(options: PushServiceOptions): PushService {
@@ -77,6 +79,19 @@ export function createPushService(options: PushServiceOptions): PushService {
         );
       }
       const name = validateSavedPushName(input.name);
+      const resolve = options.resolve?.();
+      const sourceDomain = resolve?.({
+        profile: input.hostingProfile,
+        siteId: input.siteId,
+        envId: input.sourceEnvId,
+        storedName: input.sourceEnvName,
+      }).domain;
+      const targetDomain = resolve?.({
+        profile: input.hostingProfile,
+        siteId: input.siteId,
+        envId: input.targetEnvId,
+        storedName: input.targetEnvName,
+      }).domain;
       // The eleven persisted fields, and only those: `pushForm.open` is UI
       // state and `signals-input.ts` does not parse it.
       const push: SavedPush = {
@@ -86,8 +101,10 @@ export function createPushService(options: PushServiceOptions): PushService {
         siteLabel: input.siteLabel,
         sourceEnvId: input.sourceEnvId,
         sourceEnvName: input.sourceEnvName,
+        ...(sourceDomain ? { sourceEnvDomain: sourceDomain } : {}),
         targetEnvId: input.targetEnvId,
         targetEnvName: input.targetEnvName,
+        ...(targetDomain ? { targetEnvDomain: targetDomain } : {}),
         pushDb: input.pushDb,
         pushFiles: input.pushFiles,
         searchReplace: input.searchReplace,

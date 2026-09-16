@@ -448,6 +448,20 @@ self-update, invoke arbitrary provider WP-CLI, manage domains or DNS, or manage
 SSH/SFTP access. Unknown tools are neither advertised nor callable by name. Credentials still come only from configured references, never
 an MCP credential argument.
 
+Dashboard push execution acknowledges immediately with a session-local job. The
+same confirmation opens the existing job rather than dispatching another push.
+Up to 100 jobs are retained, evicting finished jobs first. The token-protected
+`/_dashboard/pushes/status` stream waits for completion; disconnecting that
+observer does not cancel execution. Jobs distinguish completion from failure
+before dispatch and uncertain outcomes after dispatch, which must not be retried
+automatically. The Push page links to recent jobs; after a dashboard restart,
+consult History and the provider, not an empty job list, before retrying.
+Saved dashboard push configurations retain known source/target domains for
+display when inventory is cold. Missing domains are explicitly marked unavailable;
+confirmation always resolves current environment URLs from the provider.
+MCP tools publish readable titles (including canonical WordPress capitalization)
+without changing their technical identifiers or permission annotations.
+
 Environment push is a two-call confirmation flow. The plan call requires different
 source and target environments plus at least one positive scope: database, all
 files, or a non-empty explicit file list. All-files and explicit files are
@@ -1031,6 +1045,7 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 | `/_dashboard/mcp/verify` | POST | yes |
 | `/_dashboard/app/acknowledge` | POST | yes |
 | `/_dashboard/pushes/plan` | POST | yes |
+| `/_dashboard/pushes/status` | GET | yes |
 | `/_dashboard/pushes/apply` | POST | yes |
 | `/settings` | GET | no |
 | `/_dashboard/providers/save` | POST | yes |

@@ -196,8 +196,10 @@ export interface SavedPush {
   readonly siteLabel: string;
   readonly sourceEnvId: string;
   readonly sourceEnvName: string;
+  readonly sourceEnvDomain?: string;
   readonly targetEnvId: string;
   readonly targetEnvName: string;
+  readonly targetEnvDomain?: string;
   readonly pushDb: boolean;
   readonly pushFiles: boolean;
   readonly searchReplace: boolean;
@@ -497,8 +499,26 @@ export function parseSavedPush(
     siteLabel: optionalStringOrEmpty(record, "siteLabel", path),
     sourceEnvId,
     sourceEnvName: optionalStringOrEmpty(record, "sourceEnvName", path),
+    ...(record.sourceEnvDomain === undefined
+      ? {}
+      : {
+          sourceEnvDomain: optionalStringOrEmpty(
+            record,
+            "sourceEnvDomain",
+            path,
+          ),
+        }),
     targetEnvId,
     targetEnvName: optionalStringOrEmpty(record, "targetEnvName", path),
+    ...(record.targetEnvDomain === undefined
+      ? {}
+      : {
+          targetEnvDomain: optionalStringOrEmpty(
+            record,
+            "targetEnvDomain",
+            path,
+          ),
+        }),
     pushDb: optionalBoolean(record, "pushDb", path),
     pushFiles: optionalBoolean(record, "pushFiles", path),
     searchReplace: optionalBoolean(record, "searchReplace", path),

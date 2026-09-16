@@ -47,9 +47,11 @@ interface JsonRpcRequest {
 
 interface McpTool {
   readonly name: string;
+  readonly title?: string;
   readonly description: string;
   readonly inputSchema: Readonly<Record<string, unknown>>;
   readonly annotations: {
+    readonly title?: string;
     readonly readOnlyHint: boolean;
     readonly destructiveHint: boolean;
     readonly idempotentHint: boolean;
@@ -397,12 +399,40 @@ const TOOL_DEFINITIONS: readonly (McpTool & {})[] = [
 
 const TOOL_BY_NAME = new Map(TOOL_DEFINITIONS.map((tool) => [tool.name, tool]));
 
+const TOOL_TITLES: Readonly<Record<string, string>> = {
+  wordpress_sites_list: "List WordPress sites",
+  wordpress_doctor: "Check WordPress site health",
+  wordpress_discover: "Discover WordPress abilities",
+  wordpress_describe: "Inspect a WordPress ability",
+  wordpress_skill: "Read a WordPress site skill",
+  wordpress_run: "Run a WordPress ability",
+  hosting_history_list: "View hosting activity history",
+  hosting_profiles_list: "List hosting accounts",
+  hosting_provider_validate: "Check hosting account connection",
+  hosting_capabilities_get: "View supported hosting actions",
+  hosting_sites_list: "List sites on a hosting account",
+  hosting_site_get: "View hosting site details",
+  hosting_environments_list: "List site environments",
+  hosting_operation_get: "Check hosting operation status",
+  hosting_backups_list: "List environment backups",
+  hosting_backup_create: "Create an environment backup",
+  hosting_novamira_setup: "Set up Novamira on a site",
+  hosting_environment_push_plan: "Review an environment push",
+  hosting_environment_push_apply: "Confirm and run an environment push",
+  hosting_backup_restore_plan: "Review a backup restore",
+  hosting_backup_restore_apply: "Confirm and restore a backup",
+};
+
 function toolsFor(): readonly McpTool[] {
   return TOOL_DEFINITIONS.map((tool) => ({
     name: tool.name,
+    title: TOOL_TITLES[tool.name] ?? tool.name,
     description: tool.description,
     inputSchema: tool.inputSchema,
-    annotations: tool.annotations,
+    annotations: {
+      ...tool.annotations,
+      title: TOOL_TITLES[tool.name] ?? tool.name,
+    },
   }));
 }
 

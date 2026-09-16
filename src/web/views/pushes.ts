@@ -146,10 +146,14 @@ export function pushesStatusLine(
 /* /push                                                                */
 /* -------------------------------------------------------------------------- */
 
+import { renderPushJobs } from "./push-job.js";
+import type { PushJob } from "../services/push-execution.js";
+
 export function renderPushesPage(
   view: ConfigView,
   _notice: DashboardNotice,
   warm: WarmSitesView = COLD,
+  jobs: readonly PushJob[] = [],
 ): Html {
   if (view.pushes.length === 0) {
     const eligibleSites = warm.groups.flatMap((group) =>
@@ -172,7 +176,7 @@ export function renderPushesPage(
         : [],
     );
     if (eligibleSites.length > 0) {
-      return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Reusable push configurations between environments.</p></div></header><section class="panel"><div class="panel-head"><div><h2>Choose a site</h2><p>Select the site whose environments you want to push between.</p></div></div><div class="compact-list">${eligibleSites.map(
+      return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Reusable push configurations between environments.</p></div></header>${renderPushJobs(jobs)}<section class="panel"><div class="panel-head"><div><h2>Choose a site</h2><p>Select the site whose environments you want to push between.</p></div></div><div class="compact-list">${eligibleSites.map(
         (site) =>
           html`<article><div><strong>${site.label}</strong><small>${
             site.domain === "" ? false : `${site.domain} · `
@@ -192,7 +196,7 @@ export function renderPushesPage(
       view.profiles.some((profile) =>
         environmentPushSupported(profile.provider),
       );
-    return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Reusable push configurations between environments.</p></div></header><div class="empty empty-block"><h2>${
+    return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Reusable push configurations between environments.</p></div></header>${renderPushJobs(jobs)}<div class="empty empty-block"><h2>${
       needsSiteLoad ? "Load sites to continue" : "No sites available for push"
     }</h2><p>${pushesStatusLine(
       view.profiles,
@@ -209,7 +213,7 @@ export function renderPushesPage(
   }
   return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Reusable push configurations between environments. Nothing runs until you review and confirm it.</p></div><a class="button secondary"${hrefAttr(
     url("/sites"),
-  )}>Set up a push</a></header><div class="push-card-list">${view.pushes.map(
+  )}>Set up a push</a></header>${renderPushJobs(jobs)}<div class="push-card-list">${view.pushes.map(
     (push) => renderPushCard(push),
   )}</div></section>`;
 }
@@ -238,9 +242,13 @@ function endpoint(
         ? "Source environment"
         : "Target environment"
       : name;
-  return html`<div class="push-endpoint"><span>${label}</span><strong>${displayName}</strong>${
-    domain === "" ? false : html`<small>${domain}</small>`
-  }</div>`;
+  const displayUrl =
+    domain === ""
+      ? "URL unavailable — review hosting sites"
+      : /^https?:\/\//i.test(domain)
+        ? domain
+        : `https://${domain}`;
+  return html`<div class="push-endpoint"><span>${label}</span><strong>${displayUrl}</strong><small>${displayName}</small></div>`;
 }
 
 function renderPushCard(push: PushView): Html {

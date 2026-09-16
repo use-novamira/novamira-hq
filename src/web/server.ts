@@ -514,7 +514,10 @@ export function createDashboardServer(
     },
   });
 
-  const pushes = createPushService({ store: dependencies.store });
+  const pushes = createPushService({
+    store: dependencies.store,
+    resolve: () => sites.envResolver(),
+  });
   const pushExecution = createPushExecutionService(
     dependencies.store,
     dependencies.hosting,

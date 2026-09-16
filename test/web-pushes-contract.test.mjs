@@ -419,6 +419,25 @@ test("3: environments resolve from the warm cache, then the stored name, then th
   assert.ok(coldMarkup.includes("stored-a"));
   assert.ok(coldMarkup.includes("stored-b"));
   assert.equal(cold.listCalls.length, 0);
+  assert.ok(coldMarkup.includes("URL unavailable"));
+  const storedUrls = await fixture({
+    pushes: {
+      ...PUSHES,
+      "stage-to-live": {
+        ...PUSHES["stage-to-live"],
+        sourceEnvDomain: "saved-stage.example.com",
+        targetEnvDomain: "saved-live.example.com",
+      },
+    },
+  });
+  const savedMarkup = await page(storedUrls.server, "/push");
+  assert.ok(
+    savedMarkup.includes("<strong>https://saved-stage.example.com</strong>"),
+  );
+  assert.ok(
+    savedMarkup.includes("<strong>https://saved-live.example.com</strong>"),
+  );
+  assert.equal(storedUrls.listCalls.length, 0);
 });
 
 test("3b: environment display resolution keeps profile and site ownership", async () => {
@@ -621,6 +640,8 @@ test("6: save persists the eleven fields, resets the form and repaints the page"
     ...VALID_FORM,
     sourceEnvName: "env-a display",
     targetEnvName: "env-b display",
+    sourceEnvDomain: "staging.example.com",
+    targetEnvDomain: "live.example.com",
   });
   assert.deepEqual(recorder.order, ["main/outer", "nav/outer", "toast/outer"]);
   assert.equal(recorder.signals.length, 1);

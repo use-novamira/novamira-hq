@@ -77,6 +77,7 @@ export interface ProviderFormSignals {
 }
 
 export interface PushFormSignals {
+  readonly submitting: boolean;
   readonly open: boolean;
   readonly name: string;
   readonly hostingProfile: string;
@@ -262,6 +263,7 @@ export function defaultProviderFormSignals(
 /** The push form's reset state; 6b-3's save handler patches it. */
 export function defaultPushFormSignals(): PushFormSignals {
   return {
+    submitting: false,
     open: false,
     name: "",
     hostingProfile: "",

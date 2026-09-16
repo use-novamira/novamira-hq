@@ -277,9 +277,9 @@ function renderCliOnly(
 
 /** Go's `renderSiteGroup` (`views.go:927-953`). */
 function renderSiteGroup(group: SiteGroup, view: SitesResultView): Html {
-  const head = html`<div class="group-head"><div><h2>${group.profile}</h2><p>${providerLabel(
+  const head = html`<div class="group-head"><div class="hosting-account-heading"><span class="eyebrow">Hosting account</span><h2>${group.profile}</h2><span class="env-tag">${providerLabel(
     group.provider,
-  )}</p></div>`;
+  )}</span></div>`;
   if (group.stale) {
     return html`<section class="provider-sites">${head}<span class="pill warn">API unavailable</span></div>${renderNotice(
       {
@@ -300,7 +300,7 @@ function renderSiteGroup(group: SiteGroup, view: SitesResultView): Html {
   }
   return html`<section class="provider-sites">${head}<span class="pill">${String(
     group.sites.length,
-  )} sites</span></div>${
+  )} ${group.sites.length === 1 ? "site" : "sites"}</span></div>${
     group.sites.length === 0
       ? html`<div class="empty">No sites returned by this provider.</div>`
       : html`<div class="site-grid">${group.sites.map((site) =>

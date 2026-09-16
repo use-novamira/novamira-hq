@@ -1497,6 +1497,9 @@ dd {
 .push-review-details { color: var(--muted); font-size: 13px; }
 .push-review-details summary { cursor: pointer; }
 .push-review-actions { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 20px; border-top: 1px solid var(--border); }
+.push-job-link { display: grid; gap: 6px; padding: 12px; color: var(--text); text-decoration: none; border: 1px solid var(--border); border-radius: 6px; overflow-wrap: anywhere; }
+.push-job-link:hover { background: var(--bg); }
+.push-review [role="status"] { display: flex; align-items: center; gap: 10px; }
 .profile-menu > summary { cursor: pointer; list-style: none; }
 .profile-menu > summary::-webkit-details-marker { display: none; }
 .profile-menu > summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
@@ -1659,8 +1662,15 @@ dd {
   font-family: var(--font-mono);
   font-size: 12px;
 }
-.env-subrows { background: #fbfcfd; }
-.env-subrow { display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 34px; border-top: 1px solid #f0f0ee; }
+.hosting-account-heading { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hosting-account-heading .eyebrow { width: 100%; font-size: 10px; }
+.provider-sites .group-head { padding: 16px 20px; }
+.provider-sites .site-row-multi > .site-main { padding: 18px 20px; }
+.env-subrows { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 12px; padding: 0 20px 20px; background: var(--panel, #fff); }
+.env-subrow { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); min-width: 0; }
+.env-subrow .env-name { flex-basis: 100%; }
+.env-subrow .site-domain { flex: 1 1 100%; width: auto; font-family: inherit; font-size: 15px; color: var(--text); overflow-wrap: anywhere; white-space: normal; overflow: visible; }
+.env-subrow .site-state { margin-top: 6px; width: 100%; justify-content: space-between; }
 .env-name { font-weight: 700; font-size: 12.5px; color: #18181b; min-width: 130px; }
 .env-tag { display: inline-flex; align-items: center; margin-left: 8px; padding: 2px 6px; border-radius: 4px; background: #eef0f2; color: #6b7178; font-size: 10px; font-weight: 500; line-height: 1.4; vertical-align: middle; }
 .connected-directly { border-color: var(--border-strong); }

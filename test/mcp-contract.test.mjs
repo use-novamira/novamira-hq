@@ -227,6 +227,19 @@ test("MCP negotiates lifecycle and exposes the complete typed surface", async ()
     version: "1.2.3",
   });
   const tools = messages[1].result.tools;
+  assert.equal(tools[0].title, "List WordPress sites");
+  assert.equal(
+    tools.find((tool) => tool.name === "hosting_profiles_list").title,
+    "List hosting accounts",
+  );
+  assert.ok(
+    tools.every(
+      (tool) =>
+        tool.title &&
+        tool.title !== tool.name &&
+        tool.annotations.title === tool.title,
+    ),
+  );
   assert.deepEqual(
     tools.map((tool) => tool.name),
     [
