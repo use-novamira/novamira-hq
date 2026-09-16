@@ -53,6 +53,8 @@ import type { DashboardResponse } from "../responses.js";
 import type { RouteContext, RouteHandler } from "../routes.js";
 import { patchSites } from "./sites.js";
 import type { DashboardNotice } from "../views/types.js";
+import { EMPTY_NOTICE } from "../views/types.js";
+import { patchSetupPage } from "./setup.js";
 
 function danger(message: string): DashboardNotice {
   return { level: "danger", message };
@@ -77,6 +79,48 @@ export function createConnectHandler(context: RouteContext): RouteHandler {
           "--url",
         );
 
+        const hostingProfile = (
+          request.query.get("hosting_profile") ?? ""
+        ).trim();
+        const envId = (request.query.get("env") ?? "").trim();
+        if (hostingProfile !== "" && envId !== "") {
+          patchToast(stream, {
+            level: "neutral",
+            message:
+              "Checking Novamira on this environment. Your hosting provider may take 30 seconds or longer.",
+          });
+          const existing = await context.setupJobs.inspect(
+            hostingProfile,
+            envId,
+            request.signal,
+          );
+          if (
+            !existing?.active ||
+            !existing.aiEnabled ||
+            existing.aiDomain !== site.host
+          ) {
+            await patchSetupPage(
+              context,
+              stream,
+              {
+                profile: hostingProfile,
+                envId,
+                siteLabel: request.query.get("site") ?? "",
+                envName: request.query.get("envname") ?? "",
+                jobId: "",
+                job: null,
+              },
+              EMPTY_NOTICE,
+            );
+            stream.close();
+            return;
+          }
+        }
+        if (hostingProfile !== "" && envId !== "")
+          patchToast(stream, {
+            level: "neutral",
+            message: "Waiting for authorization in your browser…",
+          });
         const outcome = await context.integration.connect(site.siteUrl);
         if (outcome.kind === "failed") {
           // A fixed sentence from a closed set. No child output, ever.

@@ -800,7 +800,7 @@ test("8: the four connection states render their documented pill and actions", a
   );
   assert.ok(markup.includes('<span class="pill warn">Reconnect</span>'));
   assert.ok(!markup.includes('<span class="pill">Not connected</span>'));
-  assert.ok(markup.includes(">Authorize Novamira</button>"));
+  assert.ok(markup.includes(">Connect to Novamira</button>"));
   assert.ok(markup.includes(">Unknown</span>"));
   assert.ok(markup.includes("novamira auth login https://env-c.example.com"));
   assert.ok(markup.includes("/_dashboard/connect?url="));
@@ -822,11 +822,13 @@ test("8: the four connection states render their documented pill and actions", a
   );
   assert.ok(absent.markup.includes(SITE_CLI_INSTALL_HINT));
   assert.equal(
-    absent.markup.split(">Authorize Novamira</button>").length - 1,
+    absent.markup.split(">Connect to Novamira</button>").length - 1,
     5,
   );
-  assert.equal(absent.markup.split("disabled").length - 1 >= 5, true);
-  assert.ok(!absent.markup.includes("novamira auth login"));
+  assert.ok(
+    absent.markup.includes("hosting_profile=prod"),
+    "provider inspection and setup remain usable without the optional CLI",
+  );
 });
 
 test("9: Push from here appears on each environment of a push-capable multi-env site", async () => {
@@ -844,26 +846,16 @@ test("9: Push from here appears on each environment of a push-capable multi-env 
   assert.equal(markup.split(">Configure push…</a>").length - 1, 2);
 });
 
-test("10: Setup Novamira is a link for the three supported providers and a disabled button otherwise", async () => {
+test("10: supported hosting rows have one connect action with inspection context", async () => {
   const { markup } = await resultMarkup();
   const links = [
     ...markup.matchAll(/class="button link setup-cta" href="([^"]*)"/g),
   ].map((match) => match[1]);
-  assert.equal(links.length, 3, "kinsta's three environments");
-  for (const href of links) {
-    assert.ok(href.startsWith("/novamira-setup?"));
-    assert.ok(href.includes("profile=prod"));
-    assert.ok(href.includes("env=env-"));
-    assert.ok(href.includes("envname="));
-    // Deleted with the site-profile surface.
-    assert.ok(!href.includes("siteprofile"));
-    assert.ok(!href.includes("replace"));
-  }
-  assert.ok(links.some((href) => href.includes("site=")));
-  assert.ok(
-    markup.includes("Supported by Kinsta, InstaWP, and Rocket.net"),
-    "pantheon's environments say why they cannot",
-  );
+  assert.equal(links.length, 0);
+  assert.equal(markup.split(">Connect to Novamira</button>").length - 1, 5);
+  assert.equal(markup.split("hosting_profile=prod").length - 1, 3);
+  assert.ok(!markup.includes("hosting_profile=plain"));
+  assert.ok(!markup.includes("Install / check Novamira"));
   assert.ok(!markup.includes("Fix set up"));
   assert.ok(!markup.includes("connected-directly"));
 });

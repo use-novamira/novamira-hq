@@ -54,6 +54,10 @@
  */
 
 import { randomBytes } from "node:crypto";
+import {
+  inspectExistingNovamira,
+  type ExistingNovamira,
+} from "../../provisioning/existing.js";
 
 import { asCliError, CliError, type ErrorCode } from "../../errors.js";
 import type { HostingClientFactory } from "../../hosting/factory.js";
@@ -106,6 +110,11 @@ export interface SetupJobStartInput {
 }
 
 export interface SetupJobService {
+  inspect(
+    profile: string,
+    envId: string,
+    signal: AbortSignal,
+  ): Promise<ExistingNovamira | undefined>;
   /**
    * Start a run, or return the id of the one already running against this
    * target. Rejects when the hosting profile cannot be resolved.
@@ -288,6 +297,16 @@ export function createSetupJobService(
   };
 
   return {
+    inspect: async (profile, envId, signal) => {
+      if (shuttingDown) throw unavailable();
+      const client = await options.hosting.clientFromProfile(profile);
+      signal.throwIfAborted();
+      return inspectExistingNovamira(client, envId, {
+        intervalSeconds: 2,
+        timeoutSeconds: 60,
+        signal: AbortSignal.any([signal, controller.signal]),
+      });
+    },
     start: (input) => {
       const profile = input.profile.trim();
       const envId = input.envId.trim();

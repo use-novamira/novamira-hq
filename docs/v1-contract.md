@@ -1076,7 +1076,13 @@ provider APIs and its answer is patched into the DOM. It reads its signals from
 `?refresh=true` bypasses the cache; a provider profile being saved or removed
 drops it entirely.
 
-`/_dashboard/connect` takes one query parameter, `?url=`, and spawns
+`/_dashboard/connect` takes `?url=`. Hosting rows supporting setup also send
+`hosting_profile` and `env`: Novamira HQ first inspects the plugin and its two
+AI Abilities options through read-only provider WP-CLI. A missing, inactive or
+not-ready installation opens the setup approval page, without making changes.
+An inspection failure stops the flow; it is never treated as a missing plugin.
+A ready installation proceeds directly to authorization. Other providers use
+the existing direct authorization flow. Authorization spawns
 `novamira auth login <url>` through the site-CLI integration: no shell, an argv
 array, with the non-secret URL as its only site value. The URL is
 normalized by the same rules `hosting novamira setup` applies before it can

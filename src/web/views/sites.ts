@@ -115,7 +115,6 @@ import {
 } from "./types.js";
 
 /** Go's disabled-button sentence, naming the three providers verbatim. */
-const SETUP_UNSUPPORTED_TITLE = "Supported by Kinsta, InstaWP, and Rocket.net";
 
 /** Why Connect is disabled when the environment has no public address. */
 const NO_DOMAIN_TITLE =
@@ -438,15 +437,25 @@ function renderStateCell(
         connection,
         address,
         view,
-      )}${renderSetupCta(group, env, siteLabel)}`;
+        group,
+        env,
+        siteLabel,
+      )}`;
     case "unavailable":
       return html`<span class="pill"${titleAttr(
         connection.hint,
       )}>${connection.reason === "site_incompatible" ? "Novamira not ready" : "Unknown"}</span>${renderProfileLink(connection, view)}${
         connection.profiles.length === 0
-          ? renderConnectButton(connection, address, view)
+          ? renderConnectButton(
+              connection,
+              address,
+              view,
+              group,
+              env,
+              siteLabel,
+            )
           : false
-      }${renderSetupCta(group, env, siteLabel)}`;
+      }`;
   }
 }
 
@@ -504,52 +513,41 @@ function renderConnectButton(
   connection: ConnectionView,
   address: string,
   view: SitesResultView,
+  group: SiteGroup,
+  env: HostingEnvironment,
+  siteLabel: string,
 ): Html {
   if (address === "") {
     return html`<button class="button tiny" type="button"${flagAttr(
       "disabled",
-    )}${attr("title", NO_DOMAIN_TITLE)}>Authorize Novamira</button>`;
+    )}${attr("title", NO_DOMAIN_TITLE)}>Connect to Novamira</button>`;
   }
-  if (connection.state === "unavailable") {
+  if (
+    connection.state === "unavailable" &&
+    !NOVAMIRA_SETUP_PROVIDERS.has(group.provider)
+  ) {
     return html`<button class="button tiny" type="button"${flagAttr(
       "disabled",
-    )}${titleAttr(connection.hint)}>Authorize Novamira</button>`;
+    )}${titleAttr(connection.hint)}>Connect to Novamira</button>`;
   }
   const action = post(
     url("/_dashboard/connect", {
       url: address,
       profile: view.profile,
       include_envs: view.includeEnvs,
+      hosting_profile: NOVAMIRA_SETUP_PROVIDERS.has(group.provider)
+        ? group.profile
+        : undefined,
+      env: NOVAMIRA_SETUP_PROVIDERS.has(group.provider) ? env.id : undefined,
+      site: siteLabel,
+      envname: env.displayName || env.name,
     }),
     { include: [] },
   );
   return html`<button class="button tiny" type="button"${attr(
     "title",
-    `Authorize Novamira access in your browser. novamira auth login ${address}`,
-  )}${ds.on("click", action)}>Authorize Novamira</button>`;
-}
-
-/** Go's setup CTA (`views.go:1040-1048`), without `siteprofile` and `replace`. */
-function renderSetupCta(
-  group: SiteGroup,
-  env: HostingEnvironment,
-  siteLabel: string,
-): Html {
-  if (env.id === "") return html``;
-  if (!NOVAMIRA_SETUP_PROVIDERS.has(group.provider)) {
-    return html`<button class="button tiny" type="button"${flagAttr(
-      "disabled",
-    )}${attr("title", SETUP_UNSUPPORTED_TITLE)}>Install / check Novamira</button>`;
-  }
-  const envName = env.displayName === "" ? env.name : env.displayName;
-  return html`<a class="button link setup-cta"${hrefAttr(
-    url("/novamira-setup", {
-      profile: group.profile,
-      env: env.id,
-      site: siteLabel === "" ? undefined : siteLabel,
-      envname: envName === "" ? undefined : envName,
-    }),
-  )}${attr("title", "Check the existing plugin before installing. A compatible installation is kept.")}>Install / check Novamira</a>`;
+    `Check Novamira, then authorize access in your browser. novamira auth login ${address}`,
+  )}${ds.indicator("cliSites.loading")}${ds.attrs({ disabled: signal("cliSites.loading") })}${ds.on("click", action)}>Connect to Novamira</button>`;
 }
 
 /**

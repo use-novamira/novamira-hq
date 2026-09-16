@@ -91,7 +91,7 @@ function viewFromRequest(request: DashboardRequest): SetupView {
   };
 }
 
-async function patchSetupPage(
+export async function patchSetupPage(
   context: RouteContext,
   stream: SseStream,
   setup: SetupView,

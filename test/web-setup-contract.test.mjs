@@ -80,6 +80,74 @@ test("setup waiting state shows elapsed time only while running", () => {
 const roots = [];
 const servers = [];
 
+test("unified connect inspects without installing, asks approval when missing, and authenticates when ready", async () => {
+  for (const state of ["missing", "ready", "inactive", "error"]) {
+    let logins = 0;
+    const { server, client } = await fixture({
+      connect: async () => {
+        logins++;
+        return { kind: "connected" };
+      },
+    });
+    const commands = [];
+    client.action = async (request) => {
+      const command = request.body.wp_command;
+      commands.push(command);
+      if (state === "error") throw new Error("Inspection unavailable");
+      let output;
+      if (command === EXISTING_NOVAMIRA_COMMAND)
+        output =
+          state === "missing"
+            ? []
+            : [
+                {
+                  name: "novamira",
+                  version: "1.11.2",
+                  status: state === "inactive" ? "inactive" : "active",
+                },
+              ];
+      else if (command.includes("novamira_ai_abilities_enabled"))
+        output = [
+          { option_name: "novamira_ai_abilities_enabled", option_value: "1" },
+        ];
+      else
+        output = [
+          {
+            option_name: "novamira_ai_abilities_domain",
+            option_value: "example.com",
+          },
+        ];
+      return {
+        provider: "kinsta",
+        action: "wp-cli.run",
+        status: 200,
+        raw: { data: { result: JSON.stringify(output) } },
+      };
+    };
+    const { recorder } = await sse(
+      server,
+      authorized(
+        "/_dashboard/connect?url=https%3A%2F%2Fexample.com&hosting_profile=dev&env=env-1",
+        { method: "POST", body: JSON.stringify({ token: TOKEN }) },
+      ),
+    );
+    assert.equal(logins, state === "ready" ? 1 : 0);
+    assert.ok(
+      commands.every(
+        (command) =>
+          command.startsWith("wp plugin list") ||
+          command.startsWith("wp option list"),
+      ),
+    );
+    if (state === "missing" || state === "inactive") {
+      assert.ok(
+        recorder.find("main").markup.includes("I understand and approve"),
+      );
+      assert.ok(recorder.find("main").markup.includes("disabled"));
+    }
+  }
+});
+
 test.after(async () => {
   for (const server of servers) await server.close();
   for (const root of roots) await rm(root, { recursive: true, force: true });
@@ -286,7 +354,7 @@ async function fixture(options = {}) {
         checkedAt: START,
         cliAvailable: true,
       }),
-      connect: async () => ({ kind: "connected" }),
+      connect: options.connect ?? (async () => ({ kind: "connected" })),
     },
     doctor: async () => {
       throw new Error("the setup suite runs no doctor report");
