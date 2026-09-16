@@ -9,14 +9,33 @@ import { renderSiteConnectSuccess } from "../dist/web/views/site-profiles.js";
 import { renderMcpPage } from "../dist/web/views/mcp.js";
 import { renderNav } from "../dist/web/views/layout.js";
 
-test("client selection uses full page width and instructions use narrow content", () => {
+test("AI client selection and every instruction page share the same full-width container", () => {
   const view = { profiles: [], pushes: [] };
-  assert.ok(renderHtml(renderMcpPage(view)).includes('class="page mcp-page"'));
-  assert.ok(
-    renderHtml(renderMcpPage(view, undefined, "claude")).includes(
-      'class="page flow-page mcp-page"',
-    ),
+  const configuration = { chatgpt: "x".repeat(2000), claude: "y".repeat(2000) };
+  for (const client of [undefined, "chatgpt", "claude"]) {
+    for (const config of [undefined, configuration]) {
+      const markup = renderHtml(renderMcpPage(view, config, client));
+      assert.ok(markup.includes('class="page mcp-page"'));
+      assert.ok(!markup.includes("flow-page"));
+      if (config || client === undefined) {
+        assert.equal(
+          markup.split("<svg ").length - 1,
+          client === undefined ? 2 : 1,
+        );
+        assert.ok(markup.includes('aria-hidden="true" focusable="false"'));
+        assert.ok(!markup.includes('class="mcp-choice-mark">O</span>'));
+        assert.ok(!markup.includes('class="mcp-choice-mark">A</span>'));
+      }
+    }
+  }
+  const css = readFileSync(
+    new URL("../src/web/static/app.css", import.meta.url),
+    "utf8",
   );
+  assert.ok(
+    css.includes(".mcp-page { grid-template-columns: minmax(0, 1fr); }"),
+  );
+  assert.match(css, /\.mcp-config\s*\{[^}]*overflow-x: auto;/);
 });
 
 test("primary navigation no longer includes the generic how-to page", () => {

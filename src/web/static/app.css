@@ -1536,6 +1536,9 @@ dd {
 .mcp-choose,
 .mcp-setup-card {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
   gap: 24px;
   padding: clamp(22px, 4vw, 36px);
   border: 1px solid var(--border);
@@ -1571,11 +1574,14 @@ dd {
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background: var(--ink);
-  color: #fff;
+  background: transparent;
+  color: var(--text);
   font-weight: 800;
 }
 .mcp-choice-mark.large { width: 50px; height: 50px; font-size: 20px; }
+.mcp-choice-mark.claude { color: #d97757; }
+.mcp-choice-mark svg { display: block; width: 32px; height: 32px; }
+.mcp-choice-mark.large svg { width: 40px; height: 40px; }
 .mcp-choice-arrow { color: var(--muted); font-size: 22px; }
 .mcp-back { margin-bottom: 12px; }
 .text-link { color: #75530e; font-weight: 700; text-decoration: none; }
@@ -1607,7 +1613,9 @@ dd {
 .mcp-advanced > summary::-webkit-details-marker { display: none; }
 .mcp-manual > summary span,
 .mcp-advanced > summary span { color: var(--muted); font-size: 12px; }
-.mcp-client-body { display: grid; gap: 16px; padding: 0 20px 20px; }
+.mcp-page { grid-template-columns: minmax(0, 1fr); }
+.mcp-page > *, .mcp-setup-card > *, .mcp-client-body > * { min-width: 0; }
+.mcp-client-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 0 20px 20px; }
 .mcp-config {
   margin: 0;
   padding: 18px;
