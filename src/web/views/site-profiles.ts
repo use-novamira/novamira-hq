@@ -129,7 +129,7 @@ function renderConnectionControl(row: SiteProfileRowView, connect: Expr): Html {
       ? { text: "Novamira not ready", modifier: "warn" }
       : PILLS[row.state];
   if (row.state === "reconnect_required") {
-    return html`<button class="status-action warn" type="button"${attr(
+    return html`<button class="button tiny" type="button"${attr(
       "title",
       `novamira auth login ${row.siteUrl}`,
     )}${ds.on("click", connect)}>Reconnect</button>`;
@@ -239,10 +239,7 @@ export function renderSiteProfileActions(
   return html`<span class="cli-profile-actions"><strong>${row.name}</strong>${
     row.state === "connected"
       ? false
-      : html`<button${classAttr(
-          row.state === "reconnect_required" ? "status-action" : "button",
-          row.state === "reconnect_required" ? "warn" : "tiny",
-        )} type="button"${ds.on("click", reconnect)}>Reconnect</button>`
+      : html`<button class="button tiny" type="button"${ds.on("click", reconnect)}>Reconnect</button>`
   }${renderProfileMenu(row.name, routeContext, logout, null)}</span>`;
 }
 

@@ -810,7 +810,9 @@ test("8: the four connection states render their documented pill and actions", a
   assert.ok(
     markup.includes('<span class="pill ok">Novamira authorized</span>'),
   );
-  assert.ok(markup.includes('<span class="pill warn">Reconnect</span>'));
+  assert.ok(
+    markup.includes('<span class="pill warn">Authorization required</span>'),
+  );
   assert.ok(!markup.includes('<span class="pill">Not connected</span>'));
   assert.ok(markup.includes(">Connect to Novamira</button>"));
   assert.ok(markup.includes(">Unknown</span>"));
@@ -1138,6 +1140,7 @@ test("a CLI profile on a site without a compatible Novamira setup is explicit", 
   assert.ok(markup.includes("Novamira not ready"));
   assert.ok(markup.includes("plugin may be missing"));
   assert.ok(markup.includes(">Reconnect</button>"));
+  assert.ok(!markup.includes('class="status-action'));
   assert.ok(!markup.includes(">Unknown</span>"));
 });
 

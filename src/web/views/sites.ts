@@ -339,7 +339,7 @@ function renderSiteItem(
     state,
   )}><span class="site-name">${title}</span><span class="site-domain">${domain}</span><span class="site-state">${
     only === undefined ? false : renderStateCell(group, site, only, title, view)
-  }</span><details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${title}`)}>⋯</summary><div class="profile-menu-popover">${visibility}</div></details></div>`;
+  }<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${title}`)}>⋯</summary><div class="profile-menu-popover">${visibility}</div></details></span></div>`;
 }
 
 /** Go's `renderEnvironment` (`views.go:1006-1029`). */
@@ -431,7 +431,7 @@ function renderStateCell(
     case "reconnect_required": {
       const profiles = renderProfileLink(connection, view);
       return profiles === false
-        ? html`<span class="pill warn">Reconnect</span>`
+        ? html`<span class="pill warn">Authorization required</span>`
         : profiles;
     }
     case "not_configured":

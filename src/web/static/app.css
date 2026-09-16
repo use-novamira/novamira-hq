@@ -921,29 +921,6 @@ select:focus {
   white-space: nowrap;
 }
 
-.status-action {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  border: 0;
-  border-radius: 999px;
-  padding: 2px 9px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.status-action.warn {
-  background: var(--warn-bg);
-  color: var(--warn);
-}
-
-.status-action.warn:hover {
-  background: #ffe7a3;
-}
-
 .pill.ok,
 .notice.ok,
 .toast.ok {
@@ -1639,14 +1616,18 @@ dd {
   .push-route { grid-template-columns: 1fr; }
   .push-route-arrow { transform: rotate(90deg); }
 }
-.cli-sites .site-grid {
-  display: grid;
-  grid-template-columns: minmax(160px, 240px) minmax(0, 1fr) auto;
-}
+.provider-sites { --site-columns: 240px minmax(0, 1fr) auto; }
+.provider-sites .site-row:not(.site-row-multi),
+.provider-sites .site-row-multi > .site-main,
+.provider-sites .env-subrow { display: grid; grid-template-columns: var(--site-columns); align-items: center; gap: 16px; padding: 10px 14px; }
+.provider-sites .site-name { width: auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.provider-sites .site-row-multi > .site-main { position: relative; }
+.provider-sites .site-main > .site-chevron { position: absolute; left: 14px; }
+.provider-sites .site-main > .site-name { padding-left: 24px; }
 .cli-site-row {
   display: grid;
   grid-column: 1 / -1;
-  grid-template-columns: subgrid;
+  grid-template-columns: var(--site-columns);
   gap: 16px;
   padding: 10px 14px;
 }
@@ -1664,9 +1645,8 @@ dd {
 .inventory-group-heading { min-width: 0; }
 .inventory-group-heading h2 { overflow-wrap: anywhere; }
 .provider-sites .group-head { padding: 16px 20px; }
-.provider-sites .site-row-multi > .site-main { padding: 12px 14px; }
 .env-subrows { background: var(--surface); }
-.env-subrow { display: grid; grid-template-columns: minmax(160px, 240px) minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 10px 14px; border-top: 1px solid var(--border); min-width: 0; }
+.env-subrow { border-top: 1px solid var(--border); min-width: 0; }
 .env-subrow .env-name { padding-left: 24px; }
 .provider-sites .site-domain { overflow-wrap: anywhere; white-space: normal; overflow: visible; text-overflow: clip; }
 .env-subrow .site-state { margin: 0; justify-self: end; }
@@ -1711,12 +1691,10 @@ dd {
     grid-column: auto;
   }
 
-  .cli-sites .site-grid {
-    grid-template-columns: 1fr;
-  }
+  .provider-sites { --site-columns: minmax(0, 1fr); }
 
   .cli-site-row {
-    grid-template-columns: subgrid;
+    grid-template-columns: var(--site-columns);
     gap: 6px;
   }
 
@@ -1724,7 +1702,9 @@ dd {
     margin-left: 0;
   }
 
-  .env-subrow { grid-template-columns: minmax(0, 1fr); gap: 6px; padding-left: 38px; }
+  .provider-sites .env-subrow { gap: 6px; padding-left: 38px; }
+  .provider-sites .site-state { justify-self: start; margin-left: 0; flex-wrap: wrap; }
+  .provider-sites .site-main > .site-chevron { top: 15px; }
   .env-subrow .env-name { padding-left: 0; }
   .env-subrow .site-state { justify-self: start; flex-wrap: wrap; }
 }

@@ -11,6 +11,22 @@ const source = readFileSync(
   "utf8",
 );
 
+test("inventory rows share column geometry and reserve pills for passive states", () => {
+  const css = readFileSync(
+    new URL("../src/web/static/app.css", import.meta.url),
+    "utf8",
+  );
+  assert.ok(css.includes("--site-columns: 240px minmax(0, 1fr) auto"));
+  assert.ok(css.includes(".provider-sites .site-row:not(.site-row-multi),"));
+  assert.ok(
+    css.includes(
+      ".provider-sites .env-subrow { display: grid; grid-template-columns: var(--site-columns)",
+    ),
+  );
+  assert.ok(!css.includes("grid-template-columns: subgrid"));
+  assert.ok(!css.includes(".status-action"));
+});
+
 function browser(storage, blocked = false) {
   const classes = () => {
     const values = new Set();
