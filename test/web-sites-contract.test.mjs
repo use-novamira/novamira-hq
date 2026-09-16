@@ -753,7 +753,12 @@ test("6: a multi-environment site is a <details>, a single one a plain row", asy
   assert.ok(markup.includes('<details class="site-row site-row-multi"'));
   assert.ok(markup.includes('<span class="pill">2 environments</span>'));
   assert.equal(markup.split('class="env-subrow"').length - 1, 4);
-  assert.ok(markup.includes('<span class="env-tag">Premium</span>'));
+  assert.ok(!markup.includes('<span class="env-tag">Premium</span>'));
+  assert.ok(
+    markup.includes(
+      '>Environment details</summary><p class="field-help">Hosting tier: Premium</p></details>',
+    ),
+  );
   assert.ok(markup.includes(">env-a display<"));
   // The single-environment site is a div with no summary of its own.
   assert.ok(markup.includes('<div class="site-row" data-hosting-site-key='));
@@ -1075,7 +1080,9 @@ test("18: the unified list renders unmatched CLI profiles as an inventory group"
   );
   assert.ok(markup.includes("<p>Hosting account · "));
   assert.ok(!markup.includes('class="hosting-account-heading"'));
-  assert.ok(markup.includes("same site may appear here"));
+  assert.ok(
+    markup.includes("Added directly, without a linked hosting account."),
+  );
   assert.ok(markup.includes("direct.example.com"));
   assert.ok(
     markup.includes(

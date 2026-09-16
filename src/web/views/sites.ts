@@ -264,7 +264,7 @@ function renderCliOnly(
   view: SitesResultView,
 ): Html | false {
   if (profiles.length === 0) return false;
-  return html`<section class="provider-sites cli-sites"><div class="group-head"><div class="inventory-group-heading"><h2>Sites added by URL</h2><p>Not matched to a hosting environment. The same site may appear here when its connected URL uses a different domain.</p></div><span class="pill">${String(
+  return html`<section class="provider-sites cli-sites"><div class="group-head"><div class="inventory-group-heading"><h2>Sites added by URL</h2><p>Added directly, without a linked hosting account.</p></div><span class="pill">${String(
     profiles.length,
   )} ${profiles.length === 1 ? "site" : "sites"}</span></div><div class="site-grid cli-site-grid">${profiles.map(
     (profile) =>
@@ -362,9 +362,10 @@ function renderEnvironment(
           }),
         )}>Configure push…</a>`
       : false;
-  return html`<div class="env-subrow"><span class="env-name">${name}${
-    env.isPremium ? html` <span class="env-tag">Premium</span>` : false
-  }</span><span class="site-domain">${
+  const environmentDetails = env.isPremium
+    ? html`<details class="profile-rename"><summary class="button tiny quiet profile-menu-action">Environment details</summary><p class="field-help">Hosting tier: Premium</p></details>`
+    : false;
+  return html`<div class="env-subrow"><span class="env-name">${name}</span><span class="site-domain">${
     env.primaryDomain ?? ""
   }</span><span class="site-state">${
     env.isBlocked ? html`<span class="pill warn">blocked</span>` : false
@@ -374,7 +375,7 @@ function renderEnvironment(
     env,
     siteLabel,
     view,
-  )}<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${siteLabel}: ${name}`)}>⋯</summary><div class="profile-menu-popover">${pushFromHere}<button class="button tiny quiet profile-menu-action hosting-visibility" type="button" title="Hide this site and all its environments from this browser's list">Hide from list</button></div></details></span></div>`;
+  )}<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${siteLabel}: ${name}`)}>⋯</summary><div class="profile-menu-popover">${pushFromHere}${environmentDetails}<button class="button tiny quiet profile-menu-action hosting-visibility" type="button" title="Hide this site and all its environments from this browser's list">Hide from list</button></div></details></span></div>`;
 }
 
 /* -------------------------------------------------------------------------- */
