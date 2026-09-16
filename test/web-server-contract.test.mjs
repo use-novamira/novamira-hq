@@ -43,9 +43,10 @@ import {
 const TOKEN = "a".repeat(64);
 const TOKEN_HEADER = "x-novamira-dashboard-token";
 
-test("app acknowledgement and MCP verification use token-protected POST routes", async () => {
+test("app acknowledgement and MCP connection use token-protected POST routes", async () => {
   let accepted = false;
   let checks = 0;
+  const connected = [];
   const { server, cleanup } = await fixture({
     appAcknowledgement: {
       accepted: async () => accepted,
@@ -59,6 +60,7 @@ test("app acknowledgement and MCP verification use token-protected POST routes",
         chatgpt: "",
         launch: { command: "test", args: [] },
       }),
+      connect: async (client) => connected.push(client),
       verify: async () => {
         checks++;
         return { toolCount: 11 };
@@ -71,6 +73,7 @@ test("app acknowledgement and MCP verification use token-protected POST routes",
     for (const path of [
       "/_dashboard/app/acknowledge",
       "/_dashboard/mcp/verify",
+      "/_dashboard/mcp/connect?client=chatgpt",
       "/_dashboard/pushes/plan",
       "/_dashboard/pushes/apply",
     ]) {
@@ -111,6 +114,14 @@ test("app acknowledgement and MCP verification use token-protected POST routes",
     );
     await check.run(stream);
     assert.equal(checks, 1);
+    const connect = await server.dispatch(
+      request("/_dashboard/mcp/connect?client=chatgpt", {
+        method: "POST",
+        headers: { [TOKEN_HEADER]: TOKEN },
+      }),
+    );
+    await connect.run(stream);
+    assert.deepEqual(connected, ["chatgpt"]);
   } finally {
     await cleanup();
   }
@@ -1003,6 +1014,7 @@ const SHIPPED_ROUTES = [
   "GET /sites",
   "HEAD /assets/",
   "GET /_dashboard/mcp/verify",
+  "GET /_dashboard/mcp/connect",
   "GET /_dashboard/app/acknowledge",
   "GET /_dashboard/pushes/plan",
   "GET /_dashboard/pushes/apply",

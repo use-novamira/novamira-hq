@@ -265,7 +265,7 @@ function renderCliOnly(
   view: SitesResultView,
 ): Html | false {
   if (profiles.length === 0) return false;
-  return html`<section class="provider-sites cli-sites"><div class="group-head"><div><h2>Sites added by URL</h2><p>Added directly instead of discovered through a hosting provider.</p></div><span class="pill">${String(
+  return html`<section class="provider-sites cli-sites"><div class="group-head"><div><h2>Sites added by URL</h2><p>Not matched to an environment above. The same site may appear here when its connected URL uses a different domain.</p></div><span class="pill">${String(
     profiles.length,
   )} sites</span></div><div class="site-grid cli-site-grid">${profiles.map(
     (profile) =>
@@ -329,17 +329,8 @@ function renderSiteItem(
       state,
     )}><summary class="site-main"><span class="site-chevron"></span><span class="site-name">${title}</span><span class="site-domain">${domain}</span><span class="site-state"><span class="pill">${String(
       envs.length,
-    )} environments</span>${
-      ENVIRONMENT_PUSH_PROVIDERS.has(group.provider)
-        ? html`<a class="push-hint"${hrefAttr(
-            url("/pushes/new", {
-              profile: group.profile,
-              site: site.id,
-            }),
-          )}>+ Push</a>`
-        : false
-    }</span></summary><div class="env-subrows">${envs.map((env) =>
-      renderEnvironment(group, site, env, title, view),
+    )} environments</span></span></summary><div class="env-subrows">${envs.map(
+      (env) => renderEnvironment(group, site, env, title, view),
     )}</div></details>`;
   }
 
@@ -360,13 +351,30 @@ function renderEnvironment(
   view: SitesResultView,
 ): Html {
   const name = displayLabel(env.displayName, env.name, env.id);
+  const pushFromHere =
+    ENVIRONMENT_PUSH_PROVIDERS.has(group.provider) &&
+    (site.environments?.length ?? 0) > 1
+      ? html`<a class="push-hint"${hrefAttr(
+          url("/pushes/new", {
+            profile: group.profile,
+            site: site.id,
+            source: env.id,
+          }),
+        )}>Push from here</a>`
+      : false;
   return html`<div class="env-subrow"><span class="env-name">${name}${
     env.isPremium ? html` <span class="env-tag">premium</span>` : false
   }</span><span class="site-domain">${
     env.primaryDomain ?? ""
   }</span><span class="site-state">${
     env.isBlocked ? html`<span class="pill warn">blocked</span>` : false
-  }${renderStateCell(group, site, env, siteLabel, view)}</span></div>`;
+  }${renderStateCell(
+    group,
+    site,
+    env,
+    siteLabel,
+    view,
+  )}${pushFromHere}</span></div>`;
 }
 
 /* -------------------------------------------------------------------------- */

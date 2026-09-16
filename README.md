@@ -215,12 +215,12 @@ What it does:
   Novamira HQ installation. Novamira HQ prepares the connection; the AI work
   happens in the agent.
 - **Push** — save and run environment-to-environment pushes.
-  Push shows a source/target/scope confirmation, then invokes the provider's
-  native push operation. It does not create a separate backup. A changed or
-  reused confirmation is refused.
-- **Connect your AI** — choose Claude Desktop or ChatGPT Desktop, open only that
-  client's setup guide, copy its configuration, test Novamira HQ locally, then
-  confirm the external connection in the AI client itself.
+  Start directly from a source environment on Sites, save the direction and
+  scope, then review them before invoking the provider's native push operation.
+  It does not create a separate backup. A changed or reused confirmation is refused.
+- **Connect your AI** — choose ChatGPT/Codex or Claude, then connect with one
+  click through the client's official command-line setup when available.
+  Generated JSON or TOML is kept as a manual fallback.
 - **History** — local requests and correlated workflows across CLI, dashboard
   and MCP, with observed outcomes and next steps for unverified work.
 - **Novamira Setup** — install and activate the plugin on an environment with

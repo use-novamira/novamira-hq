@@ -47,6 +47,7 @@ import {
 import type { SseStream } from "../sse.js";
 import { PROVIDER_KINDS } from "../../config/schema.js";
 import type { DashboardNotice } from "../views/types.js";
+import { displayLabel } from "../services/sites.js";
 
 /** The reset both mutations send before the new markup, as Go's `patch` did. */
 function resetFormSignals(): Readonly<Record<string, JsonValue>> {
@@ -151,7 +152,33 @@ export function createPushSaveHandler(context: RouteContext): RouteHandler {
     run: async (stream) => {
       try {
         const input = parsePushForm(await readSignals(request));
-        await context.pushes.upsert(input);
+        const site = context.sites.resolveSite(
+          input.hostingProfile,
+          input.siteId,
+        );
+        const environmentName = (id: string, fallback: string): string => {
+          const environment = site?.envs.find(
+            (candidate) => candidate.id === id,
+          );
+          return environment === undefined
+            ? fallback
+            : displayLabel(
+                environment.displayName,
+                environment.name,
+                environment.id,
+              );
+        };
+        await context.pushes.upsert({
+          ...input,
+          sourceEnvName: environmentName(
+            input.sourceEnvId,
+            input.sourceEnvName,
+          ),
+          targetEnvName: environmentName(
+            input.targetEnvId,
+            input.targetEnvName,
+          ),
+        });
         await patchPushesPage(
           context,
           stream,

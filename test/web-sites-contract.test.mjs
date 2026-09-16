@@ -823,15 +823,19 @@ test("8: the four connection states render their documented pill and actions", a
   assert.ok(!absent.markup.includes("novamira auth login"));
 });
 
-test("9: + Push appears only for a push-capable provider's multi-env site", async () => {
+test("9: Push from here appears on each environment of a push-capable multi-env site", async () => {
   const { markup } = await resultMarkup();
   const hints = [...markup.matchAll(/class="push-hint" href="([^"]*)"/g)].map(
     (match) => match[1],
   );
-  assert.equal(hints.length, 1, "kinsta's multi-env site only");
-  assert.ok(hints[0].includes("profile=prod"));
-  assert.ok(hints[0].includes("site=s1"));
-  assert.ok(hints[0].startsWith("/pushes/new?"));
+  assert.equal(hints.length, 2, "kinsta's two eligible environments only");
+  for (const href of hints) {
+    assert.ok(href.includes("profile=prod"));
+    assert.ok(href.includes("site=s1"));
+    assert.ok(href.includes("source=env-"));
+    assert.ok(href.startsWith("/pushes/new?"));
+  }
+  assert.equal(markup.split(">Push from here</a>").length - 1, 2);
 });
 
 test("10: Setup Novamira is a link for the three supported providers and a disabled button otherwise", async () => {
@@ -1051,6 +1055,7 @@ test("18: the unified list renders unmatched CLI profiles as an inventory group"
   });
   assert.ok(markup.includes('<section class="provider-sites cli-sites">'));
   assert.ok(markup.includes("<h2>Sites added by URL</h2>"));
+  assert.ok(markup.includes("same site may appear here"));
   assert.ok(markup.includes("direct.example.com"));
   assert.ok(
     markup.includes(

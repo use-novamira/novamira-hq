@@ -59,7 +59,10 @@
 
 import { PROVIDER_KINDS } from "../config/schema.js";
 import { CliError } from "../errors.js";
-import { createMcpVerifyHandler } from "./handlers/mcp.js";
+import {
+  createMcpConnectHandler,
+  createMcpVerifyHandler,
+} from "./handlers/mcp.js";
 import { createAcknowledgementHandler } from "./handlers/acknowledgement.js";
 import { renderAcknowledgement } from "./views/acknowledgement.js";
 import type { HistoryStore } from "../history/index.js";
@@ -333,6 +336,17 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
       const profile = (request.query.get("profile") ?? "").trim();
       const siteId = (request.query.get("site") ?? "").trim();
       const site = context.sites.resolveSite(profile, siteId);
+      const requestedSource = (request.query.get("source") ?? "").trim();
+      const sourceEnvId = site?.envs.some(
+        (environment) => environment.id === requestedSource,
+      )
+        ? requestedSource
+        : "";
+      const targetEnvId =
+        sourceEnvId !== "" && site?.envs.length === 2
+          ? (site.envs.find((environment) => environment.id !== sourceEnvId)
+              ?.id ?? "")
+          : "";
       return {
         pushNew: {
           profile,
@@ -341,8 +355,16 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
           // when the cache is cold (`server.go:926`).
           siteLabel: site?.label ?? siteId,
           envs: site?.envs ?? [],
+          sourceEnvId,
+          targetEnvId,
         },
       };
+    }
+    if (page === "mcp") {
+      const client = request.query.get("client");
+      return client === "chatgpt" || client === "claude"
+        ? { mcpClient: client }
+        : {};
     }
     if (page === "novamira-setup") {
       return setupExtras(request);
@@ -512,6 +534,12 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
       path: "/_dashboard/pushes/apply",
       auth: "token",
       handler: createPushExecutionHandler(context, "apply"),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/mcp/connect",
+      auth: "token",
+      handler: createMcpConnectHandler(context),
     },
     {
       method: "POST",

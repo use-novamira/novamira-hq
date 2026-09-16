@@ -68,6 +68,7 @@ export interface PageModel {
   readonly siteConnectSuccess?: SiteConnectSuccessView;
   readonly pushConfirmation?: PushConfirmation;
   readonly mcp?: McpConfiguration;
+  readonly mcpClient?: "chatgpt" | "claude";
   readonly history?: HistoryView;
   readonly view: ConfigView;
   readonly notice: DashboardNotice;
@@ -103,7 +104,7 @@ export interface PageModel {
 export function renderPageBody(page: DashboardPage, model: PageModel): Html {
   switch (page) {
     case "mcp":
-      return renderMcpPage(model.view, model.mcp);
+      return renderMcpPage(model.view, model.mcp, model.mcpClient);
     case "history":
       return renderHistoryPage(model.history ?? []);
     case "providers":

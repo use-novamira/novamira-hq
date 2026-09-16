@@ -5,6 +5,38 @@ import { asCliError, CliError } from "../../errors.js";
 import { patchToast } from "../patch.js";
 import type { RouteContext, RouteHandler } from "../routes.js";
 
+export function createMcpConnectHandler(context: RouteContext): RouteHandler {
+  return (request) => ({
+    kind: "sse",
+    run: async (stream) => {
+      try {
+        if (!context.mcpConnection)
+          throw new CliError(
+            "provider_unsupported",
+            "Automatic AI client setup is unavailable in this Novamira HQ instance.",
+          );
+        const client = request.query.get("client");
+        if (client !== "chatgpt" && client !== "claude-code")
+          throw new CliError("usage_error", "Choose a supported AI client.");
+        await context.mcpConnection.connect(client);
+        patchToast(stream, {
+          level: "ok",
+          message:
+            client === "chatgpt"
+              ? "Novamira HQ is connected to ChatGPT Desktop and Codex. Restart the client if it is already open."
+              : "Novamira HQ is connected to Claude Code. Start a new session to use it.",
+        });
+      } catch (error) {
+        patchToast(stream, {
+          level: "danger",
+          message: asCliError(error).message,
+        });
+      }
+      stream.close();
+    },
+  });
+}
+
 export function createMcpVerifyHandler(context: RouteContext): RouteHandler {
   return () => ({
     kind: "sse",

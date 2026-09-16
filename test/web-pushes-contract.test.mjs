@@ -5,7 +5,7 @@
  * The two push pages and their two routes.
  *
  * The port of Go's push `server_test.go` cases: the four sentences of
- * `pushesStatusLine`, the populated table's columns and its two
+ * `pushesStatusLine`, the populated direction cards and their two
  * disabled-Push reasons, the environment name and domain resolution against
  * the warm sites cache, the new-push form, and the save and remove handlers.
  *
@@ -336,7 +336,7 @@ test("1: the empty page exposes the next useful action for every state", async (
   const cold = await fixture();
   assert.ok(
     (await line(cold.server)).includes(
-      "You have a push-capable host: prod (Kinsta). Open the Hosting Sites page",
+      "You have a push-capable host: prod (Kinsta). Open Sites",
     ),
   );
   assert.ok((await line(cold.server)).includes("Load sites to continue"));
@@ -368,29 +368,29 @@ test("1: the empty page exposes the next useful action for every state", async (
 });
 
 /* -------------------------------------------------------------------------- */
-/* 2-3: the populated table                                                   */
+/* 2-3: the populated cards                                                   */
 /* -------------------------------------------------------------------------- */
 
-test("2: the table renders Go's five columns, both Push reasons and the summary", async () => {
+test("2: saved pushes render as reviewable direction cards", async () => {
   const { server } = await fixture({ pushes: PUSHES });
   await warmCache(server);
   const markup = await page(server, "/pushes");
   for (const want of [
-    "<th>Name</th>",
-    "<th>Site</th>",
-    "<th>Direction</th>",
-    "<th>Pushes</th>",
-    'class="push-dir-names"',
-    'class="push-dir-domains"',
-    ">DB, files<",
-    ">—<",
+    'class="push-card"',
+    'class="push-route"',
+    ">From</span>",
+    ">To</span>",
+    ">Database</span>",
+    ">Files</span>",
+    ">No content selected</span>",
+    ">Review push</button>",
+    ">Configure another push</a>",
     'title="Review the target and scope before pushing"',
     'title="This provider does not support environment push"',
     "/_dashboard/pushes/remove?push=stage-to-live",
     "Remove push stage-to-live?",
   ])
     assert.ok(markup.includes(want), want);
-  // Go's `</section></section>` bug is not ported: the tags balance.
   assert.equal(
     markup.split("<section").length,
     markup.split("</section>").length,
@@ -402,16 +402,24 @@ test("3: environments resolve from the warm cache, then the stored name, then th
   await warmCache(server);
   const markup = await page(server, "/pushes");
   // Resolved from the inventory, so a rename in the console shows through.
-  assert.ok(markup.includes("env-a display → env-b display"));
-  assert.ok(markup.includes("staging.example.com → live.example.com"));
+  for (const value of [
+    "env-a display",
+    "env-b display",
+    "staging.example.com",
+    "live.example.com",
+  ])
+    assert.ok(markup.includes(value), value);
   assert.ok(!markup.includes("stored-a"));
   // Unresolvable: the stored name, then the raw id, and no domains row.
-  assert.ok(markup.includes("Stored Source → missing-2"));
+  assert.ok(markup.includes("Stored Source"));
+  assert.ok(markup.includes("Target environment"));
+  assert.ok(!markup.includes("missing-2"));
 
   // With a cold cache both fall back to the stored names.
   const cold = await fixture({ pushes: PUSHES });
   const coldMarkup = await page(cold.server, "/pushes");
-  assert.ok(coldMarkup.includes("stored-a → stored-b"));
+  assert.ok(coldMarkup.includes("stored-a"));
+  assert.ok(coldMarkup.includes("stored-b"));
   assert.equal(cold.listCalls.length, 0);
 });
 
@@ -460,10 +468,13 @@ test("3b: environment display resolution keeps profile and site ownership", asyn
   });
   await warmCache(server);
   const markup = await page(server, "/pushes");
-  for (const owner of ["Alpha", "Beta", "Other"])
-    assert.ok(markup.includes(`${owner} source → ${owner} target`), owner);
+  for (const owner of ["Alpha", "Beta", "Other"]) {
+    assert.ok(markup.includes(`${owner} source`), owner);
+    assert.ok(markup.includes(`${owner} target`), owner);
+  }
   assert.ok(
-    markup.includes("missing stored source → missing stored target"),
+    markup.includes("missing stored source") &&
+      markup.includes("missing stored target"),
     "another site's matching environment IDs do not override stored names",
   );
 });
@@ -501,6 +512,17 @@ test("4: the form renders with the cached environments and highlights Push", asy
   // The submit sets the three fields the selects do not carry.
   assert.ok(markup.includes("$pushForm.hostingProfile = "));
   assert.ok(markup.includes("$pushForm.siteId = "));
+});
+
+test("4a: opening from an environment preselects the source and the only other target", async () => {
+  const { server } = await fixture();
+  await warmCache(server);
+  const markup = await page(
+    server,
+    "/pushes/new?profile=prod&site=s1&source=env-a",
+  );
+  assert.ok(markup.includes("$pushForm.sourceEnvId = &quot;env-a&quot;"));
+  assert.ok(markup.includes("$pushForm.targetEnvId = &quot;env-b&quot;"));
 });
 
 test("4b: the form resolves a duplicate site id only within its requested profile", async () => {
@@ -547,7 +569,7 @@ test("4b: the form resolves a duplicate site id only within its requested profil
   assert.ok(!beta.includes("Alpha Source"));
 
   const missing = await page(server, "/pushes/new?profile=gamma&site=shared");
-  assert.ok(missing.includes("Open this from the Hosting Sites page"));
+  assert.ok(missing.includes("Open this from Sites"));
   assert.ok(!missing.includes("pushForm.sourceEnvId"));
 });
 
@@ -559,13 +581,13 @@ test("5: without two resolvable environments the page is guidance, not a form", 
     "/pushes/new?profile=prod&site=nope",
   ]) {
     const markup = await page(server, path);
-    assert.ok(markup.includes("Open this from the Hosting Sites page"), path);
+    assert.ok(markup.includes("Open this from Sites"), path);
     assert.ok(!markup.includes("pushForm.sourceEnvId"), path);
   }
   // A single-environment site is still fewer than two.
   await warmCache(server);
   const single = await page(server, "/pushes/new?profile=prod&site=s2");
-  assert.ok(single.includes("Open this from the Hosting Sites page"));
+  assert.ok(single.includes("Open this from Sites"));
   assert.ok(!single.includes("pushForm.sourceEnvId"));
 });
 
@@ -595,9 +617,12 @@ const VALID_FORM = {
 
 test("6: save persists the eleven fields, resets the form and repaints the page", async () => {
   const { server, store } = await fixture();
+  await warmCache(server);
   const { recorder } = await sse(server, saveRequest(VALID_FORM));
   assert.deepEqual((await store.load()).pushes["stage-to-live"], {
     ...VALID_FORM,
+    sourceEnvName: "env-a display",
+    targetEnvName: "env-b display",
   });
   assert.deepEqual(recorder.order, ["main/outer", "nav/outer", "toast/outer"]);
   assert.equal(recorder.signals.length, 1);

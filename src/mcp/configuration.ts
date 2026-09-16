@@ -4,7 +4,52 @@
 import { spawn } from "node:child_process";
 import { CliError } from "../errors.js";
 import { asRecord } from "../json.js";
-import type { McpConnectionService, McpLaunch } from "../mcp-connection.js";
+import type {
+  McpClient,
+  McpConnectionService,
+  McpLaunch,
+} from "../mcp-connection.js";
+
+type SpawnProcess = typeof spawn;
+
+function connectorArgv(
+  client: McpClient,
+  launch: McpLaunch,
+  env: Readonly<Record<string, string>>,
+): { readonly command: string; readonly args: readonly string[] } {
+  const environmentArgs = Object.entries(env).flatMap(([name, value]) => [
+    "--env",
+    `${name}=${value}`,
+  ]);
+  if (client === "chatgpt") {
+    return {
+      command: "codex",
+      args: [
+        "mcp",
+        "add",
+        "novamira-hq",
+        ...environmentArgs,
+        "--",
+        launch.command,
+        ...launch.args,
+      ],
+    };
+  }
+  return {
+    command: "claude",
+    args: [
+      "mcp",
+      "add",
+      "--scope",
+      "user",
+      "novamira-hq",
+      ...environmentArgs,
+      "--",
+      launch.command,
+      ...launch.args,
+    ],
+  };
+}
 
 /** JSON basic strings also represent these values safely in TOML. */
 function tomlString(value: string): string {
@@ -14,6 +59,7 @@ function tomlString(value: string): string {
 export function createMcpConnectionService(
   base: McpLaunch,
   environment: NodeJS.ProcessEnv,
+  spawnProcess: SpawnProcess = spawn,
 ): McpConnectionService {
   const configuration: McpConnectionService["configuration"] = () => {
     const launch = {
@@ -63,11 +109,51 @@ export function createMcpConnectionService(
   };
   return {
     configuration,
+    async connect(client) {
+      const config = configuration();
+      const launchEnvironment = JSON.parse(config.claude) as {
+        mcpServers: Record<string, { env?: Record<string, string> }>;
+      };
+      const inherited = launchEnvironment.mcpServers["novamira-hq"]?.env ?? {};
+      const connector = connectorArgv(client, config.launch, inherited);
+      const run = (args: readonly string[]): Promise<boolean> =>
+        new Promise((resolve) => {
+          const child = spawnProcess(connector.command, [...args], {
+            shell: false,
+            env: environment,
+            stdio: "ignore",
+          });
+          let settled = false;
+          const finish = (ok: boolean): void => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            if (!ok) child.kill("SIGKILL");
+            resolve(ok);
+          };
+          const timer = setTimeout(() => {
+            finish(false);
+          }, 10_000);
+          child.on("error", () => {
+            finish(false);
+          });
+          child.on("close", (code) => {
+            finish(code === 0);
+          });
+        });
+
+      if (await run(["mcp", "get", "novamira-hq"])) return;
+      if (await run(connector.args)) return;
+      throw new CliError(
+        "integration_unavailable",
+        `${client === "chatgpt" ? "ChatGPT/Codex" : "Claude Code"} could not be configured automatically. Make sure its command-line client is installed, or use manual setup.`,
+      );
+    },
     async verify() {
       const { launch } = configuration();
       // Only initialize and tools/list; no tool execution and no provider calls.
       return new Promise((resolve, reject) => {
-        const child = spawn(launch.command, [...launch.args], {
+        const child = spawnProcess(launch.command, [...launch.args], {
           shell: false,
           env: environment,
           stdio: ["pipe", "pipe", "ignore"],

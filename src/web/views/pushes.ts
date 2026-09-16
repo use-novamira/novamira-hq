@@ -34,8 +34,8 @@
  *    which put a second element carrying `id="provider-flash"` — the *providers*
  *    page's patch target — into a document that is not the providers page. An id
  *    is a selector, and a catalogued selector that can name two different things
- *    is exactly the drift `patches.ts` exists to prevent. The inline notice here
- *    is a plain `renderNotice`, which is what `layout.ts:169` reserves it for.
+ *    is exactly the drift `patches.ts` exists to prevent. Page notices are
+ *    rendered once, by the shared toast.
  *
  * **The Push button is disabled on purpose, with two different reasons.**
  * Execution is a later phase, so a supported row says so; an unsupported row
@@ -67,7 +67,6 @@ import {
   type Html,
 } from "../html.js";
 import { displayLabel, type SiteGroup } from "../services/sites.js";
-import { renderNotice } from "./layout.js";
 import {
   environmentPushSupported,
   providerLabelFor,
@@ -141,7 +140,7 @@ export function pushesStatusLine(
     }
     return `Your push-capable host(s) ${capable.join(", ")} have no site with more than one environment yet, so there's nothing to push between.`;
   }
-  return `You have a push-capable host: ${capable.join(", ")}. Open the Hosting Sites page to find a site with more than one environment.`;
+  return `You have a push-capable host: ${capable.join(", ")}. Open Sites to find a site with more than one environment.`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -150,10 +149,9 @@ export function pushesStatusLine(
 
 export function renderPushesPage(
   view: ConfigView,
-  notice: DashboardNotice,
+  _notice: DashboardNotice,
   warm: WarmSitesView = COLD,
 ): Html {
-  const flash = notice.message === "" ? false : renderNotice(notice);
   if (view.pushes.length === 0) {
     const eligibleSites = warm.groups.flatMap((group) =>
       environmentPushSupported(group.provider)
@@ -175,7 +173,7 @@ export function renderPushesPage(
         : [],
     );
     if (eligibleSites.length > 0) {
-      return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Create a reusable push between two environments of the same site.</p></div></header>${flash}<section class="panel"><div class="panel-head"><div><h2>Choose a site</h2><p>Select the site whose environments you want to push between.</p></div></div><div class="compact-list">${eligibleSites.map(
+      return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Create a reusable push between two environments of the same site.</p></div></header><section class="panel"><div class="panel-head"><div><h2>Choose a site</h2><p>Select the site whose environments you want to push between.</p></div></div><div class="compact-list">${eligibleSites.map(
         (site) =>
           html`<article><div><strong>${site.label}</strong><small>${
             site.domain === "" ? false : `${site.domain} · `
@@ -195,7 +193,7 @@ export function renderPushesPage(
       view.profiles.some((profile) =>
         environmentPushSupported(profile.provider),
       );
-    return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Create a reusable push between two environments of the same site.</p></div></header>${flash}<div class="empty empty-block"><h2>${
+    return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Create a reusable push between two environments of the same site.</p></div></header><div class="empty empty-block"><h2>${
       needsSiteLoad ? "Load sites to continue" : "No sites available for push"
     }</h2><p>${pushesStatusLine(
       view.profiles,
@@ -210,9 +208,11 @@ export function renderPushesPage(
         : "Connect a hosting provider"
     }</a></div></section>`;
   }
-  return html`<section class="page"><header class="page-head"><div><h1>Push</h1></div></header>${flash}<section class="panel"><div class="table-wrap"><table><thead><tr><th>Name</th><th>Site</th><th>Direction</th><th>Pushes</th><th></th></tr></thead><tbody>${view.pushes.map(
-    (push) => renderPushRow(push),
-  )}</tbody></table></div></section></section>`;
+  return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Saved directions between environments. Review the destination and content before starting one.</p></div><a class="button secondary"${hrefAttr(
+    url("/sites"),
+  )}>Configure another push</a></header><div class="push-card-list">${view.pushes.map(
+    (push) => renderPushCard(push),
+  )}</div></section>`;
 }
 
 /** Go's `pushScopeSummary` (`views.go:864-879`). */
@@ -227,23 +227,49 @@ export function pushScopeSummary(push: PushView): string {
 const PUSH_UNSUPPORTED_TITLE =
   "This provider does not support environment push";
 
-function renderPushRow(push: PushView): Html {
-  const domains =
-    push.sourceEnvDomain === "" && push.targetEnvDomain === ""
-      ? false
-      : html`<span class="push-dir-domains">${push.sourceEnvDomain} → ${push.targetEnvDomain}</span>`;
-  return html`<tr><td><strong>${push.name}</strong></td><td>${
-    push.siteLabel
-  }</td><td><div class="push-dir"><span class="push-dir-names">${
-    push.sourceEnvName
-  } → ${push.targetEnvName}</span>${domains}</div></td><td>${pushScopeSummary(
-    push,
-  )}</td><td class="actions"><button class="button link" type="button"${push.supported ? false : flagAttr("disabled")}${ds.on("click", post(url("/_dashboard/pushes/plan", { push: push.name }), { include: [] }))}${attr(
+function endpoint(
+  name: string,
+  id: string,
+  domain: string,
+  label: "From" | "To",
+): Html {
+  const displayName =
+    name === id
+      ? label === "From"
+        ? "Source environment"
+        : "Target environment"
+      : name;
+  return html`<div class="push-endpoint"><span>${label}</span><strong>${displayName}</strong>${
+    domain === "" ? false : html`<small>${domain}</small>`
+  }</div>`;
+}
+
+function renderPushCard(push: PushView): Html {
+  const scopes = [
+    push.pushDb ? "Database" : false,
+    push.pushFiles ? "Files" : false,
+    push.searchReplace ? "Search-replace" : false,
+  ].filter((scope): scope is string => scope !== false);
+  return html`<article class="push-card"><header><div><span class="eyebrow">${push.siteLabel}</span><h2>${push.name}</h2></div><div class="push-scopes">${
+    scopes.length
+      ? scopes.map((scope) => html`<span class="pill">${scope}</span>`)
+      : html`<span class="pill warn">No content selected</span>`
+  }</div></header><div class="push-route">${endpoint(
+    push.sourceEnvName,
+    push.sourceEnvId,
+    push.sourceEnvDomain,
+    "From",
+  )}<span class="push-route-arrow">→</span>${endpoint(
+    push.targetEnvName,
+    push.targetEnvId,
+    push.targetEnvDomain,
+    "To",
+  )}</div><footer><button class="button primary" type="button"${push.supported ? false : flagAttr("disabled")}${ds.on("click", post(url("/_dashboard/pushes/plan", { push: push.name }), { include: [] }))}${attr(
     "title",
     push.supported
       ? "Review the target and scope before pushing"
       : PUSH_UNSUPPORTED_TITLE,
-  )}>Push</button><button class="button link" type="button"${ds.on(
+  )}>Review push</button><button class="button link" type="button"${ds.on(
     "click",
     confirmThen(
       `Remove push ${push.name}?`,
@@ -251,7 +277,7 @@ function renderPushRow(push: PushView): Html {
         include: [],
       }),
     ),
-  )}>Remove</button></td></tr>`;
+  )}>Remove</button></footer></article>`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -271,6 +297,8 @@ export interface PushNewView {
   readonly siteId: string;
   readonly siteLabel: string;
   readonly envs: readonly HostingEnvironment[];
+  readonly sourceEnvId: string;
+  readonly targetEnvId: string;
 }
 
 const EMPTY_PUSH_NEW: PushNewView = Object.freeze({
@@ -278,6 +306,8 @@ const EMPTY_PUSH_NEW: PushNewView = Object.freeze({
   siteId: "",
   siteLabel: "",
   envs: Object.freeze([]),
+  sourceEnvId: "",
+  targetEnvId: "",
 });
 
 export function renderPushNewPage(view: PushNewView = EMPTY_PUSH_NEW): Html {
@@ -290,9 +320,9 @@ export function renderPushNewPage(view: PushNewView = EMPTY_PUSH_NEW): Html {
   )}>Back to Sites</a></header>`;
 
   if (view.envs.length < 2) {
-    return html`<section class="page">${head}<div class="empty empty-block"><p>Open this from the Hosting Sites page: expand a site with more than one environment and use “+ Push”.</p><a class="button primary"${hrefAttr(
+    return html`<section class="page">${head}<div class="empty empty-block"><p>Open this from Sites, expand a site with more than one environment, then choose “Push from here” beside the source environment.</p><a class="button primary"${hrefAttr(
       url("/sites"),
-    )}>Open the Hosting Sites page</a></div></section>`;
+    )}>Open Sites</a></div></section>`;
   }
 
   // Go's `pushFormInit` (`views.go:1143-1147`) followed by the `@post`. The
@@ -305,11 +335,21 @@ export function renderPushNewPage(view: PushNewView = EMPTY_PUSH_NEW): Html {
     post(url("/_dashboard/pushes/save"), { include: ["pushForm"] }),
   );
 
+  const initialDirection =
+    view.sourceEnvId === ""
+      ? false
+      : ds.init(
+          seq(
+            set("pushForm.sourceEnvId", jsString(view.sourceEnvId)),
+            set("pushForm.targetEnvId", jsString(view.targetEnvId)),
+          ),
+        );
+
   return html`<section class="page">${head}<form${classAttr(
     "panel",
     "form-panel",
     "push-form",
-  )}${ds.onSubmit(
+  )}${initialDirection}${ds.onSubmit(
     submit,
   )}><div class="panel-head"><div><h2>Direction</h2><p>Select exactly where the content comes from and where it goes.</p></div></div><div class="form-grid push-direction">${renderEnvSelect(
     "From",

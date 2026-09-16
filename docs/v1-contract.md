@@ -1023,6 +1023,7 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 | `/diagnostics` | GET | no |
 | `/history` | GET | no |
 | `/mcp` | GET | no |
+| `/_dashboard/mcp/connect` | POST | yes |
 | `/_dashboard/mcp/verify` | POST | yes |
 | `/_dashboard/app/acknowledge` | POST | yes |
 | `/_dashboard/pushes/plan` | POST | yes |
@@ -1243,9 +1244,10 @@ form to itself and no page reloads.
   different agent; the dashboard does not spawn that interactive third-party
   installer itself.
 - **Push** (`/pushes`, `/pushes/new`) — the saved environment pushes
-  with their resolved environment names and domains. When none are saved, the
-  page lists the warm inventory's eligible sites with direct Configure push
-  actions; the form then collects direction, positive scope and saved name.
+  as direction cards with resolved environment names, domains and scope. Sites
+  offers Push from here beside every environment of an eligible site; that
+  source is preselected, and a two-environment site also preselects the only
+  possible target. The form then collects direction, positive scope and saved name.
   Push prepares a five-minute, one-use confirmation showing source, target
   and positive scope. Apply rejects changed pushes and invokes only the provider's
   native push operation; it does not create a separate backup. Neither page load
@@ -1472,13 +1474,17 @@ work its caller did not ask for.
 
 ## Connect your AI and app acknowledgement
 
-`/mcp` presents a three-step flow: choose an AI client, test Novamira HQ locally,
-and finish in the external client. Claude Desktop JSON and ChatGPT Desktop TOML
-are each hidden inside their own disclosure until selected. They use the actual
-executable path, fixed argv, and only Novamira HQ path overrides. The page never
-copies provider credentials, modifies a client's files, registers skills, or
-claims the external client is connected. Hosting profiles and the distinction
-between MCP and skills are secondary information under one Advanced disclosure.
+`/mcp` first asks for the AI client, then renders only that client's setup.
+The token-protected POST `/_dashboard/mcp/connect` uses the client's official
+command-line registration command: `codex mcp add` for the configuration shared
+by ChatGPT Desktop, Codex CLI and the IDE extension, or `claude mcp add` at user
+scope for Claude Code. It spawns an argv array with `shell: false`, displays no
+child output and copies no provider credential. Claude Desktop JSON and Codex
+TOML remain hidden in Manual configuration disclosures as fallbacks; they use
+the actual executable path, fixed argv, and only Novamira HQ path overrides.
+The page never claims the external client is connected. Hosting profiles and
+the distinction between MCP and skills are secondary information under one
+About this connection disclosure.
 There are no access presets or per-profile permission switches; all supported
 typed tools are exposed at launch. Profiles follow Novamira HQ configuration
 dynamically, and configured credentials are not validation.

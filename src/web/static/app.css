@@ -1044,6 +1044,35 @@ td.actions .button.link:hover {
 .push-dir { display: flex; flex-direction: column; gap: 2px; }
 .push-dir-names { font-weight: 600; }
 .push-dir-domains { font-family: "JetBrains Mono", monospace; font-size: 11px; color: #6b7178; }
+.push-card-list { display: grid; gap: 16px; }
+.push-card {
+  display: grid;
+  gap: 20px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.push-card > header,
+.push-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.push-card h2 { margin: 4px 0 0; font-size: 20px; }
+.push-scopes { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.push-route {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+  padding: 18px;
+  border-radius: 10px;
+  background: #f7f7f5;
+}
+.push-endpoint { display: grid; gap: 3px; min-width: 0; }
+.push-endpoint > span { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.push-endpoint > strong,
+.push-endpoint > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.push-endpoint > small { color: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+.push-route-arrow { color: var(--muted); font-size: 22px; }
 
 .provider-sites {
   display: grid;
@@ -1470,11 +1499,67 @@ dd {
   font-size: 30px;
   font-weight: 800;
 }
-.mcp-page { max-width: 1040px; }
-.mcp-page .page-head h1 { font-size: clamp(28px, 4vw, 36px); line-height: 1.15; margin: 8px 0 12px; }
-.mcp-steps { display: grid; gap: 16px; }
-.mcp-client { padding: 0; overflow: hidden; }
-.mcp-client > summary,
+.mcp-choose,
+.mcp-setup-card {
+  display: grid;
+  gap: 24px;
+  padding: clamp(22px, 4vw, 36px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.mcp-choose h2,
+.mcp-setup-card h2 { margin: 6px 0 8px; }
+.mcp-choose p,
+.mcp-setup-card p { margin: 0; color: var(--muted); }
+.mcp-client-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.mcp-choice {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 92px;
+  padding: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  color: var(--ink);
+  text-decoration: none;
+  transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.mcp-choice:hover { border-color: var(--gold); transform: translateY(-1px); box-shadow: var(--shadow); }
+.mcp-choice strong,
+.mcp-choice small { display: block; }
+.mcp-choice small { margin-top: 4px; color: var(--muted); line-height: 1.35; }
+.mcp-choice-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--ink);
+  color: #fff;
+  font-weight: 800;
+}
+.mcp-choice-mark.large { width: 50px; height: 50px; font-size: 20px; }
+.mcp-choice-arrow { color: var(--muted); font-size: 22px; }
+.mcp-back { margin-bottom: 12px; }
+.text-link { color: #75530e; font-weight: 700; text-decoration: none; }
+.text-link:hover { text-decoration: underline; }
+.mcp-setup-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.mcp-primary-action {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--gold-soft);
+}
+.mcp-primary-action p { max-width: 520px; font-size: 12px; }
+.mcp-after { display: grid; gap: 3px; padding-left: 2px; }
+.mcp-after span { color: var(--muted); }
+.mcp-manual { border-top: 1px solid var(--border); padding-top: 4px; }
+.mcp-manual > summary,
 .mcp-advanced > summary {
   display: flex;
   align-items: center;
@@ -1484,9 +1569,9 @@ dd {
   cursor: pointer;
   list-style: none;
 }
-.mcp-client > summary::-webkit-details-marker,
+.mcp-manual > summary::-webkit-details-marker,
 .mcp-advanced > summary::-webkit-details-marker { display: none; }
-.mcp-client > summary span,
+.mcp-manual > summary span,
 .mcp-advanced > summary span { color: var(--muted); font-size: 12px; }
 .mcp-client-body { display: grid; gap: 16px; padding: 0 20px 20px; }
 .mcp-config {
@@ -1501,6 +1586,14 @@ dd {
 }
 .mcp-advanced { margin-top: 16px; }
 .mcp-advanced .mcp-client-body > section { display: grid; gap: 12px; }
+@media (max-width: 700px) {
+  .mcp-client-grid { grid-template-columns: 1fr; }
+  .mcp-primary-action { align-items: flex-start; flex-direction: column; }
+  .push-card > header { align-items: flex-start; flex-direction: column; }
+  .push-scopes { justify-content: flex-start; }
+  .push-route { grid-template-columns: 1fr; }
+  .push-route-arrow { transform: rotate(90deg); }
+}
 .cli-sites .site-grid {
   display: grid;
   grid-template-columns: minmax(240px, 0.9fr) minmax(360px, 1.6fr) minmax(510px, auto);

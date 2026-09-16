@@ -3,6 +3,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { mkdtemp, rm, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -54,12 +55,12 @@ test("real local MCP handshake lists tools without configuring profiles or writi
   assert.deepEqual(await readdir(root), []);
 });
 
-test("MCP page renders dynamic profiles and never claims an external connection", () => {
+test("MCP page chooses a client before showing its setup", () => {
   const config = createMcpConnectionService(
     { command: "/a path/node", args: ["/hq/index.js", "mcp"] },
     {},
   ).configuration();
-  const markup = renderHtml(
+  const choice = renderHtml(
     renderMcpPage(
       {
         profiles: [
@@ -74,21 +75,72 @@ test("MCP page renders dynamic profiles and never claims an external connection"
       config,
     ),
   );
+  assert.ok(choice.includes("Which AI client do you use?"));
+  assert.ok(choice.includes("/mcp?client=chatgpt"));
+  assert.ok(choice.includes("/mcp?client=claude"));
+  assert.ok(!choice.includes("Copy configuration"));
+
+  const markup = renderHtml(
+    renderMcpPage(
+      {
+        profiles: [
+          {
+            name: "future-profile",
+            provider: "future-adapter",
+            credentialAvailable: false,
+          },
+        ],
+        pushes: [],
+      },
+      config,
+      "chatgpt",
+    ),
+  );
   for (const text of [
-    "Step 1",
-    "Step 2",
-    "Step 3",
-    "Claude Desktop",
-    "ChatGPT Desktop",
+    "ChatGPT &amp; Codex",
+    "Connect with one click",
     "future-profile",
     "future-adapter",
+    "Manual configuration",
     "Copy configuration",
-    "cannot confirm",
-    "Test Novamira HQ locally",
-    "Finish in your AI client",
+    "Choose another AI client",
   ])
     assert.ok(markup.includes(text), text);
+  assert.ok(!markup.includes("Test Novamira HQ locally"));
   assert.doesNotMatch(markup, /(?<!Novamira )\bHQ\b/);
+});
+
+test("one-click ChatGPT setup checks first, then uses the official codex command without a shell", async () => {
+  const calls = [];
+  const fakeSpawn = (command, args, options) => {
+    calls.push({ command, args, options });
+    const child = new EventEmitter();
+    child.kill = () => true;
+    queueMicrotask(() => child.emit("close", calls.length === 1 ? 1 : 0));
+    return child;
+  };
+  const service = createMcpConnectionService(
+    { command: "/a path/node", args: ["/hq/index.js", "mcp"] },
+    { NOVAMIRA_HQ_HOME: "/private/hq home" },
+    fakeSpawn,
+  );
+  await service.connect("chatgpt");
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].command, "codex");
+  assert.deepEqual(calls[0].args, ["mcp", "get", "novamira-hq"]);
+  assert.deepEqual(calls[1].args, [
+    "mcp",
+    "add",
+    "novamira-hq",
+    "--env",
+    "NOVAMIRA_HQ_HOME=/private/hq home",
+    "--",
+    "/a path/node",
+    "/hq/index.js",
+    "mcp",
+  ]);
+  assert.equal(calls[1].options.shell, false);
+  assert.equal(calls[1].options.stdio, "ignore");
 });
 
 test("standalone desktop never delegates its updater to npm", async () => {
