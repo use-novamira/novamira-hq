@@ -60,6 +60,7 @@
 import { PROVIDER_KINDS } from "../config/schema.js";
 import { CliError } from "../errors.js";
 import {
+  createMcpBundleHandler,
   createMcpConnectHandler,
   createMcpVerifyHandler,
 } from "./handlers/mcp.js";
@@ -517,6 +518,12 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
     });
   }
   routes.push(
+    {
+      method: "GET",
+      path: "/mcp/novamira-hq.mcpb",
+      auth: "public",
+      handler: createMcpBundleHandler(context),
+    },
     {
       method: "POST",
       path: "/_dashboard/app/acknowledge",

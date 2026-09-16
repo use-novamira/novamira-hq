@@ -2,8 +2,33 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { asCliError, CliError } from "../../errors.js";
+import { createMcpBundle } from "../../mcp/bundle.js";
 import { patchToast } from "../patch.js";
 import type { RouteContext, RouteHandler } from "../routes.js";
+
+export function createMcpBundleHandler(context: RouteContext): RouteHandler {
+  return () => {
+    if (!context.mcpConnection)
+      throw new CliError(
+        "provider_unsupported",
+        "Claude Desktop setup is unavailable in this Novamira HQ instance.",
+      );
+    const body = createMcpBundle(
+      context.mcpConnection.configuration(),
+      context.version,
+    );
+    return {
+      kind: "asset",
+      status: 200,
+      contentType: "application/octet-stream",
+      contentDisposition: 'attachment; filename="novamira-hq.mcpb"',
+      cacheControl: "no-store",
+      etag: '"novamira-hq-mcpb"',
+      contentLength: body.length,
+      body,
+    };
+  };
+}
 
 export function createMcpConnectHandler(context: RouteContext): RouteHandler {
   return (request) => ({

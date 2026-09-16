@@ -27,7 +27,7 @@ function chatGptSetup(configuration: McpConfiguration): Html {
     post(url("/_dashboard/mcp/connect", { client: "chatgpt" }), {
       include: [],
     }),
-  )}>Connect with one click</button><p>Requires the <code>codex</code> command on this device. No hosting credential is copied into the client configuration.</p></div><div class="mcp-after"><strong>Then open or restart your client.</strong><span>Ask it to list your hosting sites to start using Novamira HQ.</span></div>${manualConfiguration(
+  )}>Connect with one click</button><p>Requires the <code>codex</code> command on this device.</p></div><div class="mcp-after"><strong>Then open or restart your client.</strong><span>Try asking: “Show me my sites in Novamira.”</span></div>${manualConfiguration(
     "Codex configuration",
     configuration.chatgpt,
     "If the connector is unavailable, merge this block into ~/.codex/config.toml without replacing your existing settings.",
@@ -35,12 +35,12 @@ function chatGptSetup(configuration: McpConfiguration): Html {
 }
 
 function claudeSetup(configuration: McpConfiguration): Html {
-  return html`<section class="mcp-setup-card"><div class="mcp-setup-head"><div><span class="eyebrow">Claude</span><h2>Connect Novamira HQ</h2><p>Claude Code can be configured automatically. Claude Desktop currently uses its own configuration file.</p></div><span class="mcp-choice-mark large">A</span></div><div class="mcp-primary-action"><button class="button primary" type="button"${ds.on(
+  return html`<section class="mcp-setup-card"><div class="mcp-setup-head"><div><span class="eyebrow">Claude Desktop</span><h2>Connect Novamira HQ</h2><p>Download the extension, open it with Claude Desktop and confirm Install.</p></div><span class="mcp-choice-mark large">A</span></div><div class="mcp-primary-action"><a class="button primary"${hrefAttr(url("/mcp/novamira-hq.mcpb"))}>Download for Claude Desktop</a><p>If the file does not open automatically, select it in Claude Desktop → Settings → Extensions → Advanced settings → Install Extension.</p></div><div class="mcp-after"><strong>Then start a conversation in Claude.</strong><span>Try asking: “Show me my sites in Novamira.”</span></div><details class="mcp-manual"><summary><strong>Using Claude Code?</strong><span>Connect the command-line client</span></summary><div class="mcp-client-body"><button class="button secondary" type="button"${ds.on(
     "click",
     post(url("/_dashboard/mcp/connect", { client: "claude-code" }), {
       include: [],
     }),
-  )}>Connect Claude Code</button><p>Requires the <code>claude</code> command on this device. The connection is saved for your user, not just this project.</p></div><div class="mcp-after"><strong>Using Claude Desktop?</strong><span>Open the manual option below and copy the generated configuration.</span></div>${manualConfiguration(
+  )}>Connect Claude Code</button><p>Requires the <code>claude</code> command on this device. Start a new session after connecting.</p></div></details>${manualConfiguration(
     "Claude Desktop configuration",
     configuration.claude,
     "Open Settings → Developer → Edit Config. Merge the novamira-hq server into claude_desktop_config.json without replacing other servers, save, then restart Claude Desktop.",
@@ -48,7 +48,7 @@ function claudeSetup(configuration: McpConfiguration): Html {
 }
 
 export function renderMcpPage(
-  view: ConfigView,
+  _view: ConfigView,
   configuration?: McpConfiguration,
   client?: McpPageClient,
 ): Html {
@@ -65,12 +65,5 @@ export function renderMcpPage(
             : html`<p class="notice warn">Launch configuration is unavailable in this Novamira HQ instance.</p>`
         }`;
 
-  return html`<section class="page mcp-page"><header class="page-head"><div><span class="eyebrow">AI connection</span><h1>Connect your AI</h1><p>Give your AI client access to Novamira HQ's hosting tools on this device.</p></div></header>${content}<details class="how-to-card mcp-advanced"><summary><strong>About this connection</strong><span>Profiles, credentials and skills</span></summary><div class="mcp-client-body"><section><h2>Hosting profiles available to your AI</h2><p>The connection follows Novamira HQ configuration automatically. Provider credentials remain in Novamira HQ and are never copied into the AI client.</p>${
-    view.profiles.length
-      ? html`<ul>${view.profiles.map(
-          (profile) =>
-            html`<li><strong>${profile.name}</strong> — ${profile.provider}; ${profile.credentialAvailable ? "credential configured, not validated here" : "credential unavailable in this process"}</li>`,
-        )}</ul>`
-      : html`<p>No hosting profiles configured yet.</p>`
-  }<a class="button secondary"${hrefAttr(url("/diagnostics"))}>Inspect provider capabilities</a></section><section><h2>MCP and skills are different</h2><p>This connection exposes tools. Skills give instructions to your agent; installing a skill does not create this connection.</p><a class="button secondary"${hrefAttr(url("/how-to-use"))}>Skill installation instructions</a></section></div></details></section>`;
+  return html`<section class="page mcp-page"><header class="page-head"><div><h1>Connect your AI</h1><p>Manage your sites with Novamira.</p></div></header>${content}</section>`;
 }

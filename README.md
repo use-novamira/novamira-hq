@@ -221,6 +221,9 @@ What it does:
 - **Connect your AI** — choose ChatGPT/Codex or Claude, then connect with one
   click through the client's official command-line setup when available.
   Generated JSON or TOML is kept as a manual fallback.
+  Claude Desktop uses a downloadable `.mcpb` extension: open the file and
+  confirm installation in Claude. The bundle connects to the existing local
+  Novamira HQ installation, so keep that installation available.
 - **History** — local requests and correlated workflows across CLI, dashboard
   and MCP, with observed outcomes and next steps for unverified work.
 - **Novamira Setup** — install and activate the plugin on an environment with

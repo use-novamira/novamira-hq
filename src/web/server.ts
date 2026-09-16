@@ -820,6 +820,8 @@ export function createDashboardServer(
         return;
       }
       case "asset": {
+        if (result.contentDisposition)
+          response.setHeader("Content-Disposition", result.contentDisposition);
         response.setHeader("Content-Type", result.contentType);
         response.setHeader("Cache-Control", result.cacheControl);
         response.setHeader("ETag", result.etag);

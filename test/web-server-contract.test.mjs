@@ -56,7 +56,7 @@ test("app acknowledgement and MCP connection use token-protected POST routes", a
     },
     mcpConnection: {
       configuration: () => ({
-        claude: "{}",
+        claude: '{"mcpServers":{"novamira-hq":{"command":"test","args":[]}}}',
         chatgpt: "",
         launch: { command: "test", args: [] },
       }),
@@ -106,6 +106,15 @@ test("app acknowledgement and MCP connection use token-protected POST routes", a
     const page = await server.dispatch(request("/mcp"));
     assert.doesNotMatch(renderHtml(page.body), /Before you start/);
     assert.match(renderHtml(page.body), /Claude Desktop/);
+    const bundle = await server.dispatch(request("/mcp/novamira-hq.mcpb"));
+    assert.equal(bundle.kind, "asset");
+    assert.equal(bundle.status, 200);
+    assert.equal(bundle.cacheControl, "no-store");
+    assert.equal(
+      bundle.contentDisposition,
+      'attachment; filename="novamira-hq.mcpb"',
+    );
+    assert.equal(Buffer.from(bundle.body).readUInt32LE(0), 0x04034b50);
     const check = await server.dispatch(
       request("/_dashboard/mcp/verify", {
         method: "POST",
@@ -1007,6 +1016,7 @@ const SHIPPED_ROUTES = [
   "GET /diagnostics",
   "GET /history",
   "GET /mcp",
+  "GET /mcp/novamira-hq.mcpb",
   "GET /how-to-use",
   "GET /novamira-setup",
   "GET /providers",

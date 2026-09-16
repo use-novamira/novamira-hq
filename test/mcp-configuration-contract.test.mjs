@@ -4,13 +4,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdtemp, rm, readdir } from "node:fs/promises";
+import { mkdtemp, rm, readdir, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createMcpConnectionService } from "../dist/mcp/configuration.js";
 import { DEFAULT_MCP_LAUNCH } from "../dist/main.js";
+import { createMcpBundle } from "../dist/mcp/bundle.js";
 import { renderMcpPage } from "../dist/web/views/mcp.js";
 import { renderHtml } from "../dist/web/html.js";
 import { createDashboardUpdates } from "../dist/cli/dashboard.js";
@@ -77,6 +78,64 @@ test("real local MCP handshake lists tools without configuring profiles or writi
   assert.deepEqual(await readdir(root), []);
 });
 
+test("the downloaded MCP bundle runs after relocation and lists real tools", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "hq-bundle-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const config = createMcpConnectionService(
+    {
+      command: process.execPath,
+      args: [
+        fileURLToPath(new URL("../dist/index.js", import.meta.url)),
+        "mcp",
+      ],
+    },
+    { NOVAMIRA_HQ_HOME: join(root, "home"), KINSTA_API_KEY: "never-in-bundle" },
+  ).configuration();
+  const zip = createMcpBundle(config, "1.0.0-rc1");
+  assert.ok(!zip.includes(Buffer.from("never-in-bundle")));
+  const files = new Map();
+  let offset = 0;
+  while (zip.readUInt32LE(offset) === 0x04034b50) {
+    assert.equal(zip.readUInt16LE(offset + 8), 0);
+    const length = zip.readUInt32LE(offset + 18);
+    const nameLength = zip.readUInt16LE(offset + 26);
+    const start = offset + 30 + nameLength;
+    files.set(
+      zip.subarray(offset + 30, start).toString(),
+      zip.subarray(start, start + length),
+    );
+    offset = start + length;
+  }
+  assert.equal(zip.readUInt32LE(offset), 0x02014b50);
+  assert.deepEqual(
+    [...files.keys()],
+    ["manifest.json", "launch.json", "server/index.cjs"],
+  );
+  const manifest = JSON.parse(files.get("manifest.json"));
+  assert.equal(manifest.description, "Manage your sites with Novamira.");
+  assert.equal(manifest.server.mcp_config.command, "node");
+  assert.deepEqual(manifest.server.mcp_config.args, [
+    "${__dirname}/server/index.cjs",
+  ]);
+  const destination = join(root, "Claude extensions with spaces");
+  await mkdir(join(destination, "server"), { recursive: true });
+  for (const [name, data] of files)
+    await writeFile(join(destination, name), data);
+  const launch = createMcpConnectionService(
+    {
+      command: process.execPath,
+      args: [join(destination, manifest.server.entry_point)],
+    },
+    { ...process.env, ...manifest.server.mcp_config.env },
+  );
+  assert.ok((await launch.verify()).toolCount > 0);
+  const markup = renderHtml(
+    renderMcpPage({ profiles: [], pushes: [] }, config, "claude"),
+  );
+  assert.ok(markup.includes('href="/mcp/novamira-hq.mcpb"'));
+  assert.ok(!markup.includes("About this connection"));
+});
+
 test("MCP page chooses a client before showing its setup", () => {
   const config = createMcpConnectionService(
     { command: "/a path/node", args: ["/hq/index.js", "mcp"] },
@@ -121,8 +180,6 @@ test("MCP page chooses a client before showing its setup", () => {
   for (const text of [
     "ChatGPT &amp; Codex",
     "Connect with one click",
-    "future-profile",
-    "future-adapter",
     "Manual configuration",
     "Copy configuration",
     "Choose another AI client",

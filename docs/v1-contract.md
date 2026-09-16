@@ -1023,6 +1023,7 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 | `/diagnostics` | GET | no |
 | `/history` | GET | no |
 | `/mcp` | GET | no |
+| `/mcp/novamira-hq.mcpb` | GET | no |
 | `/_dashboard/mcp/connect` | POST | yes |
 | `/_dashboard/mcp/verify` | POST | yes |
 | `/_dashboard/app/acknowledge` | POST | yes |
@@ -1489,9 +1490,16 @@ embedded executable and `--mcp`. Both forms use fixed argv and copy only the
 executable search path and Novamira HQ path overrides, never provider secrets.
 The optional `novamira` site CLI is resolved separately by Novamira HQ and is
 not another MCP server or part of the generated client configuration.
-The page never claims the external client is connected. Hosting profiles and
-the distinction between MCP and skills are secondary information under one
-About this connection disclosure.
+Claude Desktop's primary action downloads `/mcp/novamira-hq.mcpb`, a ZIP
+generated in memory using the manifest-and-launcher format from Novamira.
+It contains a manifest, fixed launch settings and a stdio launcher for the
+existing installation. No package is downloaded or installed by the launcher.
+The read-only download uses the dashboard's loopback and origin guards and is
+served as an attachment with `Cache-Control: no-store`. It contains only the
+same launch information as the manual configuration. The user opens the file
+in Claude Desktop and confirms installation. The page explains that action and
+suggests asking the AI to list sites; provider diagnostics and skill details
+remain on their dedicated pages. It never claims an external connection was verified.
 There are no access presets or per-profile permission switches; all supported
 typed tools are exposed at launch. Profiles follow Novamira HQ configuration
 dynamically, and configured credentials are not validation.

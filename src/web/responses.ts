@@ -102,6 +102,7 @@ export type DashboardResponse =
       /** Absent for `HEAD` and for `304`; `Content-Length` still reports it. */
       readonly body: Uint8Array | undefined;
       readonly contentLength: number;
+      readonly contentDisposition?: string;
     }
   | { readonly kind: "sse"; run(stream: SseStream): Promise<void> | void };
 
