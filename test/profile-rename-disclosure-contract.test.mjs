@@ -27,18 +27,28 @@ test("profile rename and destructive actions are hidden in one closed menu", () 
     assert.match(markup, /<div class="profile-menu-popover">/);
     assert.match(
       markup,
-      /<span class="profile-menu-label">Rename<\/span><form/,
+      /<details class="profile-rename"><summary[^>]*>Rename<\/summary><form/,
     );
     assert.match(markup, /Save name/);
     assert.match(markup, />Disconnect<\/button>/);
-    assert.match(markup, />Remove from list<\/button>/);
     assert.doesNotMatch(markup, /<details[^>]*\sopen(?:\s|=|>)/);
     assert.match(markup, /site-profiles\/rename/);
     const menuStart = markup.indexOf('<details class="profile-menu">');
-    const menuEnd = markup.indexOf("</details>", menuStart);
+    const menuEnd = markup.lastIndexOf("</details>");
     assert.ok(menuStart >= 0 && menuEnd > menuStart);
     const menu = markup.slice(menuStart, menuEnd);
     assert.match(menu, />Disconnect<\/button>/);
-    assert.match(menu, />Remove from list<\/button>/);
   }
+  assert.match(
+    renderHtml(renderSiteProfileRow(row)),
+    />Remove from list<\/button>/,
+  );
+  assert.match(
+    renderHtml(renderSiteProfileRow(row)),
+    /To add it again, use Connect/,
+  );
+  assert.doesNotMatch(
+    renderHtml(renderSiteProfileActions(row, context)),
+    /site-profiles\/remove/,
+  );
 });

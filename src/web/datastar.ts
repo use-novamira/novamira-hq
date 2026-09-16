@@ -234,3 +234,8 @@ export type SitesFilterCount = "with" | "without";
 export function sitesFilterCount(bucket: SitesFilterCount): Attr {
   return attr("data-sf-count", bucket);
 }
+
+/** Stable non-secret identity for browser-local visibility preferences. */
+export function hostingSiteKey(profile: string, siteId: string): Attr {
+  return attr("data-hosting-site-key", JSON.stringify([profile, siteId]));
+}

@@ -749,7 +749,7 @@ test("6: a multi-environment site is a <details>, a single one a plain row", asy
   assert.ok(markup.includes('<span class="env-tag">premium</span>'));
   assert.ok(markup.includes(">env-a display<"));
   // The single-environment site is a div with no summary of its own.
-  assert.ok(markup.includes('<div class="site-row" data-nm-state='));
+  assert.ok(markup.includes('<div class="site-row" data-hosting-site-key='));
   assert.ok(markup.includes(">Single Site<"));
   // The zero-environment site falls back to its id for a title.
   assert.ok(markup.includes(">s3<"));
@@ -1011,10 +1011,18 @@ test("16: matched CLI profiles stay in the hosting row and CLI-only sites are se
   assert.ok(markup.includes("<strong>staging</strong>"));
   assert.ok(markup.includes("<strong>staging-2</strong>"));
   assert.ok(markup.includes(">Disconnect</button>"));
-  assert.ok(markup.includes('<span class="profile-menu-label">Rename</span>'));
+  assert.ok(
+    markup.includes(
+      '<details class="profile-rename"><summary class="button tiny quiet profile-menu-action">Rename</summary>',
+    ),
+  );
   assert.ok(markup.includes(">Save name</button>"));
   assert.ok(markup.includes("novamira sites rename prod &lt;new-name&gt;"));
-  assert.ok(markup.includes(">Remove from list</button>"));
+  assert.ok(
+    !markup.includes(">Remove from list</button>"),
+    "matched hosting profiles are not removable from inventory",
+  );
+  assert.ok(markup.includes(">Hide from list</button>"));
 
   // A cell with no match renders no link — `not_configured` has no profile by
   // definition, and inventing one would be worse than saying nothing.

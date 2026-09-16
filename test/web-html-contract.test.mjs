@@ -1542,6 +1542,7 @@ test("42: no module outside datastar.ts writes a data-* attribute by hand", asyn
     "data-nm-state",
     "data-sf-status",
     "data-sf-count",
+    "data-hosting-site-key",
   ]);
   const body = await corpus();
   for (const match of body.matchAll(/\s(data-[a-z0-9:_-]+)=/g)) {

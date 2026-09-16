@@ -176,11 +176,11 @@ export function renderSitesPage(
       html`<option${attr("value", profile.name)}>${profile.name} (${providerLabelFor(
         profile.provider,
       )})</option>`,
-  )}</select></label><button class="button secondary" type="submit">Refresh</button><div${idAttr(
+  )}</select></label><div class="sites-refresh"><button class="button secondary" type="submit">Refresh</button><div${idAttr(
     "sites-status",
   )} class="sites-status">${renderSitesStatus(
     snapshot?.storedAt ?? null,
-  )}</div></form><div class="seg" role="group" aria-label="Novamira status"><button type="button" class="seg-btn on"${ds.sitesFilterStatus(
+  )}</div></div></form><div class="seg" role="group" aria-label="Novamira status"><button type="button" class="seg-btn on"${ds.sitesFilterStatus(
     "all",
   )}>All</button><button type="button" class="seg-btn"${ds.sitesFilterStatus(
     "with",
@@ -190,7 +190,7 @@ export function renderSitesPage(
     "without",
   )}>Needs attention <span class="seg-count"${ds.sitesFilterCount(
     "without",
-  )}>0</span></button></div>${snapshot ? renderSitesResult({ ...snapshot, notice: { level: "neutral", message: "" } }) : html`<div${idAttr("sites-result")} class="results empty">Loading sites…</div>`}</section>`;
+  )}>0</span></button></div><label class="hosting-hidden-toggle"><input type="checkbox" class="show-hidden-sites"> Show hidden sites <small>(saved in this browser)</small></label>${snapshot ? renderSitesResult({ ...snapshot, notice: { level: "neutral", message: "" } }) : html`<div${idAttr("sites-result")} class="results empty">Loading sites…</div>`}</section>`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -319,12 +319,13 @@ function renderSiteItem(
   const domain = site.primaryDomain ?? "";
   const envs = site.environments ?? [];
   const state = novamiraRowState(group, site, view);
+  const visibility = html`<button class="button tiny quiet hosting-visibility" type="button"${attr("aria-label", `Hide ${title} from this list`)}>Hide from list</button>`;
 
   if (envs.length > 1) {
     return html`<details${classAttr(
       "site-row",
       "site-row-multi",
-    )}${ds.novamiraState(
+    )}${ds.hostingSiteKey(group.profile, site.id)}${ds.novamiraState(
       state,
     )}><summary class="site-main"><span class="site-chevron"></span><span class="site-name">${title}</span><span class="site-domain">${domain}</span><span class="site-state"><span class="pill">${String(
       envs.length,
@@ -334,11 +335,11 @@ function renderSiteItem(
   }
 
   const only = envs[0];
-  return html`<div class="site-row"${ds.novamiraState(
+  return html`<div class="site-row"${ds.hostingSiteKey(group.profile, site.id)}${ds.novamiraState(
     state,
   )}><span class="site-name">${title}</span><span class="site-domain">${domain}</span><span class="site-state">${
     only === undefined ? false : renderStateCell(group, site, only, title, view)
-  }</span></div>`;
+  }</span><details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${title}`)}>⋯</summary><div class="profile-menu-popover">${visibility}</div></details></div>`;
 }
 
 /** Go's `renderEnvironment` (`views.go:1006-1029`). */
@@ -373,7 +374,7 @@ function renderEnvironment(
     env,
     siteLabel,
     view,
-  )}${pushFromHere}</span></div>`;
+  )}<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${siteLabel}: ${name}`)}>⋯</summary><div class="profile-menu-popover">${pushFromHere}<button class="button tiny quiet profile-menu-action hosting-visibility" type="button" title="Hide this site and all its environments from this browser's list">Hide from list</button></div></details></span></div>`;
 }
 
 /* -------------------------------------------------------------------------- */

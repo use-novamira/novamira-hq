@@ -1232,8 +1232,17 @@ form to itself and no page reloads.
 - **Sites** (`/sites`) — one unified inventory. Hosting environments remain
   grouped by hosting profile. A site-CLI profile whose origin matches an
   environment is represented only on that environment row, with its credential
-  state and Reconnect control. Rename, Disconnect and Remove from list are
-  secondary actions inside one closed per-profile menu. Profiles that match no
+  state and Reconnect control. Rename and Disconnect are secondary actions
+  inside a closed per-profile menu; Rename opens its own initially closed editor.
+  Remove from list is offered only for unmatched URL-added profiles; the confirmation
+  explains that reconnecting the URL adds the profile again and does not delete the website.
+  Hosting sites offer Hide from list, covering all environments of that site.
+  Visibility is a browser-local preference keyed by hosting profile and provider site ID,
+  persisted in localStorage for that dashboard origin, not in CLI storage or at the provider.
+  Show hidden sites reveals them with Restore to list; clearing browser storage resets
+  these preferences. Hiding never logs out, deletes a profile, or changes the site.
+  Configure push is a secondary environment-menu action, never an immediate push.
+  Profiles that match no
   hosting environment appear once in a final **CLI only** group. The integration
   performs the one origin comparison and returns both the profile listing and
   the connection snapshot from the same `sites list` round, so the web layer

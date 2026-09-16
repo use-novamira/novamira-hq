@@ -72,13 +72,13 @@ function renderProfileMenu(
   name: string,
   routeContext: Readonly<Record<string, string | boolean>>,
   logout: Expr,
-  remove: Expr,
+  remove: Expr | null,
 ): Html {
   const renameSignal = siteProfileRenameSignal(name);
   const rename = post(url(RENAME_PATH, { name, ...routeContext }), {
     include: [renameSignal],
   });
-  return html`<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${name}`)}>⋯</summary><div class="profile-menu-popover"><span class="profile-menu-label">Rename</span><form class="rename-profile"${ds.signals(
+  return html`<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${name}`)}>⋯</summary><div class="profile-menu-popover"><details class="profile-rename"><summary class="button tiny quiet profile-menu-action">Rename</summary><form class="rename-profile"${ds.signals(
     {
       [renameSignal]: name,
     },
@@ -88,13 +88,17 @@ function renderProfileMenu(
   )}${ds.bind(renameSignal)} pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" maxlength="64" required><button class="button tiny" type="submit"${attr(
     "title",
     `novamira sites rename ${name} <new-name>`,
-  )}>Save name</button></form><button class="button tiny quiet profile-menu-action" type="button"${attr(
+  )}>Save name</button></form></details><button class="button tiny quiet profile-menu-action" type="button"${attr(
     "title",
     `novamira --site ${name} auth logout`,
-  )}${ds.on("click", logout)}>Disconnect</button><button class="button tiny danger quiet profile-menu-action" type="button"${attr(
-    "title",
-    `novamira sites remove ${name}`,
-  )}${ds.on("click", remove)}>Remove from list</button></div></details>`;
+  )}${ds.on("click", logout)}>Disconnect</button>${
+    remove === null
+      ? false
+      : html`<button class="button tiny danger quiet profile-menu-action" type="button"${attr(
+          "title",
+          `novamira sites remove ${name}`,
+        )}${ds.on("click", remove)}>Remove from list</button>`
+  }</div></details>`;
 }
 
 /**
@@ -177,7 +181,7 @@ export function renderSiteProfileRow(
     }),
   );
   const remove = confirmThen(
-    `Remove ${row.name} from this list? Its saved site profile will be deleted from this computer.`,
+    `Remove ${row.name} from this list? Its saved site profile will be deleted from this computer. The website will not be deleted. To add it again, use Connect with ${row.siteUrl}.`,
     post(url(REMOVE_PATH, { name: row.name, ...routeContext }), {
       include: [],
     }),
@@ -232,12 +236,6 @@ export function renderSiteProfileActions(
       include: [],
     }),
   );
-  const remove = confirmThen(
-    `Remove ${row.name} from this list? Its saved site profile will be deleted from this computer.`,
-    post(url(REMOVE_PATH, { name: row.name, ...routeContext }), {
-      include: [],
-    }),
-  );
   return html`<span class="cli-profile-actions"><strong>${row.name}</strong>${
     row.state === "connected"
       ? false
@@ -245,7 +243,7 @@ export function renderSiteProfileActions(
           row.state === "reconnect_required" ? "status-action" : "button",
           row.state === "reconnect_required" ? "warn" : "tiny",
         )} type="button"${ds.on("click", reconnect)}>Reconnect</button>`
-  }${renderProfileMenu(row.name, routeContext, logout, remove)}</span>`;
+  }${renderProfileMenu(row.name, routeContext, logout, null)}</span>`;
 }
 
 /**

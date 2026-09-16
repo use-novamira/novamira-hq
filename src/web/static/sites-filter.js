@@ -4,6 +4,21 @@
   var obsTarget = null;
   var observer = null;
   var status = "all"; // all | with | without
+  var HIDDEN_KEY = "novamira-hq.hidden-hosting-sites.v1";
+  var hiddenSites = new Set();
+  try {
+    var storedHidden = JSON.parse(localStorage.getItem(HIDDEN_KEY) || "[]");
+    if (Array.isArray(storedHidden)) hiddenSites = new Set(storedHidden.filter(function (v) { return typeof v === "string"; }).slice(0, 10000));
+  } catch (_) { /* A blocked or invalid preference must never hide the inventory. */ }
+
+  function isHidden(row) {
+    return hiddenSites.has(row.getAttribute("data-hosting-site-key"));
+  }
+
+  function showHidden() {
+    var toggle = document.querySelector(".show-hidden-sites");
+    return toggle && toggle.checked;
+  }
 
   function rows(group) {
     return Array.prototype.slice.call(group.querySelectorAll(".site-row"));
@@ -38,7 +53,12 @@
       var any = false;
       rows(group).forEach(function (row) {
         var textHit = query === "" || row.textContent.toLowerCase().indexOf(query) !== -1;
-        var hit = textHit && matchesStatus(row);
+        var hidden = isHidden(row);
+        row.querySelectorAll(".hosting-visibility").forEach(function (visibilityButton) {
+          visibilityButton.textContent = hidden ? "Restore to list" : "Hide from list";
+          visibilityButton.setAttribute("aria-label", visibilityButton.textContent);
+        });
+        var hit = textHit && matchesStatus(row) && (!hidden || showHidden());
         row.classList.toggle("sf-hidden", !hit);
         if (hit) any = true;
       });
@@ -51,6 +71,7 @@
   function updateCounts() {
     var withN = 0, withoutN = 0;
     document.querySelectorAll("#sites-result .site-row[data-nm-state]").forEach(function (row) {
+      if (isHidden(row) && !showHidden()) return;
       if (row.getAttribute("data-nm-state") === "installed") withN++;
       else withoutN++;
     });
@@ -66,9 +87,10 @@
   }
 
   function paginate() {
+    expandAll();
     document.querySelectorAll("#sites-result .site-grid").forEach(function (grid) {
       var all = Array.prototype.slice.call(grid.children).filter(function (c) {
-        return c.classList && c.classList.contains("site-row");
+        return c.classList && c.classList.contains("site-row") && !c.classList.contains("sf-hidden");
       });
       if (all.length <= CAP) return;
       if (grid.querySelector(".sf-more")) return;
@@ -103,6 +125,21 @@
 
   // Segmented status buttons: delegated click.
   document.addEventListener("click", function (e) {
+    var visibility = e.target && e.target.closest ? e.target.closest(".hosting-visibility") : null;
+    if (visibility) {
+      e.preventDefault();
+      e.stopPropagation();
+      var row = visibility.closest("[data-hosting-site-key]");
+      var key = row && row.getAttribute("data-hosting-site-key");
+      if (!key) return;
+      var next = new Set(hiddenSites);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(Array.from(next))); }
+      catch (_) { window.alert("This browser could not save the visibility preference. The list has not changed."); return; }
+      hiddenSites = next;
+      refilter();
+      return;
+    }
     var btn = e.target && e.target.closest ? e.target.closest(".seg-btn[data-sf-status]") : null;
     if (!btn) return;
     status = btn.getAttribute("data-sf-status");
@@ -112,8 +149,12 @@
     refilter();
   });
 
+  document.addEventListener("change", function (e) {
+    if (e.target && e.target.matches && e.target.matches(".show-hidden-sites")) refilter();
+  });
+
   // Datastar patches #sites-result on load/refresh/filter — re-apply our state.
-  obsTarget = document.getElementById("sites-result") || document.body;
+  obsTarget = document.body;
   observer = new MutationObserver(refilter);
   observer.observe(obsTarget, { childList: true, subtree: true });
 

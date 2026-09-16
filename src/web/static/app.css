@@ -762,10 +762,16 @@ select:focus {
   display: inline-flex;
   align-items: center;
   flex: 0 0 132px;
-  min-height: 18px;
+  min-height: 40px;
   margin-left: auto;
   color: var(--muted);
 }
+
+.sites-refresh { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sites-refresh .sites-status { margin-left: 0; }
+.hosting-hidden-toggle { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 16px 16px; color: var(--muted); font-size: 12px; }
+.hosting-hidden-toggle input { width: 16px; min-height: 16px; }
+.hosting-visibility { flex-shrink: 0; }
 
 .last-updated,
 .loading-inline {
@@ -1496,6 +1502,13 @@ dd {
 .profile-menu-label { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
 .profile-menu-popover .rename-profile { margin: 0; }
 .profile-menu-action { justify-content: flex-start; width: 100%; }
+.profile-menu-popover .profile-menu-action { display: flex; text-align: left; }
+.profile-menu-popover > .push-hint { display: block; padding: 8px; text-align: left; }
+.profile-rename > summary { cursor: pointer; list-style: none; }
+.profile-rename > summary::-webkit-details-marker { display: none; }
+.profile-rename:not([open]) > form { display: none; }
+.profile-rename[open] > form { display: flex; flex-wrap: wrap; padding: 8px 0; }
+.profile-rename input { flex: 1; min-width: 120px; }
 .connect-success-page { max-width: 760px; margin: 0 auto; padding-top: clamp(24px, 8vh, 88px); }
 .connect-success { justify-items: start; gap: 22px; padding: clamp(28px, 6vw, 56px); }
 .connect-success h1 { margin: 8px 0 10px; }
