@@ -583,3 +583,8 @@ export function renderUrl(target: Url): string {
   }
   return (target as unknown as UrlNode).value;
 }
+
+/** A same-origin page anchor, encoded separately from the validated path. */
+export function fragmentUrl(target: Url, id: string): Url {
+  return makeUrl(`${renderUrl(target)}#${encodeURIComponent(id)}`);
+}

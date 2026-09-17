@@ -82,7 +82,7 @@ export function renderProviderActionsPage(view: ProviderActionsView): Html {
   if (
     provider &&
     NOVAMIRA_SETUP_PROVIDERS.has(provider) &&
-    supported.has("wp-cli.run")
+    (supported.has("wp-cli.run") || supported.has("novamira.setup"))
   )
     available.push("Install and set up Novamira");
   for (const [capability, label] of Object.entries(ACTION_LABELS)) {

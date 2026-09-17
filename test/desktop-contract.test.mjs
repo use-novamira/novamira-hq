@@ -25,6 +25,7 @@ import { fileURLToPath, URL } from "node:url";
 
 import {
   generateIcons,
+  generateMacIcon,
   HICOLOR_SIZES,
   ICO_SIZES,
   ICON_NAME,
@@ -295,6 +296,38 @@ test("every desktop icon is derived from the one committed master", async () => 
   } finally {
     await rm(outDir, { recursive: true, force: true });
   }
+});
+
+test("macOS icon uses the same master with a transparent outer margin", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "novamira-mac-icon-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const output = join(dir, "icon.png");
+  await generateMacIcon({
+    master: join(root, "scripts/macos/icon.png"),
+    output,
+  });
+  const png = await readFile(output);
+  assert.deepEqual(readPngSize(png), { width: 1024, height: 1024 });
+  const { inflateSync } = await import("node:zlib");
+  const chunks = [];
+  for (let offset = 8; offset < png.length;) {
+    const size = png.readUInt32BE(offset);
+    if (png.toString("ascii", offset + 4, offset + 8) === "IDAT")
+      chunks.push(png.subarray(offset + 8, offset + 8 + size));
+    offset += size + 12;
+  }
+  const raw = inflateSync(Buffer.concat(chunks));
+  assert.ok(
+    raw.subarray(0, 100 * (1024 * 4 + 1)).every((value) => value === 0),
+  );
+});
+
+test("macOS menus provide native editing actions without a clipboard bridge", async () => {
+  const source = await readFile(join(root, "desktop/macos-menu.ts"), "utf8");
+  for (const action of ["paste:", "copy:", "cut:", "selectAll:"])
+    assert.ok(source.includes(action));
+  assert.ok(shell.includes("installMacMenus();"));
+  assert.doesNotMatch(source, /NSPasteboard|navigator\.clipboard|osascript/);
 });
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);

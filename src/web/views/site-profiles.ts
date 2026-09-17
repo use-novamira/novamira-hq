@@ -45,7 +45,7 @@ import {
   url,
   type Html,
 } from "../html.js";
-import { siteProfileRenameSignal } from "../signals.js";
+import { dynamicSignalPath, siteProfileRenameSignal } from "../signals.js";
 import { type SiteProfileRowView, type SiteProfileState } from "./types.js";
 
 /** The panel's own routes. Spelled once; the handlers pin the same strings. */
@@ -123,25 +123,24 @@ function titleAttr(text: string | undefined) {
 }
 
 /** Reconnect-required is rendered as one action, not as a pill plus an action. */
+function reconnectButton(row: SiteProfileRowView, action: Expr): Html {
+  const busy = dynamicSignalPath("reconnecting", row.name);
+  return html`<button class="button tiny" type="button"${ds.indicator(busy)}${ds.attrs({ disabled: signal(busy) })}${ds.on("click", action)}><span${ds.classes({ hidden: signal(busy) })}>Reconnect</span><span class="loading-inline ds-toggle"${ds.classes({ open: signal(busy) })}>Reconnecting…</span></button>`;
+}
+
 function renderConnectionControl(row: SiteProfileRowView, connect: Expr): Html {
   const pill =
     row.reason === "site_incompatible"
       ? { text: "Novamira not ready", modifier: "warn" }
       : PILLS[row.state];
   if (row.state === "reconnect_required") {
-    return html`<button class="button tiny" type="button"${attr(
-      "title",
-      `novamira auth login ${row.siteUrl}`,
-    )}${ds.on("click", connect)}>Reconnect</button>`;
+    return reconnectButton(row, connect);
   }
   const status = html`<span${classAttr("pill", pill.modifier)}${titleAttr(
     row.hint,
   )}>${pill.text}</span>`;
   if (row.state === "connected") return status;
-  return html`${status}<button class="button tiny" type="button"${attr(
-    "title",
-    `novamira auth login ${row.siteUrl}`,
-  )}${ds.on("click", connect)}>Reconnect</button>`;
+  return html`${status}${reconnectButton(row, connect)}`;
 }
 
 /**
@@ -219,27 +218,32 @@ export function renderSiteProfileRow(
 /** Actions for a CLI profile already represented by a hosting environment row. */
 export function renderSiteProfileActions(
   row: SiteProfileRowView,
-  listContext: { readonly profile: string; readonly includeEnvs: boolean },
+  listContext: {
+    readonly profile: string;
+    readonly includeEnvs: boolean;
+    readonly hideName?: boolean;
+    readonly reconnectAction?: Expr | undefined;
+  },
 ): Html {
   const routeContext = {
     profile: listContext.profile,
     include_envs: listContext.includeEnvs,
     unified: true,
   };
-  const reconnect = post(
-    url(CONNECT_PATH, { url: row.siteUrl, name: row.name, ...routeContext }),
-    { include: [] },
-  );
+  const reconnect =
+    listContext.reconnectAction ??
+    post(
+      url(CONNECT_PATH, { url: row.siteUrl, name: row.name, ...routeContext }),
+      { include: [] },
+    );
   const logout = confirmThen(
     `Disconnect ${row.name} from Novamira? Its authorization will be revoked, but the site will stay in this list so you can reconnect it later.`,
     post(url(LOGOUT_PATH, { name: row.name, ...routeContext }), {
       include: [],
     }),
   );
-  return html`<span class="cli-profile-actions"><strong>${row.name}</strong>${
-    row.state === "connected"
-      ? false
-      : html`<button class="button tiny" type="button"${ds.on("click", reconnect)}>Reconnect</button>`
+  return html`<span class="cli-profile-actions">${listContext.hideName ? false : html`<strong>${row.name}</strong>`}${
+    row.state === "connected" ? false : reconnectButton(row, reconnect)
   }${renderProfileMenu(row.name, routeContext, logout, null)}</span>`;
 }
 
@@ -279,7 +283,7 @@ export function renderConnectForm(
     open && "open",
   )}${ds.classes({ open: signal("cliSites.open") })}${ds.onSubmit(
     submit,
-  )}><div class="panel-head"><div><h2>Connect a site by URL</h2><p>Your browser will open so you can authorize the connection. The connection will be saved on your computer.</p></div></div><div class="form-grid"><label><span>Site URL</span><input type="url"${ds.bind(
+  )}><div class="panel-head"><div><h2>Add site manually</h2><p>Your browser will open so you can authorize the connection. The connection will be saved on your computer.</p></div></div><div class="form-grid"><label><span>Site URL</span><input type="url"${ds.bind(
     "cliSites.url",
   )} placeholder="https://example.com" required${disabled}></label><label><span>Custom name <small>(optional)</small></span><input type="text"${ds.bind(
     "cliSites.name",

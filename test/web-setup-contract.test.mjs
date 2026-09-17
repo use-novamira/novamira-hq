@@ -62,7 +62,10 @@ test("setup waiting state shows elapsed time only while running", () => {
     status: "running",
     startedAt: START,
     finishedAt: null,
-    events: [],
+    events: [
+      { at: START, level: "info", message: "First setup event" },
+      { at: START + 1000, level: "info", message: "Latest setup event" },
+    ],
     result: null,
     error: null,
   };
@@ -70,6 +73,12 @@ test("setup waiting state shows elapsed time only while running", () => {
     renderHtml(renderSetupWorkBody(setupViewForJob({ ...job, status }), now));
   assert.ok(render("running", START + 30_000).includes("30 seconds elapsed"));
   assert.ok(render("running", START + 31_000).includes("31 seconds elapsed"));
+  const markup = render("running", START + 31_000);
+  assert.match(markup, /<time>\d{1,2}:\d{2}:\d{2} [AP]M<\/time>/);
+  assert.ok(
+    markup.indexOf("Latest setup event") < markup.indexOf("First setup event"),
+  );
+  assert.equal(job.events[0].message, "First setup event");
   assert.ok(
     render("running", START).includes("A step can take 30 seconds or longer"),
   );
@@ -84,7 +93,9 @@ test("unified connect inspects without installing, asks approval when missing, a
   for (const state of ["missing", "ready", "inactive", "error"]) {
     let logins = 0;
     const { server, client } = await fixture({
-      connect: async () => {
+      connect: async (siteUrl, name) => {
+        assert.equal(siteUrl, "https://example.com");
+        assert.equal(name, "my-existing-site");
         logins++;
         return { kind: "connected" };
       },
@@ -127,7 +138,7 @@ test("unified connect inspects without installing, asks approval when missing, a
     const { recorder } = await sse(
       server,
       authorized(
-        "/_dashboard/connect?url=https%3A%2F%2Fexample.com&hosting_profile=dev&env=env-1",
+        "/_dashboard/connect?url=https%3A%2F%2Fexample.com&hosting_profile=dev&env=env-1&name=my-existing-site",
         { method: "POST", body: JSON.stringify({ token: TOKEN }) },
       ),
     );
@@ -927,12 +938,12 @@ test("9: a finished job renders the handoff and no site credential", async () =>
     "<dt>Ready</dt><dd>yes</dd>",
     "Connect this site",
     "/_dashboard/site-profiles/connect",
-    "Connect manually with Novamira CLI",
-    "novamira auth login https://example.com",
     ">done</span>",
   ])
     assert.ok(markup.includes(want), want);
   for (const forbidden of [
+    "Connect manually with Novamira CLI",
+    "novamira auth login https://example.com",
     "REST URL",
     "<dt>Username</dt>",
     "<dt>Credential</dt>",

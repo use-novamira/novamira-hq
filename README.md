@@ -270,8 +270,11 @@ storage namespace, and the site CLI found on `PATH` or through
 `NOVAMIRA_HQ_SITE_CLI`.
 
 Linux needs `libwebkit2gtk-4.1` installed; macOS and Windows use the system
-web view. The first launch downloads the small native webview library into
-Deno's cache. During development `deno task --cwd desktop dev` runs the window
+web view. Packaged macOS `.app` bundles include their architecture's native
+webview library, verified against a pinned checksum at build time; opening the
+window requires no download. Bare executables and development builds still
+download the small native library into Deno's cache on first launch.
+During development `deno task --cwd desktop dev` runs the window
 from the checkout after `bun run build`.
 
 ### Release assets
@@ -330,6 +333,14 @@ with `server_unsupported` and names the check that failed, rather than reporting
 a success an agent could not use.
 
 ## Handoff to the agent CLI
+
+Hostinger setup is also available through its provider APIs: HQ uploads the
+official ZIP and a temporary installer, verifies activation, and enables AI
+Abilities when requested. It requires a root-domain HTTPS WordPress installation
+and never overwrites an existing plugin directory. It does not imply support
+for generic WP-CLI or arbitrary plugin installation. Temporary-file cleanup is
+checked and any leftovers are reported. If the OAuth check sees a cached 404,
+clear LiteSpeed's cache before retrying; installation alone is not a connection.
 
 HQ provisions; the site CLI connects. After HQ installs and activates the plugin
 on a provisioned environment, it prints the next step rather than creating any

@@ -21,19 +21,17 @@ export function createAcknowledgementHandler(
         await context.appAcknowledgement.accept();
         const view = await context.loadConfigView();
         const notice = {
-          level: "ok",
-          message: "You can now configure hosting and connect your AI.",
+          level: "neutral",
+          message: "",
         } as const;
         patchPage(stream, {
-          page: "mcp",
+          page: "providers",
           notice,
           model: {
             view,
             notice,
             signals: defaultDashboardSignals(context.token),
-            ...(context.mcpConnection
-              ? { mcp: context.mcpConnection.configuration() }
-              : {}),
+            providerOnboarding: true,
           },
         });
       } catch (error) {

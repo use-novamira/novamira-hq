@@ -226,23 +226,26 @@ export const ENVIRONMENT_PUSH_PROVIDERS: ReadonlySet<ProviderKind> =
 /**
  * Providers `hosting novamira setup` can run against.
  *
- * Two conditions, both required: the client implements `run-wp-cli`, **and** it
+ * WP-CLI providers require both: the client implements `run-wp-cli`, **and** it
  * reports `wpCliResultsObservable()` true. `run-wp-cli` is implemented by
  * `kinsta.ts:582`, `instawp.ts:285`, `pressable.ts:457` and `rocketnet.ts:617`;
  * Pressable then sets `wpCliResultsObservable: () => false`
  * (`pressable.ts:525`), which `provisionNovamira` refuses outright
  * (`src/provisioning/setup.ts`) because a plugin install whose result cannot be
  * observed cannot be verified. Go arrived at the same three names by hard-coding
- * them.
+ * them. Hostinger instead uses a bounded API ZIP setup and activation receipt.
  */
 export const NOVAMIRA_SETUP_PROVIDERS: ReadonlySet<ProviderKind> =
-  Object.freeze(new Set<ProviderKind>(["kinsta", "instawp", "rocketnet"]));
+  Object.freeze(
+    new Set<ProviderKind>(["kinsta", "instawp", "rocketnet", "hostinger"]),
+  );
 
-/** The same three, spelled for an operator-facing sentence. Go's list, verbatim. */
+/** The setup-capable providers, spelled for an operator-facing sentence. */
 export const NOVAMIRA_SETUP_PROVIDER_LABELS: readonly string[] = Object.freeze([
   "Kinsta",
   "InstaWP",
   "Rocket.net",
+  "Hostinger",
 ]);
 
 /** A JSON object as emitted to stdout or an HTTP response body. */

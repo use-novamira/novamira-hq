@@ -520,7 +520,10 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
             }
           : {}),
         ...(renderedPage === "history"
-          ? { history: await context.history.list() }
+          ? {
+              history: await context.history.list(),
+              historyProfile: request.query.get("profile") ?? "",
+            }
           : {}),
       };
       return htmlResponse(

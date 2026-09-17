@@ -214,6 +214,23 @@ test("WordPress MCP delegates structured operations to the optional site CLI", a
   assert.equal(messages[2].result.isError, true);
 });
 
+test("MCP clients can read built-in guidance and inventory without an installed skill", async () => {
+  const { messages } = await session([
+    initialize,
+    initialized,
+    request(2, "tools/call", { name: "novamira_hq_guide", arguments: {} }),
+    request(3, "tools/call", { name: "novamira_hq_sites_list", arguments: {} }),
+  ]);
+  const guide = JSON.parse(messages[1].result.content[0].text);
+  assert.equal(guide.version, "1.2.3");
+  assert.match(guide.guide, /Claude Desktop, Claude Code/);
+  const inventory = JSON.parse(messages[2].result.content[0].text);
+  assert.equal(inventory.complete, false);
+  assert.equal(inventory.sources[0].source, "wordpress");
+  assert.equal(inventory.sources[0].status, "unavailable");
+  assert.equal(inventory.sources[1].status, "ok");
+});
+
 test("MCP negotiates lifecycle and exposes the complete typed surface", async () => {
   const { messages } = await session([
     initialize,
@@ -227,7 +244,9 @@ test("MCP negotiates lifecycle and exposes the complete typed surface", async ()
     version: "1.2.3",
   });
   const tools = messages[1].result.tools;
-  assert.equal(tools[0].title, "List WordPress sites");
+  assert.equal(tools[0].title, "Read the Novamira HQ guide");
+  assert.match(messages[0].result.instructions, /novamira_hq_guide/);
+  assert.match(messages[0].result.instructions, /novamira_hq_sites_list/);
   assert.equal(
     tools.find((tool) => tool.name === "hosting_profiles_list").title,
     "List hosting accounts",
@@ -243,6 +262,8 @@ test("MCP negotiates lifecycle and exposes the complete typed surface", async ()
   assert.deepEqual(
     tools.map((tool) => tool.name),
     [
+      "novamira_hq_guide",
+      "novamira_hq_sites_list",
       "wordpress_sites_list",
       "wordpress_doctor",
       "wordpress_discover",
@@ -273,7 +294,7 @@ test("MCP negotiates lifecycle and exposes the complete typed surface", async ()
     tools.every(
       (tool) =>
         tool.annotations.openWorldHint ===
-        (tool.name !== "hosting_history_list"),
+        !["hosting_history_list", "novamira_hq_guide"].includes(tool.name),
     ),
   );
   assert.equal(

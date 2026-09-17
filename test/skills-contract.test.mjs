@@ -215,7 +215,12 @@ test("7: the router routes WordPress work away from HQ", async () => {
   assert.ok(core.content.includes("novamira-hq skills get hosting"));
   assert.ok(core.content.includes("novamira-hq skills list"));
   assert.ok(core.content.includes("novamira auth login <site-url>"));
-  assert.match(core.content, /never talks to a WordPress site/i);
+  assert.match(
+    core.content,
+    /no authenticated WordPress REST requests itself/i,
+  );
+  assert.match(core.content, /delegates WordPress operations exclusively/);
+  assert.match(core.content, /novamira_hq_sites_list/);
   assert.match(core.content, /allowed-tools: Bash\(novamira-hq:\*\)/);
   // `Bash(novamira:*)` would authorize the *site* CLI, which HQ may not grant.
   assert.ok(!/allowed-tools:.*Bash\(novamira:\*\)/.test(core.content));

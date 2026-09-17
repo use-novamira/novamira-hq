@@ -262,7 +262,13 @@ test("9: neither script carries a secret or fetches an unpinned URL", () => {
 });
 
 test("10: the installers are not shipped inside the package they install", () => {
-  assert.deepEqual(manifest.files, ["dist", "skills", "README.md", "LICENSE"]);
+  assert.deepEqual(manifest.files, [
+    "dist",
+    "skills",
+    "legal",
+    "README.md",
+    "LICENSE",
+  ]);
   for (const entry of manifest.files) {
     assert.ok(!entry.includes("install.sh"), entry);
     assert.ok(!entry.includes("install.ps1"), entry);

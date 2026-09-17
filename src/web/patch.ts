@@ -63,7 +63,13 @@ export function patchPage(stream: SseStream, patch: PagePatch): void {
     selectorId: "nav",
     mode: "outer",
   });
-  patchToast(stream, patch.notice);
+  // Providers already render their notice inside the page.
+  patchToast(
+    stream,
+    patch.page === "providers"
+      ? { level: "neutral", message: "" }
+      : patch.notice,
+  );
 }
 
 /**

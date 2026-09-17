@@ -72,6 +72,7 @@ const EXPECTED_READ_KINDS = [
 
 // HQ's complete public provider-action vocabulary.
 const EXPECTED_ACTION_KINDS = [
+  "setup-novamira",
   "create-site",
   "create-environment",
   "push-environment",
@@ -141,6 +142,7 @@ function dispatchRead(request) {
 
 function dispatchAction(request) {
   switch (request.kind) {
+    case "setup-novamira":
     case "create-site":
     case "create-environment":
     case "push-environment":

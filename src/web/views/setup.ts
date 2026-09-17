@@ -278,6 +278,7 @@ function eventTime(millis: number): string {
   return new Date(millis).toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
+    second: "2-digit",
   });
 }
 
@@ -293,13 +294,15 @@ function renderSetupEvents(view: SetupView, now: number): Html {
   }</p></div></div>${waiting}<ol class="events">${
     events.length === 0
       ? html`<li><time></time><span class="event-level">info</span><span>Waiting for progress.</span></li>`
-      : events.map(
-          (event) =>
-            html`<li><time>${eventTime(event.at)}</time><span${classAttr(
-              "event-level",
-              statusClass(EVENT_LEVELS[event.level]),
-            )}>${event.level}</span><span>${event.message}</span></li>`,
-        )
+      : [...events]
+          .reverse()
+          .map(
+            (event) =>
+              html`<li><time>${eventTime(event.at)}</time><span${classAttr(
+                "event-level",
+                statusClass(EVENT_LEVELS[event.level]),
+              )}>${event.level}</span><span>${event.message}</span></li>`,
+          )
   }</ol></section>`;
 }
 
@@ -354,9 +357,7 @@ function renderSetupResult(result: NovamiraSetupResult): Html {
         : "not checked",
   )}</dl>${result.warnings.map(
     (warning) => html`<div class="notice warn">${warning.message}</div>`,
-  )}<div class="setup-connect"><h3>Connect this site to Novamira</h3><p>Authorize access in your browser to finish connecting this site.</p><button class="button primary" type="button"${ds.on("click", seq(set("cliSites.url", jsString(result.siteUrl)), set("cliSites.name", jsString("")), post(url("/_dashboard/site-profiles/connect", { unified: true }), { include: ["cliSites"] })))}${ds.indicator("cliSites.loading")}${ds.attrs({ disabled: signal("cliSites.loading") })}>Connect this site</button><p class="field-help ds-toggle"${ds.classes({ open: signal("cliSites.loading") })}>Waiting for authorization in your browser…</p><details class="setup-detail"><summary>Connect manually with Novamira CLI</summary><p class="field-help">If Novamira CLI is not installed, install it first.</p><pre>${
-    result.handoff.commandLine
-  }</pre></details></div></section>`;
+  )}<div class="setup-connect"><h3>Connect this site to Novamira HQ</h3><p>Authorize access in your browser to finish connecting this site.</p><button class="button primary" type="button"${ds.on("click", seq(set("cliSites.url", jsString(result.siteUrl)), set("cliSites.name", jsString("")), post(url("/_dashboard/site-profiles/connect", { unified: true }), { include: ["cliSites"] })))}${ds.indicator("cliSites.loading")}${ds.attrs({ disabled: signal("cliSites.loading") })}>Connect this site</button><p class="field-help ds-toggle"${ds.classes({ open: signal("cliSites.loading") })}>Waiting for authorization in your browser…</p></div></section>`;
 }
 
 /** `prefix + value`, or nothing when the value is absent. */

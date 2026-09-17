@@ -249,15 +249,17 @@ test("1: the page renders the patch target and two enabled buttons", async () =>
     ),
   );
   assert.ok(markup.includes('id="diagnostics-output"'));
-  assert.ok(markup.includes(">Select a diagnostic action.<"));
+  assert.ok(
+    markup.includes("Run a health check to inspect this installation."),
+  );
 
   // 6b rendered both buttons `disabled` with a fixed title; 7-1 turned them on.
   assert.ok(!markup.includes("Diagnostics arrive with the doctor service."));
   assert.ok(!/<button[^>]*disabled/.test(markup));
 
   // Both profiles are offered, and nothing is preselected.
-  assert.ok(markup.includes(">dev (Kinsta)<"));
-  assert.ok(markup.includes('<option value="" disabled selected>'));
+  assert.ok(!markup.includes("<select"));
+  assert.ok(!markup.includes("Check capabilities"));
 });
 
 test("2: every data- attribute comes from a helper, and the two scopes are right", async () => {
@@ -268,14 +270,9 @@ test("2: every data- attribute comes from a helper, and the two scopes are right
   const names = [...section.matchAll(/\s(data-[a-z:_-]+)="/g)].map(
     (match) => match[1],
   );
-  assert.deepEqual(new Set(names), new Set(["data-bind", "data-on:click"]));
+  assert.deepEqual(new Set(names), new Set(["data-on:click"]));
 
-  // The capabilities button carries Go's intended regex, built by `includeScope`
-  // from the path `diagnostics` rather than typed out at the call site.
-  assert.ok(
-    section.includes("filterSignals: {include: /^(diagnostics)(\\.|$)/}"),
-    "the capabilities scope is the diagnostics subtree",
-  );
+  assert.ok(!section.includes("/_dashboard/diagnostics/capabilities"));
   // The doctor button's scope matches nothing. Go emitted none at all, which
   // sent the entire signal store — credential field included — in the URL.
   assert.ok(section.includes("filterSignals: {include: /(?!)/}"));
@@ -330,12 +327,17 @@ test("4: the doctor route patches the panel then the toast, with pretty JSON", a
 
   const panel = recorder.find("diagnostics-output").markup;
   assert.ok(panel.startsWith('<div id="diagnostics-output"'));
-  assert.ok(panel.includes('<pre class="code-output">'));
+  assert.ok(
+    panel.includes('<pre id="diagnostics-report" class="code-output">'),
+  );
+  assert.ok(panel.includes("Copy report"));
   // Two-space indentation, and the report verbatim.
   assert.ok(panel.includes("&quot;integration.site_cli&quot;"));
   assert.ok(panel.includes("\n  &quot;version&quot;: 1,"));
   assert.ok(panel.includes("notice ok"));
-  assert.ok(recorder.find("toast").markup.includes("Doctor report generated."));
+  assert.ok(
+    !recorder.find("toast").markup.includes("Doctor report generated."),
+  );
 
   // Escaped, not injected: the report is text inside a `<pre>`.
   assert.ok(!panel.includes("<script"));
@@ -353,7 +355,7 @@ test("5: a failing doctor is a danger notice with the message only", async () =>
   // rendered `neutral`. HQ uses one of the four members and it is styled.
   assert.ok(panel.includes("notice danger"));
   assert.ok(!panel.includes("<pre"));
-  assert.ok(recorder.find("toast").markup.includes("toast show danger"));
+  assert.ok(!recorder.find("toast").markup.includes("toast show danger"));
 });
 
 /* -------------------------------------------------------------------------- */
@@ -401,7 +403,9 @@ test("7: a selected profile omits operations outside HQ's surface", async () => 
   assert.deepEqual(reads, ["capabilities"]);
   const panel = recorder.find("diagnostics-output").markup;
   assert.ok(
-    recorder.find("toast").markup.includes("Capabilities loaded for dev."),
+    recorder
+      .find("diagnostics-output")
+      .markup.includes("Capabilities loaded for dev."),
   );
 
   // The dashboard applies the same visibility policy as CLI and MCP.

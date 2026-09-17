@@ -135,7 +135,7 @@
       var next = new Set(hiddenSites);
       if (next.has(key)) next.delete(key); else next.add(key);
       try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(Array.from(next))); }
-      catch (_) { window.alert("This browser could not save the visibility preference. The list has not changed."); return; }
+      catch (_) { window.novamiraUi.notice("This browser could not save the visibility preference. The list has not changed."); return; }
       hiddenSites = next;
       refilter();
       return;

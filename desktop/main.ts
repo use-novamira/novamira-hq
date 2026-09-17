@@ -26,6 +26,14 @@
  * that runs.
  */
 
+import {
+  MCP_DOWNLOAD_SCRIPT,
+  openMcpDownload,
+  prepareBundledWebview,
+  prepareCommandPath,
+} from "./runtime.ts";
+import { installMacMenus } from "./macos-menu.ts";
+
 const SERVE_FLAG = "--serve";
 const WINDOW_TITLE = "Novamira HQ";
 const STARTUP_TIMEOUT_MS = 30_000;
@@ -37,6 +45,7 @@ interface DashboardEnvelope {
 }
 
 if (Deno.args[0] === "--mcp") {
+  await prepareCommandPath();
   const specifier = new URL("../dist/mcp/main.js", import.meta.url).href;
   const { mcpMain } = (await import(specifier)) as {
     mcpMain(argv: readonly string[]): Promise<void>;
@@ -51,6 +60,7 @@ if (Deno.args[0] === "--mcp") {
 /** The server role: HQ's own `dashboard` command, in this process. */
 async function serve(): Promise<void> {
   watchParent();
+  await prepareCommandPath();
   // Built at runtime, not written as a literal: the shell's own module graph
   // must stop here. `dist/` is HQ's Node build, type-checked by `tsc` against
   // `@types/node`, and Deno's checker must not be asked to re-check it through
@@ -142,13 +152,25 @@ async function window(): Promise<number> {
   // Loaded here and not at the top: `@webview/webview` opens the native
   // library the moment it is imported, and the server role has no window to
   // show and no FFI permission to show it with.
-  const { SizeHint, Webview } = await import("@webview/webview");
-  const view = new Webview(true);
-  view.title = WINDOW_TITLE;
-  view.size = { width: 1280, height: 860, hint: SizeHint.NONE };
-  view.navigate(url);
   try {
+    prepareBundledWebview();
+    const { SizeHint, Webview } = await import("@webview/webview");
+    const view = new Webview(true);
+    view.title = WINDOW_TITLE;
+    view.size = { width: 1280, height: 860, hint: SizeHint.NONE };
+    if (Deno.build.os === "darwin") {
+      installMacMenus();
+      view.bind("novamiraDownloadMcp", () => {
+        openMcpDownload(url);
+        return true;
+      });
+      view.init(MCP_DOWNLOAD_SCRIPT);
+    }
+    view.navigate(url);
     view.run();
+  } catch (error) {
+    console.error(`novamira-hq-desktop: ${describe(error)}`);
+    return 1;
   } finally {
     await stop(server);
   }

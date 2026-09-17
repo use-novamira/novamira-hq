@@ -20,6 +20,10 @@
  */
 
 import { Buffer } from "node:buffer";
+import {
+  setupHostingerNovamira,
+  hostingerPluginInventory,
+} from "./hostinger-setup.js";
 
 import { CliError } from "../../errors.js";
 import {
@@ -77,6 +81,11 @@ const NOTE_UNSUPPORTED =
   "not supported by Hostinger's provider-neutral Novamira mapping";
 
 const CAPABILITIES: readonly ProviderCapabilityInput[] = [
+  [
+    "novamira.setup",
+    true,
+    "Installs Novamira through a bounded ZIP-upload setup; no public API WP-CLI required",
+  ],
   ["providers.validate", true],
   ["providers.capabilities", true],
   ["sites.list", true, "uses GET /api/hosting/v1/websites"],
@@ -127,7 +136,11 @@ const CAPABILITIES: readonly ProviderCapabilityInput[] = [
   ["cache.clear", false, NOTE_UNSUPPORTED],
   ["php.restart", false, NOTE_UNSUPPORTED],
   ["php.set-version", false, NOTE_UNSUPPORTED],
-  ["wp.plugins.list", false, NOTE_NOT_MAPPED],
+  [
+    "wp.plugins.list",
+    true,
+    "Uses the verified WordPress installation plugin inventory",
+  ],
   [
     "wp.plugins.install",
     false,
@@ -228,6 +241,7 @@ class HostingerClient implements ProviderClient {
   readonly provider = PROVIDER;
 
   readonly #http: HttpClient;
+  readonly #transferFetch: typeof fetch;
   /**
    * Go builds every request URL as `strings.TrimRight(baseURL, "/") + path`.
    * This port does the same and hands the shared client an absolute URL, which
@@ -242,6 +256,7 @@ class HostingerClient implements ProviderClient {
   readonly #username: string | undefined;
 
   constructor(context: ProviderClientContext) {
+    this.#transferFetch = context.transferFetch ?? globalThis.fetch;
     if (context.secret.length === 0) {
       throw new CliError(
         "credential_missing",
@@ -343,6 +358,8 @@ class HostingerClient implements ProviderClient {
 
   async read(request: ReadRequest): Promise<unknown> {
     switch (request.kind) {
+      case "plugins":
+        return hostingerPluginInventory(this.#http, request.envId);
       case "capabilities":
         return this.#capabilities();
       case "regions": {
@@ -385,7 +402,6 @@ class HostingerClient implements ProviderClient {
       case "logs":
       case "redirects":
       case "denied-ips":
-      case "plugins":
       case "themes":
       case "company-plugins":
       case "company-themes":
@@ -400,6 +416,8 @@ class HostingerClient implements ProviderClient {
 
   async action(request: ActionRequest): Promise<ActionResult> {
     switch (request.kind) {
+      case "setup-novamira":
+        return setupHostingerNovamira(this.#http, this.#transferFetch, request);
       case "create-site":
         if (request.mode === "clone")
           throw unsupportedOperation(PROVIDER, "sites.clone");

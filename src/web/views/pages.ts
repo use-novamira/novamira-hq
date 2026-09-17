@@ -81,6 +81,7 @@ export interface PageModel {
   readonly mcpClient?: McpPageClient;
   readonly mcpSetup?: McpSetupState;
   readonly history?: HistoryView;
+  readonly historyProfile?: string;
   readonly view: ConfigView;
   readonly notice: DashboardNotice;
   /** The root-page first-run state, after checking both hosting and direct sites. */
@@ -124,7 +125,11 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
         model.mcpSetup,
       );
     case "history":
-      return renderHistoryPage(model.history ?? []);
+      return renderHistoryPage(
+        model.history ?? [],
+        model.historyProfile ?? "",
+        model.view.profiles.map((profile) => profile.name),
+      );
     case "providers":
       return renderProvidersPage({
         ...(model.providerActions ? { actions: model.providerActions } : {}),
@@ -159,7 +164,7 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
     case "novamira-setup":
       return renderSetupPage(model.setup);
     case "diagnostics":
-      return renderDiagnosticsPage(model.view);
+      return renderDiagnosticsPage();
     case "settings":
       return renderSettingsPage(model.view, undefined, model.settingsTab);
     default: {

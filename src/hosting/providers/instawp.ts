@@ -280,6 +280,7 @@ export const createInstaWpClient: ProviderClientFactory = (
       case "bulk-update-themes":
       case "set-denied-ips":
       case "apply-redirects":
+      case "setup-novamira":
         return Promise.reject(unsupportedActionRequest(PROVIDER, request));
       default:
         return assertNever(request);

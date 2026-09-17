@@ -94,7 +94,7 @@ function browser(storage, blocked = false) {
         storage.set(key, value);
       },
     },
-    window: { alert: (message) => alerts.push(message) },
+    window: { novamiraUi: { notice: (message) => alerts.push(message) } },
   });
   return {
     rows,

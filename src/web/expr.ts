@@ -81,8 +81,22 @@ export const DASHBOARD_TOKEN_HEADER = "X-Novamira-Dashboard-Token";
 /** Clipboard payload is always a literal, never executable source. */
 export function copyText(value: string): Expr {
   return makeExpr(
-    `navigator.clipboard.writeText(${jsString(value).source}).then(() => alert('Configuration copied. Restart your AI client after saving it.'), () => alert('Clipboard unavailable. Select and copy the configuration below.'))`,
+    `window.novamiraUi.copy(${jsString(value).source}, document.activeElement)`,
   );
+}
+
+/** Copy an already-rendered report; feedback stays beside its button. */
+export function copyReport(reportId: string, feedbackId: string): Expr {
+  return makeExpr(`(() => {
+    const report = document.getElementById(${jsString(reportId).source});
+    const feedback = document.getElementById(${jsString(feedbackId).source});
+    if (!report || !feedback) return;
+    const failed = () => { feedback.textContent = 'Could not copy. Select the report text and copy it manually.'; };
+    if (!navigator.clipboard) { failed(); return; }
+    navigator.clipboard.writeText(report.textContent ?? '').then(
+      () => { feedback.textContent = 'Report copied.'; }, failed
+    );
+  })()`);
 }
 
 /** Suggest a push name without replacing an operator's custom name. */
@@ -266,10 +280,17 @@ export function seq(...steps: readonly Expr[]): Expr {
   return makeExpr(steps.map((step) => renderExpr(step)).join("; "));
 }
 
-/** `confirm("…") && (<action>)` — Go's `providerPostButton` confirm branch. */
+/** In-app confirmation; native webview JavaScript dialogs are not required. */
 export function confirmThen(message: string, action: Expr): Expr {
+  const label = message.startsWith("Remove")
+    ? "Remove"
+    : message.startsWith("Disconnect")
+      ? "Disconnect"
+      : message.startsWith("Install")
+        ? "Install update"
+        : "Confirm";
   return makeExpr(
-    `confirm(${renderExpr(jsString(message))}) && (${renderExpr(action)})`,
+    `window.novamiraUi.confirmAction(${renderExpr(jsString(message))}, async () => (${renderExpr(action)}), ${renderExpr(jsString(label))})`,
   );
 }
 

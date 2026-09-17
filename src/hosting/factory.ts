@@ -68,6 +68,8 @@ export interface HostingHttpLimits {
  * building an authorization header.
  */
 export interface ProviderClientContext {
+  /** Secondary-origin transfers; injected alongside the provider HTTP seam. */
+  readonly transferFetch?: typeof fetch;
   readonly provider: ProviderKind;
   /** Human-readable provider name for error messages, e.g. `WP Engine`. */
   readonly providerLabel: string;
@@ -167,6 +169,7 @@ export function createHostingClientFactory(
     const resolved = await resolveProviderSecret(provider, profile, resolver);
 
     return {
+      transferFetch: shared?.fetch ?? globalThis.fetch,
       provider,
       providerLabel: label,
       profileName: entry.name,

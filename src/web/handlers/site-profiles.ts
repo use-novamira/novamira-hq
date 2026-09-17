@@ -218,6 +218,11 @@ export function createSiteProfileConnectHandler(
           "A Novamira site profile name must start with a letter or digit and may contain only letters, digits, '.', '_' and '-'.",
         );
       }
+      patchToast(stream, {
+        level: "neutral",
+        message:
+          "Starting authorization… Complete the authorization in your browser when it opens. This may take a few minutes; do not click Reconnect again.",
+      });
       const outcome = await context.integration.connect(
         site.siteUrl,
         name === "" ? undefined : name,

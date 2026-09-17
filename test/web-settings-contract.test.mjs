@@ -219,7 +219,7 @@ test("Settings tabs isolate updates and uninstall instructions", async () => {
 
 test("Settings navigation uses compact CSP-compatible tabs with one active section", async () => {
   const { server } = await fixture();
-  for (const tab of ["general", "updates", "uninstall"]) {
+  for (const tab of ["general", "updates"]) {
     const markup = await page(server, `/settings?tab=${tab}`);
     const nav = markup.match(
       /<nav class="settings-tabs" aria-label="Settings sections">(.*?)<\/nav>/s,
@@ -229,7 +229,7 @@ test("Settings navigation uses compact CSP-compatible tabs with one active secti
     assert.ok(!nav.includes('class="button'));
     assert.equal((nav.match(/aria-current="page"/g) ?? []).length, 1);
     assert.ok(nav.includes(`href="/settings?tab=${tab}" aria-current="page"`));
-    assert.equal((nav.match(/class="settings-tab"/g) ?? []).length, 3);
+    assert.equal((nav.match(/class="settings-tab"/g) ?? []).length, 2);
   }
 });
 
@@ -259,7 +259,7 @@ test("1: the page renders the catalogued card and its self-check", async () => {
   // Go's copy named GitHub Releases and an in-place replacement; neither is true.
   assert.ok(!markup.includes("GitHub"));
   assert.ok(!markup.includes("in place"));
-  assert.ok(markup.includes("npm registry"));
+  assert.ok(markup.includes("Updates are never installed automatically"));
   // Go's panel copy said "hosting and site profiles"; HQ has no site profiles.
   assert.ok(!markup.includes("and site profiles"));
 });
@@ -406,7 +406,7 @@ test("5: a failed check is a bounded danger notice carrying no details", async (
     authorized("/_dashboard/updates/check"),
   );
   assert.deepEqual(recorder.order, ["updates-card/outer", "toast/outer"]);
-  assert.ok(recorder.find("toast").markup.includes("Update check failed."));
+  assert.ok(!recorder.find("toast").markup.includes("Update check failed."));
   const card = recorder.find("updates-card").markup;
   assert.ok(card.includes(">check failed<"));
   // The message is truncated, and `details` reach nothing: `redact()` runs on
@@ -513,7 +513,7 @@ test("8: install reports already-up-to-date and a failure without leaking detail
     "toast/outer",
   ]);
   assert.ok(
-    failed.recorder.find("toast").markup.includes("Update install failed."),
+    !failed.recorder.find("toast").markup.includes("Update install failed."),
   );
   const card = failed.recorder.find("updates-card").markup;
   assert.ok(card.includes("npm exited with status 7"));

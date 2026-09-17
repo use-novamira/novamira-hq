@@ -28,7 +28,7 @@ remain backward compatible with and ships no legacy import.
 | license | AGPL-3.0-or-later |
 | release owner | Ovation S.r.l. through reviewed `use-novamira` GitHub workflows and npm trusted publishing with provenance |
 | runtime dependencies | exactly `commander` and `@starfederation/datastar-sdk` |
-| bundled data | the published tarball contains `dist/` and `skills/` (`novamira-hq`, `core`, `hosting`) |
+| bundled data | the published tarball contains `dist/`, `skills/` (`novamira-hq`, `core`, `hosting`) and `legal/` |
 | installers | `install.sh` and `install.ps1`, published as GitHub release assets and served from the repository's raw URL; **not** inside the npm tarball |
 | distribution | npm only: no Homebrew formula, no `.deb`, no DMG, no Windows installer, no release-archive download |
 | release line | release candidates use `1.0.0-rcN`; the first stable public release is `1.0.0` |
@@ -292,13 +292,19 @@ empty-string override is treated as unset.
 
 The OS credential service is `ai.novamira.hq` and never `ai.novamira.cli`;
 Windows Credential Manager targets are `ai.novamira.hq/<id>`. Backends are inbox
-platform commands invoked without a shell — macOS `security` for reads and
-deletes plus an `osascript` Security.framework bridge for stdin-only writes,
+platform commands invoked without a shell — macOS `/usr/bin/osascript` with a
+Security.framework bridge for reads, deletes and stdin-only writes,
 Linux `secret-tool`, Windows Credential Manager through PowerShell `Add-Type`
 P/Invoke of Advapi32 — with an explicit owner-only file fallback under
 `credentials/v1/<id>.json` selected only when the platform command is
 unavailable or is explicitly requested. The file fallback is not OS-backed
 encryption and warns on first use.
+
+macOS credential commands are serialized within each backend instance and have
+a two-minute execution deadline to allow interactive Keychain authorization.
+Waiting in that queue does not consume a command's execution deadline. Denied
+or timed-out access remains an error, never an absent credential or permission
+to switch to file storage.
 
 The state directory additionally holds `update-check.json`, the background
 release notice's cache. Its record is
@@ -419,6 +425,16 @@ advertises only the `tools` capability. It performs no background update check.
 
 MCP exposes all supported typed tools at launch, without access presets or
 capability-selection options. Unexpected launch arguments are rejected.
+
+Every MCP client receives built-in routing instructions in `initialize.instructions`.
+`novamira_hq_guide` returns the version-matched MCP guide without executing commands
+or requiring an agent skill installation. `novamira_hq_sites_list` reads connected
+WordPress profiles through `src/integration/` and sites with environments from all
+configured hosting accounts. Results preserve source groups and IDs; they are not
+merged by display name. Failed sources are explicit and set `complete: false`.
+One failed source cannot discard another source's inventory. These read-only tools
+are shared by desktop bundles, manually configured clients and the Configure buttons.
+Registering MCP is not installing an agent skill; MCP guidance is self-contained.
 
 The hosting typed read tools are `hosting_profiles_list`, `hosting_provider_validate`,
 `hosting_capabilities_get`, `hosting_sites_list`, `hosting_site_get`,
@@ -720,8 +736,9 @@ to write a `site_profiles` entry. HQ does neither.
 
 ### Sequence
 
-Local validation runs first and issues no provider request: `--env` must be
-non-empty, the provider must expose WP-CLI output — otherwise
+Hostinger uses the bounded API setup below instead of WP-CLI. For the other
+setup providers, local validation runs first and issues no provider request:
+`--env` must be non-empty, the provider must expose WP-CLI output — otherwise
 `provider_unsupported`, because HQ reads back the PHP version, the plugin's
 activation state, and the site URL — a supplied `--url` must normalize, and
 `--source` is resolved and, unless `--no-validate-source`, HEAD-checked before
@@ -865,6 +882,50 @@ value's source, because supplying `--url` is what fixes it. No diagnostic ever
 repeats userinfo back: a rejected URL's credential is removed before the error
 is constructed. HQ never reads the site CLI's own
 `NOVAMIRA_ALLOW_INSECURE_HTTP`.
+
+### Hostinger API setup
+
+Hostinger advertises `novamira.setup` and `wp.plugins.list`, but not generic
+`wp.plugins.install` or `wp-cli.run`. CLI, dashboard and MCP use the same setup
+service. This workflow supports one unambiguous, valid root-domain HTTPS
+WordPress installation, identified by installation id, domain, or
+`username:domain`. It refuses custom sources, URL overrides, pinned plugin
+versions, force/overwrite, network activation, ignored requirements and skipped
+activation/wait. It uses only the canonical Novamira ZIP source.
+
+The provider-neutral internal `setup-novamira` action takes a target and an
+optional AI-enablement boolean, not arbitrary PHP, file paths or provider JSON.
+It checks PHP and provider plugin inventory before upload. Existing compatible
+plugins are preserved; unknown/old versions and unrecognized pre-existing
+`novamira` directories stop without overwrite. Existing AI settings are
+preserved unless explicitly enabled; without public verification their state
+is reported conservatively as unverified, with a warning.
+
+For a new install, HQ downloads at most 20 MiB, rejects redirects, and uploads
+the ZIP once with TUS plus a fixed temporary installer. Upload credentials stay
+in memory and go only to the validated HTTPS `srv<number>-files.hstgr.io`
+origin, never to the site, download server, argv, logs or an upload Location
+redirect. POST/PATCH uploads and activation are never replayed automatically.
+PATCH uses the same URL as POST, with `override=false`, and checks byte offsets
+and provider-reported file sizes.
+
+The temporary plugin runs only on activation, expires after ten minutes and
+has no public command endpoint. It checks the target domain, PHP, WordPress,
+multisite status, archive digest, entry names, symlinks and expanded-size limit.
+It extracts in its own directory and moves Novamira only into an absent target.
+It activates Novamira and optionally writes only the two AI options. A changed
+helper version is its completion receipt: API acceptance alone is insufficient.
+HQ verifies that receipt and Novamira's active state, then deactivates the helper.
+The deactivation hook removes only its own known files, without recursive
+deletion. Residual files or unverifiable cleanup are reported; failures never
+silently roll back or overwrite the installation. Setup has a five-minute
+budget plus a separately bounded thirty-second cleanup attempt.
+
+Final public OAuth metadata verification remains mandatory by default. A
+cached 404 is a failure with cache-purge guidance, not success. HQ does not
+purge the whole site cache. WordPress authentication still belongs exclusively
+to the site CLI. Live provider checks remain opt-in manual probes, never tests
+or CI; contract tests inject both HTTP transports.
 
 ### Failures
 
@@ -1087,6 +1148,12 @@ secret travels — in the request body, in `providerForm.credentialValue`, once,
 on its way to the credential store. It is written to `config.json` as a
 `stored:<id>` reference, never as a value, and the success response explicitly
 resets that signal to the empty string.
+After saving, the dashboard immediately validates the saved account against its
+provider. Success records the connection check and shows Connected. A failed
+check leaves the saved account intact, clears its previous success stamp and
+explicitly reports that it was saved but could not be verified. It never labels
+an unverified account as connected or leaks the provider's response in a notice.
+The save button shows Connecting and is disabled while the request is running.
 
 `/_dashboard/sites` is a `GET` and still requires the token: it reaches live
 provider APIs and its answer is patched into the DOM. It reads its signals from
@@ -1097,6 +1164,11 @@ provider APIs and its answer is patched into the DOM. It reads its signals from
 drops it entirely.
 
 `/_dashboard/connect` takes `?url=`. Hosting rows supporting setup also send
+an optional validated `name` when reconnecting an existing site-CLI profile;
+that name is passed to authorization unchanged. Reconnect uses the same
+inspection and approval flow as a new hosting connection, rather than bypassing
+plugin inspection. Manually added sites keep their direct authorization flow.
+Hosting rows send
 `hosting_profile` and `env`: Novamira HQ first inspects the plugin and its two
 AI Abilities options through read-only provider WP-CLI. A missing, inactive or
 not-ready installation opens the setup approval page, without making changes.
@@ -1180,7 +1252,9 @@ REST URL or site profile, because HQ produces none of those.
 bound to `--offline` and never `--fix`: a `GET` that patches a panel does not
 repair the operator's filesystem permissions and makes no network request. It
 patches `#diagnostics-output` (outer) and then `#toast` (outer), in that order and
-no other, with the report pretty-printed inside a `<pre>`.
+no other, with the report pretty-printed inside a `<pre>` and a Copy report
+control with inline clipboard feedback. The legacy `#toast` target is cleared:
+the report's notice appears only once, inside `#diagnostics-output`.
 
 `/_dashboard/diagnostics/capabilities` reads its profile from `?profile=`, then
 from the `diagnostics` signal subtree, which wins. An empty selection or the
@@ -1191,9 +1265,10 @@ capabilities` does, and patches the same two fragments.
 
 `/_dashboard/updates/check` reads the `latest` dist-tag and patches
 `#updates-card` (outer) and then `#toast` (outer), in that order and no other.
-`?silent=true` suppresses the "up to date" and "check failed" toasts but **not**
-the "update available" one; it is what the card's own first-render self-check
-sends.
+The legacy `#toast` target is an in-flow page notice, never a floating overlay.
+Errors already rendered by the update card clear this target rather than
+duplicating the error. `?silent=true` suppresses the "up to date" notice but
+not "update available"; it is what the card's own first-render self-check sends.
 
 `/_dashboard/updates/install` re-checks, and installs only when the registry
 still advertises something newer — otherwise it reports "already up to date",
@@ -1238,7 +1313,14 @@ form to itself and no page reloads.
 - **Home** (`/`) — the first-run onboarding only when both the hosting-profile
   list and the site CLI's site list are empty; otherwise it opens **Sites**.
 - **Hosting accounts** (`/providers`) — the provider form, the configured
-  table, and a per-row connection cell driven by `/_dashboard/providers/validate`.
+  table with name, provider and a per-row **⋯** menu matching the site menus.
+  There is no persistent connection/check status column. **Verify access**
+  performs an on-demand check through `/_dashboard/providers/validate` and
+  reports its result in one inline notice, without repainting an open form.
+  The menu also contains Available actions, Activity, Edit, Details and a separated
+  Remove action. Activity opens `/history?profile=<name>`, filtering requests,
+  attention items and the copyable report. Refresh preserves the filter; the
+  account selector includes **All accounts** to return to the full local history.
   A new account is configured in two local steps: choose from a freshly shuffled
   provider list first, then enter the profile name and provider-specific account
   details. The second step states that configuration stays on the device, that
@@ -1263,12 +1345,12 @@ form to itself and no page reloads.
   these preferences. Hiding never logs out, deletes a profile, or changes the site.
   Configure push is a secondary environment-menu action, never an immediate push.
   Profiles that match no
-  hosting environment appear once in a final **CLI only** group. The integration
+  hosting environment appear once in the first **Manually added sites** group. The integration
   performs the one origin comparison and returns both the profile listing and
   the connection snapshot from the same `sites list` round, so the web layer
-  neither compares domains nor duplicates entries. The global **Connect** menu
-  follows the navigation's Sites-first order: **Site by URL** connects an
-  existing Novamira site, while **Hosting account** connects a provider and
+  neither compares domains nor duplicates entries. The global **+ Add site** menu
+  puts **Manually** first to connect an
+  existing Novamira site, while **From a hosting account** connects a provider and
   discovers its sites. “New site” is reserved for future provider-side site
   creation. The direct-site action accepts a URL and an optional custom profile
   name, and success renders a dedicated page rather than a transient toast. CLI
@@ -1307,26 +1389,54 @@ form to itself and no page reloads.
   toggle and Start button, the live event log, and, when a run has finished, what
   landed on the site plus the `novamira auth login` handoff. `?job=<id>` reopens
   a run; `?profile=&env=` reopens the most recent run for that environment.
-- **Diagnostics** (`/diagnostics`) — the provider selector, two actions (Health
-  check and Check capabilities) and the output panel they patch. Neither action
-  repaints `#main`, so the selection survives.
+- **Diagnostics** (`/diagnostics`) — a local Health check and its output panel.
+  Hosting history and account-specific available actions belong to Hosting
+  accounts. The existing capabilities endpoint remains supported, but its raw
+  output is not offered as a Diagnostics action.
 - **Settings** (`/settings`) — the update card and the configuration file's
   path, read-only. The card checks the npm registry silently on first render,
   shows the current and published versions, the registry consulted and the
   command that ran, and offers Install only when something newer exists. It
   renders no external link — the CSP is `default-src 'self'` — and no installer
   output.
+  Uninstall instructions are linked from About, with separate desktop, package,
+  AI-connector and local-data guidance. The existing `?tab=uninstall` URL remains
+  supported, but it is no longer a Settings tab. Updates never install silently;
+  desktop release checks/automatic notifications are not implemented.
+
+Below 1000px the sidebar becomes a compact brand/Menu header. Menu expands the
+connection action, navigation and About together, with `aria-expanded` reflecting
+the state. About is inside that menu rather than a separate mobile footer.
 
 ### Assets
 
-Nine files under `/assets/`, served from a fixed allowlist rather than from a
+Ten files under `/assets/`, served from a fixed allowlist rather than from a
 directory: `app.css`, `datastar.js`, `relative-time.js`, `sites-filter.js`,
-`novamira-hq-logo-white.svg`, and under `/assets/fonts/`
+`novamira-hq-logo-white.svg`, `third-party-notices.txt`, and under `/assets/fonts/`
 `montserrat-var.woff2`, `montserrat-OFL.txt`, `jetbrains-mono-var.woff2`,
 `jetbrains-mono-OFL.txt`. Any other path is `404` before any filesystem access.
 Assets carry `Cache-Control: no-cache` and a strong content `ETag`; a matching
 `If-None-Match` is `304` with no body. `HEAD` returns identical headers,
 `Content-Length` included, with no body.
+
+About includes a Legal notices section linking to the bundled, offline-readable
+`/assets/third-party-notices.txt`. The build generates it from `legal/manifest.json`,
+the unmodified license texts in `legal/licenses/`, the `denort`/V8 source-audit
+inventories and text corpus in `legal/`, and HQ's `LICENSE`. It records
+component versions or exact asset digests, scope, license text and source links.
+The npm package includes `legal/`, and desktop builds embed the generated asset
+through `dist/`. The generator checks locked dependency versions and asset hashes
+without network access. Desktop runtime coverage is explicitly incomplete until
+the target-specific embedded libraries are reviewed; `legal:desktop-check` fails
+while that is the case. A successful `legal:check` is not desktop legal clearance.
+The runtime candidate inventory is explicitly not a binary SBOM: optional,
+build-only and target-alternative components can occur. Missing notices and
+unverified scope remain visible. Runtime notice references are SHA-256 checked
+offline; downloading source archives is a separate, explicit audit operation,
+never part of a build or test.
+The Claude Desktop MCPB download includes HQ's AGPL text, copyright attribution,
+the complete unminified launcher source and a README identifying the separately
+installed runtime. It does not bundle HQ's third-party runtime dependencies.
 
 ### JSON responses and the status map
 
@@ -1596,6 +1706,18 @@ Success proves local startup only, not an external client connection or working
 provider credentials. The desktop's `--mcp` role calls the existing `mcpMain`
 without importing webview or depending on a running dashboard.
 
+The initial acknowledgement fills the window, hides the sidebar and shows the
+Novamira HQ logo. Acceptance restores navigation and opens the choice to connect
+a site by URL or a hosting account, without a success toast; configuring the AI
+client comes after connecting a site. "Configure and continue" checks the site
+connection component and installs the separate global `@novamira/cli` package
+with npm only if absent, without install scripts or elevation. Compatible
+installations are reused; incompatible or unreadable installations are not
+silently replaced. Setup is recorded as complete only after a successful probe.
+Failures stay on setup for retry: there is no hosting-only or skip option.
+Startup checks are read-only, including when an acknowledgement already exists;
+installation requires the explicit setup action. CLI and MCP operation remain
+independent of this dashboard setup gate.
 The dashboard explains hosting setup approval, PHP/filesystem/data access,
 push and restore overwrites, and keeping an up-to-date, separately stored backup
 that the user knows how to restore. It does not list excluded operations as a
@@ -1607,9 +1729,18 @@ not activate abilities; explicit setup may. No WordPress site token is stored.
 
 ## Local hosting history
 
-The dashboard exposes Hosting history from Diagnostics, not as a main navigation
-item. The history page highlights Diagnostics and links back to it. Both pages
-explicitly exclude WordPress CLI operations, including those delegated by HQ MCP.
+The dashboard exposes Hosting history from Hosting accounts, not as a main
+navigation item. The history page highlights Hosting accounts and links back to
+it. History explicitly excludes WordPress CLI operations, including those
+delegated by HQ MCP.
+
+History presents request summaries with expandable technical details rather
+than a wide technical table. Request and workflow outcomes remain separate;
+IDs and exact timestamps remain available in the details and the copyable
+plain-text report. Refresh reads local history only and never retries a request.
+Page feedback is in-flow: provider and diagnostics notices are not repeated in
+the legacy `#toast` fragment. Mobile navigation stays visible without a menu
+toggle; About is a secondary page-footer link on narrow screens.
 
 Sites renders its latest process-local snapshot immediately and refreshes in the
 background on mount, without clearing existing rows. One Refresh button forces

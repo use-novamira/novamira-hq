@@ -22,11 +22,14 @@
   "files": [
     "dist",
     "skills",
+    "legal",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/copy-static.mjs && node scripts/copy-mcp-assets.mjs && node scripts/set-bin-mode.mjs",
+    "build": "tsc -p tsconfig.json && node scripts/copy-static.mjs && node scripts/copy-mcp-assets.mjs && node scripts/legal-notices.mjs && node scripts/set-bin-mode.mjs",
+    "legal:check": "node scripts/legal-notices.mjs --check",
+    "legal:desktop-check": "node scripts/legal-notices.mjs --check-desktop",
     "test": "bun run build && node --test test/*.test.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",

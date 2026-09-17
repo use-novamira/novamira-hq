@@ -129,6 +129,9 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 # the reviewable artefact and the derived sizes cannot drift from it.
 rm -rf "$iconset"
 mkdir -p "$iconset"
+node "$root/scripts/desktop-icons.mjs" --macos "$work/macos-icon.png" ||
+  fail "could not prepare the macOS icon margins"
+icon=$work/macos-icon.png
 for size in 16 32 128 256 512; do
   retina=$((size * 2))
   sips -z "$size" "$size" "$icon" \
@@ -177,6 +180,8 @@ cat >"$app/Contents/Info.plist" <<PLIST
 PLIST
 
 cp "$binary" "$app/Contents/MacOS/novamira-hq-desktop"
+native_library=$(node "$root/scripts/macos-native.mjs" "$binary" "$app")
+sign "$native_library"
 
 # The standalone executable first, then the bundle. Signing the bundle re-signs
 # its own copy of the executable; the two are separate code objects and each

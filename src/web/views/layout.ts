@@ -96,12 +96,12 @@ export function renderDocument(input: DocumentInput): Html {
 <title>Novamira HQ</title>
 <link rel="stylesheet" href="/assets/app.css">
 <script type="module" src="/assets/datastar.js"></script>
+<script src="/assets/ui-feedback.js" defer></script>
 <script src="/assets/relative-time.js" defer></script>
 <script src="/assets/sites-filter.js" defer></script>
 </head>
 <body>
-<div class="shell"${ds.signals(toSignalRecord(input.signals))}>${renderSidebar(input.view, input.page, input.activeNav)}${renderMain(input.page, input.body)}</div>
-${renderToast(input.notice)}
+<div class="shell"${ds.signals(toSignalRecord(input.signals))}>${renderSidebar(input.view, input.page, input.activeNav)}<div class="main-region">${renderToast(input.page === "providers" ? { level: "neutral", message: "" } : input.notice)}${renderMain(input.page, input.body)}</div></div>
 </body>
 </html>
 `;
@@ -118,20 +118,20 @@ export function renderSidebar(
   page: DashboardPage,
   activeNav = true,
 ): Html {
-  return html`<aside class="sidebar"><a class="brand"${hrefAttr(url("/providers"))} aria-label="Novamira HQ dashboard home"><img class="brand-logo" src="/assets/novamira-hq-logo-white.svg" alt="Novamira HQ" width="170" height="25"></a><div class="new-menu"${ds.on(
+  return html`<aside class="sidebar"><a class="brand"${hrefAttr(url("/providers"))} aria-label="Novamira HQ dashboard home"><img class="brand-logo" src="/assets/novamira-hq-logo-white.svg" alt="Novamira HQ" width="170" height="25"></a><div id="sidebar-navigation" class="sidebar-navigation"><div class="new-menu"${ds.on(
     "click",
     set("sites.newMenuOpen", jsBoolean(false)),
     "outside",
   )}><button class="button primary new-button" type="button" aria-haspopup="menu"${ds.on(
     "click",
     toggle("sites.newMenuOpen"),
-  )}>Connect a site</button><div${classAttr(
+  )}><span aria-hidden="true">+</span> Add site</button><div${classAttr(
     "new-pop",
   )}${ds.classes({ open: signal("sites.newMenuOpen") })} role="menu"><a${hrefAttr(
     url("/sites", { new: "cli" }),
-  )}><strong>Site by URL</strong><span>Connect an existing Novamira site</span></a><a${hrefAttr(
+  )}><strong>Manually</strong><span>Connect an existing Novamira site by URL</span></a><a${hrefAttr(
     url("/providers", { new: "host" }),
-  )}><strong>Hosting account</strong><span>Connect an account and discover its sites</span></a></div></div>${renderNav(page, activeNav)}<div class="sidebar-foot"><a class="sidebar-about"${hrefAttr(url("/about"))}${page === "about" ? attr("aria-current", "page") : false}>About Novamira HQ</a></div></aside>`;
+  )}><strong>From a hosting account</strong><span>Connect an account and discover its sites</span></a></div></div>${renderNav(page, activeNav)}<div class="sidebar-foot"><a class="sidebar-about"${hrefAttr(url("/about"))}${page === "about" ? attr("aria-current", "page") : false}>About Novamira HQ</a></div></div></aside>`;
 }
 
 /**
@@ -147,13 +147,13 @@ export function renderSidebar(
 export function renderNav(page: DashboardPage, showActive = true): Html {
   const current = showActive
     ? page === "history"
-      ? "diagnostics"
+      ? "providers"
       : page
     : undefined;
   return html`<nav${idAttr("nav")} class="nav" aria-label="Dashboard sections">${[
     navLink(current, "sites", "/sites", "Sites"),
-    navLink(current, "pushes", "/push", "Push"),
     navLink(current, "providers", "/providers", "Hosting accounts"),
+    navLink(current, "pushes", "/push", "Push"),
     navLink(current, "mcp", "/mcp", "Configure your AI"),
     navLink(current, "diagnostics", "/diagnostics", "Diagnostics"),
     navLink(current, "settings", "/settings", "Settings"),
@@ -184,7 +184,7 @@ export function renderMain(page: DashboardPage, body: Html): Html {
   // frozen — and that is fine: it is a hook, and it makes an outer `#main` patch
   // self-describing, so a test can tell "the providers page was patched here"
   // from "some page was patched here" without parsing the body.
-  return html`<main${idAttr("main")}${classAttr("main", `main-${page}`)}>${body}</main>`;
+  return html`<main${idAttr("main")}${classAttr("main", `main-${page}`)}>${body}<footer class="mobile-about-footer"><a${hrefAttr(url("/about"))}>About Novamira HQ</a></footer></main>`;
 }
 
 /**

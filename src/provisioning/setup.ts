@@ -81,6 +81,7 @@ import {
 } from "./site-url.js";
 import { contextualize, runWpCliForOutput, type PollBudget } from "./wp-cli.js";
 import { inspectExistingNovamira } from "./existing.js";
+import { provisionHostinger } from "./hostinger.js";
 
 /* -------------------------------------------------------------------------- */
 /* Constants                                                                  */
@@ -269,6 +270,8 @@ async function provisionNovamiraSteps(
   // Nothing below may issue a provider request until A4 has passed.
 
   const envId = requireEnvId(request.envId);
+  if (client.provider === "hostinger")
+    return provisionHostinger(dependencies, request);
 
   // Go refused a provider whose WP-CLI results it could not observe because it
   // needed to capture an Application Password out of them. That reason is

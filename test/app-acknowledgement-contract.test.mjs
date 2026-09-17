@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert/strict";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -31,11 +31,29 @@ test("app acknowledgement is lazy, persistent and private", async (t) => {
     );
 });
 
+test("consent hides navigation and fills the viewport until the page is replaced", async () => {
+  const css = await readFile(
+    new URL("../src/web/static/app.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    css,
+    /\.shell:has\(\.acknowledgement-page\) > \.sidebar \{ display: none;/,
+  );
+  assert.match(
+    css,
+    /\.shell:has\(\.acknowledgement-page\) \.main \{ padding: 0;/,
+  );
+  assert.match(css, /\.page\.acknowledgement-page \{[^}]*min-height: 100svh/);
+});
+
 test("the app explains setup approval, overwrite risks and independent backups", () => {
   const markup = renderHtml(renderAcknowledgement());
   assert.ok(markup.includes('aria-labelledby="acknowledgement-title"'));
-  assert.ok(markup.includes('class="how-to-card"'));
-  assert.ok(markup.includes("max-width: 760px"));
+  assert.ok(markup.includes('class="page acknowledgement-page"'));
+  assert.ok(markup.includes('class="acknowledgement-logo"'));
+  assert.ok(markup.includes('alt="Novamira HQ"'));
+  assert.ok(!markup.includes("Welcome to Novamira HQ"));
   assert.equal((markup.match(/<h2>/g) ?? []).length, 3);
   for (const value of [
     "run PHP",
@@ -43,8 +61,10 @@ test("the app explains setup approval, overwrite risks and independent backups",
     "Push and restore operations can overwrite",
     "backup in a safe location, separate from the site",
     "This acknowledgement does not authorize operations",
-    "I understand and continue",
+    "Configure and continue",
     "/_dashboard/app/acknowledge",
   ])
     assert.ok(markup.includes(value), value);
+  assert.ok(!markup.includes("Continue without site connections"));
+  assert.ok(!markup.includes("hosting-only"));
 });

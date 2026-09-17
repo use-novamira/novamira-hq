@@ -108,6 +108,11 @@ export function attrs(entries: Readonly<Record<string, Expr>>): Attr {
   return expressionAttr("data-attr", objectExpr(entries));
 }
 
+/** A single ARIA attribute, whose hyphenated name is not an object identifier. */
+export function aria(name: "expanded", value: Expr): Attr {
+  return expressionAttr(`data-attr:aria-${name}`, value);
+}
+
 /** `data-text`. */
 export function text(expression: Expr): Attr {
   return expressionAttr("data-text", expression);

@@ -365,7 +365,7 @@ test("hostinger reports its capability table", async () => {
       kind: "capabilities",
     });
     assert.ok(Array.isArray(capabilities));
-    assert.equal(capabilities.length, 33);
+    assert.equal(capabilities.length, 34);
     const byName = new Map(capabilities.map((entry) => [entry.name, entry]));
 
     assert.deepEqual(byName.get("providers.validate"), {
@@ -805,7 +805,6 @@ test("hostinger reports every unmapped read as provider_unsupported", async () =
     { kind: "logs", envId: "e", fileName: "error.log", lines: 100 },
     { kind: "redirects", envId: "e" },
     { kind: "denied-ips", envId: "e" },
-    { kind: "plugins", envId: "e" },
     { kind: "themes", envId: "e" },
     { kind: "company-plugins" },
     { kind: "company-themes" },

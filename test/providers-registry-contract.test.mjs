@@ -280,7 +280,7 @@ test("ENVIRONMENT_PUSH_PROVIDERS is exactly the clients advertising safe envs.pu
   assert.deepEqual([...ENVIRONMENT_PUSH_PROVIDERS], ["kinsta"]);
 });
 
-test("NOVAMIRA_SETUP_PROVIDERS is run-wp-cli AND observable results", async () => {
+test("NOVAMIRA_SETUP_PROVIDERS supports observable WP-CLI or bounded Hostinger setup", async () => {
   for (const kind of PROVIDER_KINDS) {
     const { supported, client } = await actionSupport(kind, {
       kind: "run-wp-cli",
@@ -290,7 +290,8 @@ test("NOVAMIRA_SETUP_PROVIDERS is run-wp-cli AND observable results", async () =
     // Both conditions, exactly as `provisionNovamira` applies them: Pressable
     // implements the action but reports its results unobservable, so a plugin
     // install could not be verified and the setup flow refuses it.
-    const eligible = supported && wpCliResultsObservable(client);
+    const eligible =
+      kind === "hostinger" || (supported && wpCliResultsObservable(client));
     assert.equal(
       NOVAMIRA_SETUP_PROVIDERS.has(kind),
       eligible,
@@ -298,6 +299,7 @@ test("NOVAMIRA_SETUP_PROVIDERS is run-wp-cli AND observable results", async () =
     );
   }
   assert.deepEqual([...NOVAMIRA_SETUP_PROVIDERS].sort(), [
+    "hostinger",
     "instawp",
     "kinsta",
     "rocketnet",

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * The nine static assets, and the handler that serves them.
+ * The static assets, and the handler that serves them. Legal notices are
+ * generated offline by scripts/legal-notices.mjs in addition to the nine
+ * original browser assets described below.
  *
  * **Provenance.** The files under `src/web/static/` are copied verbatim from
  * `internal/dashboard/static/` in the Go program; plan §5.4 carries them over
@@ -84,10 +86,15 @@ export interface StaticAsset {
  * `scripts/copy-static.mjs`'s verification pass; there is no third place.
  */
 export const STATIC_ASSETS: readonly StaticAsset[] = Object.freeze([
+  {
+    path: "third-party-notices.txt",
+    contentType: "text/plain; charset=utf-8",
+  },
   { path: "app.css", contentType: "text/css; charset=utf-8" },
   { path: "datastar.js", contentType: "text/javascript; charset=utf-8" },
   { path: "relative-time.js", contentType: "text/javascript; charset=utf-8" },
   { path: "sites-filter.js", contentType: "text/javascript; charset=utf-8" },
+  { path: "ui-feedback.js", contentType: "text/javascript; charset=utf-8" },
   { path: "novamira-hq-logo-white.svg", contentType: "image/svg+xml" },
   { path: "fonts/montserrat-var.woff2", contentType: "font/woff2" },
   {

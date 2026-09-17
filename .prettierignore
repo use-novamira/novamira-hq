@@ -3,6 +3,7 @@ dist
 docs
 fixtures
 LICENSE
+legal/licenses
 src/web/static
 desktop
 dist-desktop

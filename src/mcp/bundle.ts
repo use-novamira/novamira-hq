@@ -47,7 +47,8 @@ function archive(files: Readonly<Record<string, string | Buffer>>): Buffer {
 }
 
 // Forward stdio to the installed command, independent of its package manager.
-const LAUNCHER = `// SPDX-License-Identifier: AGPL-3.0-or-later
+const LAUNCHER = `// SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
+// SPDX-License-Identifier: AGPL-3.0-or-later
 const { spawn } = require('node:child_process');
 const launch = require('../launch.json');
 // Claude's embedded runtime supplies JS streams, not necessarily OS fds 0/1/2.
@@ -101,5 +102,7 @@ export function createMcpBundle(
     "launch.json": JSON.stringify(configuration.launch),
     "server/index.cjs": LAUNCHER,
     "icon.png": readFileSync(new URL("./icon.png", import.meta.url)),
+    LICENSE: readFileSync(new URL("./LICENSE", import.meta.url)),
+    "README.txt": `Novamira HQ ${version} connector\nCopyright (c) 2026 Ovation S.r.l.\nLicense: AGPL-3.0-or-later (see LICENSE).\n\nThis bundle contains the complete, unminified launcher source in server/index.cjs and the Novamira HQ icon. It starts a separately installed Novamira HQ; it does not embed Node, Deno or the HQ runtime dependencies. For those components, see About Novamira HQ > Legal notices in the installed application.\n\nHQ source: https://github.com/use-novamira/novamira-hq\nAsk your distributor for the matching source if you cannot access that repository.\n`,
   });
 }

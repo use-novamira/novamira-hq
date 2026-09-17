@@ -10,3 +10,7 @@ await copyFile(
   new URL("./macos/icon.png", import.meta.url),
   new URL("../dist/mcp/icon.png", import.meta.url),
 );
+await copyFile(
+  new URL("../LICENSE", import.meta.url),
+  new URL("../dist/mcp/LICENSE", import.meta.url),
+);

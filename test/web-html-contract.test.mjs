@@ -1399,7 +1399,7 @@ test("the expression constructors emit exactly the documented source", () => {
   assert.equal(renderExpr(seq(jsBoolean(true), jsNumber(1))), "true; 1");
   assert.equal(
     renderExpr(confirmThen('Remove "dev"?', jsBoolean(true))),
-    'confirm("Remove \\"dev\\"?") && (true)',
+    'window.novamiraUi.confirmAction("Remove \\"dev\\"?", async () => (true), "Remove")',
   );
   assert.equal(
     renderAttr(ds.classes({ active: signal("providerForm.open") })),
@@ -1538,6 +1538,7 @@ test("42: no module outside datastar.ts writes a data-* attribute by hand", asyn
     "data-attr",
     "data-text",
     "data-indicator",
+    "data-attr:aria-expanded",
     "data-init",
     "data-checked-at",
     "data-nm-state",

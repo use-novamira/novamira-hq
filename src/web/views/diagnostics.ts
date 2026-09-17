@@ -36,37 +36,20 @@
  */
 
 import * as ds from "../datastar.js";
-import { get } from "../expr.js";
-import { html, idAttr, attr, url, type Html } from "../html.js";
+import { copyReport, get } from "../expr.js";
+import { html, idAttr, url, type Html } from "../html.js";
 import { renderNotice } from "./layout.js";
-import {
-  providerLabelFor,
-  type ConfigView,
-  type DashboardNotice,
-} from "./types.js";
+import { type DashboardNotice } from "./types.js";
 
-export function renderDiagnosticsPage(view: ConfigView): Html {
-  // `diagnostics` is the whole scope the capabilities route reads, and it is the
-  // whole scope it is sent. The doctor route reads no signals at all.
-  const capabilities = get(url("/_dashboard/diagnostics/capabilities"), {
-    include: ["diagnostics"],
-  });
+export function renderDiagnosticsPage(): Html {
   const doctor = get(url("/_dashboard/diagnostics/doctor"), { include: [] });
-  return html`<section class="page"><header class="page-head"><div><h1>Diagnostics</h1></div></header><div class="toolbar"><label><span>Provider</span><select${ds.bind(
-    "diagnostics.profile",
-  )}><option value="" disabled selected>Select a provider</option>${view.profiles.map(
-    (profile) =>
-      html`<option${attr("value", profile.name)}>${profile.name} (${providerLabelFor(profile.provider)})</option>`,
-  )}</select></label><button class="button secondary" type="button"${ds.on(
-    "click",
-    capabilities,
-  )}>Check capabilities</button><button class="button primary" type="button"${ds.on(
+  return html`<section class="page flow-page"><header class="page-head"><div><h1>Diagnostics</h1><p>Check the local Novamira HQ installation. Hosting activity and available actions are in Hosting accounts.</p></div></header><div class="toolbar"><button class="button primary" type="button"${ds.on(
     "click",
     doctor,
   )}>Health check</button></div>${renderDiagnosticsOutput(
     { level: "neutral", message: "" },
-    "Select a diagnostic action.",
-  )}<section class="how-to-card"><h2>Hosting history</h2><p>Hosting operations performed through Novamira HQ. Does not include WordPress operations through Novamira CLI, including those delegated by Novamira HQ MCP.</p><div><a class="button secondary" href="/history">Open hosting history</a></div></section></section>`;
+    "Run a health check to inspect this installation. No repairs are performed.",
+  )}</section>`;
 }
 
 /**
@@ -81,7 +64,10 @@ export function renderDiagnosticsOutput(
   notice: DashboardNotice,
   body: string,
 ): Html {
+  if (notice.message === "") {
+    return html`<div${idAttr("diagnostics-output")} class="diagnostics-output"><p>${body}</p></div>`;
+  }
   return html`<div${idAttr("diagnostics-output")} class="diagnostics-output">${
     notice.message === "" ? false : renderNotice(notice)
-  }${body === "" ? false : html`<pre class="code-output">${body}</pre>`}</div>`;
+  }${body === "" ? false : html`<section class="report-panel"><div class="report-actions"><button type="button" class="button secondary"${ds.on("click", copyReport("diagnostics-report", "diagnostics-copy-status"))}>Copy report</button><span id="diagnostics-copy-status" role="status" aria-live="polite"></span></div><pre id="diagnostics-report" class="code-output">${body}</pre></section>`}</div>`;
 }

@@ -241,11 +241,11 @@ export function renderSitesResult(view: SitesResultView): Html {
     )}</div>`;
   }
   const cliOnly = cliOnlyProfiles(view);
-  return html`<div${idAttr("sites-result")} class="results">${
+  return html`<div${idAttr("sites-result")} class="results">${renderCliOnly(cliOnly, view)}${
     view.groups.length === 0 && cliOnly.length === 0
       ? html`<div class="empty">No sites found.</div>`
       : view.groups.map((group) => renderSiteGroup(group, view))
-  }${renderCliOnly(cliOnly, view)}</div>`;
+  }</div>`;
 }
 
 function cliOnlyProfiles(view: SitesResultView): readonly SiteProfileSummary[] {
@@ -264,7 +264,7 @@ function renderCliOnly(
   view: SitesResultView,
 ): Html | false {
   if (profiles.length === 0) return false;
-  return html`<section class="provider-sites cli-sites"><div class="group-head"><div class="inventory-group-heading"><h2>Sites added by URL</h2><p>Added directly, without a linked hosting account.</p></div><span class="pill">${String(
+  return html`<section class="provider-sites cli-sites"><div class="group-head"><div class="inventory-group-heading"><h2>Manually added sites</h2><p>Sites not linked to a hosting account.</p></div><span class="pill">${String(
     profiles.length,
   )} ${profiles.length === 1 ? "site" : "sites"}</span></div><div class="site-grid cli-site-grid">${profiles.map(
     (profile) =>
@@ -427,9 +427,18 @@ function renderStateCell(
       return html`<span class="pill ok">Novamira authorized</span>${renderProfileLink(
         connection,
         view,
+        group,
+        env,
+        siteLabel,
       )}`;
     case "reconnect_required": {
-      const profiles = renderProfileLink(connection, view);
+      const profiles = renderProfileLink(
+        connection,
+        view,
+        group,
+        env,
+        siteLabel,
+      );
       return profiles === false
         ? html`<span class="pill warn">Authorization required</span>`
         : profiles;
@@ -446,7 +455,7 @@ function renderStateCell(
     case "unavailable":
       return html`<span class="pill"${titleAttr(
         connection.hint,
-      )}>${connection.reason === "site_incompatible" ? "Novamira not ready" : "Unknown"}</span>${renderProfileLink(connection, view)}${
+      )}>${connection.reason === "site_incompatible" ? "Novamira not ready" : "Unknown"}</span>${renderProfileLink(connection, view, group, env, siteLabel)}${
         connection.profiles.length === 0
           ? renderConnectButton(
               connection,
@@ -488,6 +497,9 @@ function titleAttr(text: string | undefined) {
 function renderProfileLink(
   connection: ConnectionView,
   view: SitesResultView,
+  group: SiteGroup,
+  env: HostingEnvironment,
+  siteLabel: string,
 ): Html | false {
   if (connection.profiles.length === 0) return false;
   return html`${connection.profiles.map((name) => {
@@ -499,6 +511,24 @@ function renderProfileLink(
       : renderSiteProfileActions(siteProfileRowView(profile), {
           profile: view.profile,
           includeEnvs: view.includeEnvs,
+          reconnectAction: NOVAMIRA_SETUP_PROVIDERS.has(group.provider)
+            ? post(
+                url("/_dashboard/connect", {
+                  url: profile.siteUrl,
+                  name: profile.name,
+                  profile: view.profile,
+                  include_envs: view.includeEnvs,
+                  hosting_profile: group.profile,
+                  env: env.id,
+                  site: siteLabel,
+                  envname: env.displayName || env.name,
+                }),
+                { include: [] },
+              )
+            : undefined,
+          hideName:
+            connection.profiles.length === 1 &&
+            profile.name === new URL(profile.siteUrl).hostname,
         });
   })}`;
 }

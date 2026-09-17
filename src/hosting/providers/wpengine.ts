@@ -303,6 +303,7 @@ class WpEngineClient implements ProviderClient {
       case "run-wp-cli":
       case "set-denied-ips":
       case "apply-redirects":
+      case "setup-novamira":
         throw unsupportedActionRequest(PROVIDER, request);
       default:
         return assertNever(request);

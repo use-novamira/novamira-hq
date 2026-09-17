@@ -335,6 +335,12 @@ export interface ActionApplyRedirectsRequest {
 
 /** Every mutating provider request exposed by HQ. */
 export type ActionRequest =
+  | {
+      readonly kind: "setup-novamira";
+      readonly envId: string;
+      readonly enableAiAbilities?: boolean;
+      readonly signal?: AbortSignal;
+    }
   | ActionCreateSiteRequest
   | ActionCreateEnvironmentRequest
   | ActionPushEnvironmentRequest
@@ -354,6 +360,7 @@ export type ActionRequest =
   | ActionApplyRedirectsRequest;
 
 export const ACTION_REQUEST_KINDS = [
+  "setup-novamira",
   "create-site",
   "create-environment",
   "push-environment",

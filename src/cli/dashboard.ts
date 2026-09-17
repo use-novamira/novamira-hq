@@ -36,6 +36,7 @@
 
 import { spawn } from "node:child_process";
 import { createAppAcknowledgement } from "../config/app-acknowledgement.js";
+import { componentInstaller, withComponentSetup } from "../setup/components.js";
 import type { Command } from "commander";
 
 import { runDoctor } from "../doctor/index.js";
@@ -417,10 +418,14 @@ export function createDashboardHandlers(
                 store: dependencies.store,
                 hosting: dependencies.hosting,
                 history: dependencies.history,
-                appAcknowledgement: createAppAcknowledgement(
-                  dependencies.paths,
-                  dependencies.security,
-                ),
+                appAcknowledgement: withComponentSetup({
+                  acknowledgement: createAppAcknowledgement(
+                    dependencies.paths,
+                    dependencies.security,
+                  ),
+                  probe: dependencies.probeSiteCli,
+                  install: componentInstaller(io.env, process.platform),
+                }),
                 ...(dependencies.mcpConnection
                   ? { mcpConnection: dependencies.mcpConnection }
                   : {}),

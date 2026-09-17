@@ -549,6 +549,7 @@ export const createRocketNetClient: ProviderClientFactory = (context) => {
         case "set-php-version":
         case "set-denied-ips":
         case "apply-redirects":
+        case "setup-novamira":
           throw unsupportedActionRequest(PROVIDER, request);
         default:
           return assertNever(request);

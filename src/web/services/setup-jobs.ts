@@ -63,6 +63,8 @@ import { asCliError, CliError, type ErrorCode } from "../../errors.js";
 import type { HostingClientFactory } from "../../hosting/factory.js";
 import {
   provisionNovamira,
+  checkSiteCompatibility,
+  normalizeSiteUrl,
   type HttpFetch,
   type NovamiraSetupResult,
   type ProgressLevel,
@@ -114,6 +116,7 @@ export interface SetupJobService {
     profile: string,
     envId: string,
     signal: AbortSignal,
+    siteUrl?: string,
   ): Promise<ExistingNovamira | undefined>;
   /**
    * Start a run, or return the id of the one already running against this
@@ -297,15 +300,25 @@ export function createSetupJobService(
   };
 
   return {
-    inspect: async (profile, envId, signal) => {
+    inspect: async (profile, envId, signal, siteUrl) => {
       if (shuttingDown) throw unavailable();
       const client = await options.hosting.clientFromProfile(profile);
       signal.throwIfAborted();
-      return inspectExistingNovamira(client, envId, {
+      const existing = await inspectExistingNovamira(client, envId, {
         intervalSeconds: 2,
         timeoutSeconds: 60,
         signal: AbortSignal.any([signal, controller.signal]),
       });
+      if (client.provider === "hostinger" && existing?.active && siteUrl) {
+        const site = normalizeSiteUrl(siteUrl, options.environment, "--url");
+        try {
+          await checkSiteCompatibility(site, { fetch: options.fetch, signal });
+          return { ...existing, aiEnabled: true, aiDomain: site.host };
+        } catch {
+          signal.throwIfAborted();
+        }
+      }
+      return existing;
     },
     start: (input) => {
       const profile = input.profile.trim();

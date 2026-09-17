@@ -73,7 +73,7 @@ export function patchDiagnosticsOutput(
     selectorId: "diagnostics-output",
     mode: "outer",
   });
-  patchToast(stream, notice);
+  patchToast(stream, { level: "neutral", message: "" });
 }
 
 function danger(message: string): DashboardNotice {

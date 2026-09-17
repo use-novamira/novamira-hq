@@ -19,6 +19,7 @@ import {
 
 /** The complete provider capability vocabulary that HQ may publish. */
 export const HQ_PUBLIC_CAPABILITIES: ReadonlySet<string> = new Set([
+  "novamira.setup",
   "providers.validate",
   "providers.capabilities",
   "regions.list",

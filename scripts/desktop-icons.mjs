@@ -401,10 +401,36 @@ export async function generateIcons({ master, outDir }) {
   return written;
 }
 
+/** Keep the macOS icon's silhouette inside an 824px square on a 1024px canvas. */
+export async function generateMacIcon({ master, output }) {
+  const source = decodePng(await readFile(master));
+  if (source.width !== 1024 || source.height !== 1024)
+    throw new Error("macOS icon master must be 1024x1024");
+  const inset = 100;
+  const inner = toRgba8(resize(toLinearSrgbPremultiplied(source), 824));
+  const pixels = Buffer.alloc(1024 * 1024 * 4);
+  for (let row = 0; row < inner.height; row++)
+    pixels.set(
+      inner.pixels.subarray(row * inner.width * 4, (row + 1) * inner.width * 4),
+      ((row + inset) * 1024 + inset) * 4,
+    );
+  await mkdir(dirname(output), { recursive: true });
+  await writeFile(output, encodePng({ width: 1024, height: 1024, pixels }));
+  return output;
+}
+
 if (import.meta.url === new URL(`file://${argv[1]}`).href) {
   const root = fileURLToPath(new URL("..", import.meta.url));
   const outDir = argv[2] ?? join(root, "dist-desktop", "icons");
   try {
+    if (argv[2] === "--macos") {
+      if (!argv[3]) throw new Error("--macos requires an output PNG path");
+      await generateMacIcon({
+        master: join(root, "scripts/macos/icon.png"),
+        output: argv[3],
+      });
+      exit(0);
+    }
     const written = await generateIcons({
       master: join(root, "scripts", "macos", "icon.png"),
       outDir,

@@ -106,6 +106,11 @@ test("app acknowledgement and MCP connection use token-protected POST routes", a
     await acknowledgement.run(stream);
     assert.equal(accepted, true);
     assert.ok(patches.length >= 3);
+    assert.match(patches.map(renderHtml).join(""), /<h1>Add site<\/h1>/);
+    assert.doesNotMatch(
+      patches.map(renderHtml).join(""),
+      /You can now configure hosting/,
+    );
     const page = await server.dispatch(request("/mcp"));
     assert.doesNotMatch(renderHtml(page.body), /Before you start/);
     assert.match(renderHtml(page.body), /Claude Desktop/);
@@ -523,7 +528,13 @@ test("the sidebar Connect menu puts an existing site before a hosting account", 
     // Go rendered a <button>, which is inline-block; HQ renders an <a>, which is
     // inline. The pair that keeps it a full-width 38px button is this element
     // plus `.new-button`'s `display` in app.css, so pin both together.
-    assert.ok(markup.includes(">Connect a site</button>"));
+    assert.ok(
+      markup.includes('<span aria-hidden="true">+</span> Add site</button>'),
+    );
+    assert.ok(
+      markup.indexOf("<strong>Manually</strong>") <
+        markup.indexOf("<strong>From a hosting account</strong>"),
+    );
     assert.ok(markup.includes('class="new-pop"'));
     assert.ok(markup.includes('href="/providers?new=host"'));
     assert.ok(markup.includes('href="/sites?new=cli"'));
@@ -896,7 +907,7 @@ test("the Origin and Sec-Fetch-Site guards", async () => {
 /* 18-23: static assets                                                       */
 /* -------------------------------------------------------------------------- */
 
-test("all nine assets are served with their content types", async () => {
+test("all assets, including legal notices, are served with their content types", async () => {
   const { server, cleanup } = await fixture();
   try {
     for (const asset of STATIC_ASSETS) {
@@ -907,7 +918,10 @@ test("all nine assets are served with their content types", async () => {
       assert.equal(response.cacheControl, "no-cache", asset.path);
       assert.ok(response.contentLength > 0, asset.path);
       const source = await readFile(
-        new URL(`../src/web/static/${asset.path}`, import.meta.url),
+        new URL(
+          `../${asset.path === "third-party-notices.txt" ? "dist" : "src"}/web/static/${asset.path}`,
+          import.meta.url,
+        ),
       );
       assert.deepEqual(Buffer.from(response.body), source, asset.path);
       assert.equal(
@@ -967,7 +981,7 @@ test("traversal and off-allowlist asset paths are 404", async () => {
   }
 });
 
-test("the build ships all nine assets under dist/web/static", async () => {
+test("the build ships all assets under dist/web/static", async () => {
   for (const asset of STATIC_ASSETS) {
     const bytes = await readFile(
       new URL(`../dist/web/static/${asset.path}`, import.meta.url),

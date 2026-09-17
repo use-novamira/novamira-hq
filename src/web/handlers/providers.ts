@@ -40,7 +40,6 @@ import { PROVIDER_KINDS } from "../../config/schema.js";
 import { asCliError } from "../../errors.js";
 import type { JsonValue } from "../expr.js";
 import { patchPage, patchToast } from "../patch.js";
-import { connCellId } from "../patches.js";
 import { readSignals, type DashboardRequest } from "../request.js";
 import type { DashboardResponse } from "../responses.js";
 import type { RouteContext, RouteHandler } from "../routes.js";
@@ -50,7 +49,6 @@ import {
 } from "../signals.js";
 import { parseProviderForm } from "../signals-input.js";
 import type { SseStream } from "../sse.js";
-import { renderConnCell, renderProviderFlash } from "../views/providers.js";
 import type { DashboardNotice } from "../views/types.js";
 
 /** The reset every provider mutation sends before the new markup. */
@@ -124,12 +122,25 @@ export function createProviderSaveHandler(context: RouteContext): RouteHandler {
       try {
         const input = parseProviderForm(await readSignals(request));
         const saved = await context.providers.upsert(input);
-        await patchProvidersPage(
-          context,
-          stream,
-          mutationNotice("Provider profile saved.", saved.warning),
-          resetFormSignals(),
-        );
+        context.providers.clearChecked(saved.name);
+        let notice: DashboardNotice;
+        try {
+          await context.providers.validate(saved.name);
+          context.providers.recordChecked(saved.name, context.now());
+          notice = mutationNotice(
+            `${saved.name}: account saved and access verified.`,
+            saved.warning,
+          );
+        } catch {
+          // Saving succeeded: do not invite a second create or suggest that
+          // the credential was rejected when the provider may be unreachable.
+          notice = mutationNotice(
+            "Hosting account saved, but access could not be verified. Check the account details and try Verify access again.",
+            saved.warning,
+          );
+          notice = { ...notice, level: "warn" };
+        }
+        await patchProvidersPage(context, stream, notice, resetFormSignals());
       } catch (error) {
         const cliError = asCliError(error);
         context.onDiagnostic?.("dashboard", {
@@ -191,15 +202,8 @@ export function createProviderRemoveHandler(
 /**
  * Check one profile's credential against the live provider API.
  *
- * This route **never patches `#main`**, and that is the whole reason it patches
- * a computed fragment id instead: repainting the page would replace the provider
- * table under an open form and discard whatever the operator had typed. It
- * replaces exactly one `<td>`.
- *
- * Note the asymmetry Go established and HQ keeps (`server.go:307-311`): both
- * paths render the timestamp, but only the success path *records* it. So a
- * failed check shows how long ago it happened without the row ever inferring
- * "connected" from a stamp — see `views/types.ts`.
+ * Only the inline notice is patched. Never repaint an open form or imply a
+ * persistent provider connection by attaching a status badge to the account.
  */
 export function createProviderValidateHandler(
   context: RouteContext,
@@ -209,17 +213,11 @@ export function createProviderValidateHandler(
     run: async (stream) => {
       const profile = profileParameter(request);
       const at = context.now();
-      let parsed = false;
       try {
         await readSignals(request);
-        parsed = true;
         await context.providers.validate(profile);
         context.providers.recordChecked(profile, at);
-        stream.patchElements(renderConnCell(profile, "connected", at), {
-          selectorId: connCellId(profile),
-          mode: "outer",
-        });
-        patchToast(stream, ok(`${profile} is connected.`));
+        patchToast(stream, ok(`${profile}: access verified.`));
       } catch (error) {
         const cliError = asCliError(error);
         context.onDiagnostic?.("dashboard", {
@@ -227,21 +225,6 @@ export function createProviderValidateHandler(
           code: cliError.code,
         });
         const notice = danger(cliError.message);
-        if (parsed && profile !== "") {
-          stream.patchElements(renderConnCell(profile, "error", at), {
-            selectorId: connCellId(profile),
-            mode: "outer",
-          });
-        } else {
-          // A malformed body, or no profile at all, means there is no cell to
-          // patch — `connCellId("")` is itself an error. Go's `patchProviderFlash`
-          // (`server.go:299`) exists for exactly this, and it is the only
-          // producer of the `provider-flash` fragment.
-          stream.patchElements(renderProviderFlash(notice), {
-            selectorId: "provider-flash",
-            mode: "outer",
-          });
-        }
         patchToast(stream, notice);
       }
       stream.close();

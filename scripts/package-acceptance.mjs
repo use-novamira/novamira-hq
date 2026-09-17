@@ -62,8 +62,9 @@ const cleanEnvironment = {
   npm_config_package_lock: "false",
 };
 
-/** The nine browser assets `scripts/copy-static.mjs` puts into `dist/`. */
+/** Browser assets plus the offline generated legal notices. */
 const STATIC_ASSETS = [
+  "third-party-notices.txt",
   "app.css",
   "datastar.js",
   "relative-time.js",
@@ -124,6 +125,7 @@ try {
   assert.deepEqual(packageJson.files, [
     "dist",
     "skills",
+    "legal",
     "README.md",
     "LICENSE",
   ]);
@@ -138,6 +140,7 @@ try {
     "dist",
     "package.json",
     "skills",
+    "legal",
   ]);
   for (const file of manifest.files)
     assert.ok(
@@ -145,10 +148,16 @@ try {
       `unexpected package file: ${file.path}`,
     );
   const required = [
+    "legal/manifest.json",
+    "legal/AUDIT.md",
+    "legal/licenses/datastar.txt",
+    "legal/licenses/commander.txt",
+    "legal/licenses/mpl-2.0.txt",
     "LICENSE",
     "README.md",
     "dist/index.js",
     "dist/mcp/icon.png",
+    "dist/mcp/LICENSE",
     "skills/novamira-hq/SKILL.md",
     "skills/core/SKILL.md",
     "skills/hosting/SKILL.md",

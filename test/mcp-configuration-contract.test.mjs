@@ -118,9 +118,24 @@ test("the downloaded MCP bundle runs after relocation and lists real tools", asy
   assert.equal(zip.readUInt32LE(offset), 0x02014b50);
   assert.deepEqual(
     [...files.keys()],
-    ["manifest.json", "launch.json", "server/index.cjs", "icon.png"],
+    [
+      "manifest.json",
+      "launch.json",
+      "server/index.cjs",
+      "icon.png",
+      "LICENSE",
+      "README.txt",
+    ],
   );
   const manifest = JSON.parse(files.get("manifest.json"));
+  assert.deepEqual(
+    files.get("LICENSE"),
+    await readFile(new URL("../LICENSE", import.meta.url)),
+  );
+  assert.match(
+    files.get("README.txt").toString(),
+    /complete, unminified launcher source/,
+  );
   assert.equal(manifest.icon, "icon.png");
   assert.deepEqual(
     files.get(manifest.icon),

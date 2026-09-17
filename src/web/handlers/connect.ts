@@ -44,7 +44,8 @@
  * would turn one click into a fan-out across every hosting API.
  */
 
-import { asCliError } from "../../errors.js";
+import { asCliError, CliError } from "../../errors.js";
+import { isSiteProfileName } from "../../site-profiles.js";
 import { unavailableHint } from "../../connection-state.js";
 import { normalizeSiteUrl } from "../../provisioning/index.js";
 import { patchToast } from "../patch.js";
@@ -82,17 +83,22 @@ export function createConnectHandler(context: RouteContext): RouteHandler {
         const hostingProfile = (
           request.query.get("hosting_profile") ?? ""
         ).trim();
+        const name = (request.query.get("name") ?? "").trim();
+        if (name !== "" && !isSiteProfileName(name)) {
+          throw new CliError("usage_error", "Invalid site profile name.");
+        }
         const envId = (request.query.get("env") ?? "").trim();
         if (hostingProfile !== "" && envId !== "") {
           patchToast(stream, {
             level: "neutral",
             message:
-              "Checking Novamira on this environment. Your hosting provider may take 30 seconds or longer.",
+              "Checking whether Novamira is installed, active and ready on this site… Your hosting provider may take 30 seconds or longer. If setup is needed, you will be asked to approve it before any changes.",
           });
           const existing = await context.setupJobs.inspect(
             hostingProfile,
             envId,
             request.signal,
+            site.siteUrl,
           );
           if (
             !existing?.active ||
@@ -119,9 +125,13 @@ export function createConnectHandler(context: RouteContext): RouteHandler {
         if (hostingProfile !== "" && envId !== "")
           patchToast(stream, {
             level: "neutral",
-            message: "Waiting for authorization in your browser…",
+            message:
+              "Novamira is ready. Opening authorization in your browser… Approve access there, then return here. This page will update when authorization completes.",
           });
-        const outcome = await context.integration.connect(site.siteUrl);
+        const outcome = await context.integration.connect(
+          site.siteUrl,
+          name || undefined,
+        );
         if (outcome.kind === "failed") {
           // A fixed sentence from a closed set. No child output, ever.
           patchToast(stream, danger(unavailableHint(outcome.reason)));

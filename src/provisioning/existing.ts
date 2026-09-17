@@ -44,9 +44,19 @@ export async function inspectExistingNovamira(
   envId: string,
   budget: PollBudget,
 ): Promise<ExistingNovamira | undefined> {
-  const plugins = rows(
-    await runWpCliForOutput(client, envId, EXISTING_NOVAMIRA_COMMAND, budget),
-  );
+  const plugins =
+    client.provider === "hostinger"
+      ? rows(
+          JSON.stringify(await client.read({ kind: "plugins", envId })),
+        ).filter((entry) => asRecord(entry)?.name === "novamira")
+      : rows(
+          await runWpCliForOutput(
+            client,
+            envId,
+            EXISTING_NOVAMIRA_COMMAND,
+            budget,
+          ),
+        );
   if (plugins.length === 0) return undefined;
   const plugin = asRecord(plugins[0]);
   if (
@@ -76,6 +86,14 @@ export async function inspectExistingNovamira(
     );
   let enabled = false;
   let domain: string | null = null;
+  if (client.provider === "hostinger")
+    return {
+      version: plugin.version,
+      active: plugin.status === "active",
+      networkActive: false,
+      aiEnabled: false,
+      aiDomain: null,
+    };
   // Kinsta refuses commas and wildcards, even inside quoted arguments. Read
   // only the two exact option names; missing options yield an empty list.
   const options = [];

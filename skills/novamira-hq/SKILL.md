@@ -6,7 +6,11 @@ allowed-tools: Bash(novamira-hq:*)
 
 # Novamira HQ
 
-Before using Novamira HQ commands, load the current version-matched instructions:
+When using the Novamira HQ MCP connector, first call `novamira_hq_guide`.
+For a complete available site inventory, use `novamira_hq_sites_list`, not the
+hosting-only list. MCP provides this guidance even without an installed skill.
+
+Before using Novamira HQ terminal commands, load the current version-matched instructions:
 
 ```bash
 novamira-hq skills get core

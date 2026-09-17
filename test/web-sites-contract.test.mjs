@@ -1024,6 +1024,12 @@ test("16: matched CLI profiles stay in the hosting row and CLI-only sites are se
   // look like it came from the first.
   assert.ok(markup.includes("<strong>staging</strong>"));
   assert.ok(markup.includes("<strong>staging-2</strong>"));
+  assert.ok(
+    markup.includes("/_dashboard/connect?url=https%3A%2F%2Fenv-c.example.com"),
+  );
+  assert.ok(markup.includes("name=staging"));
+  assert.ok(markup.includes("hosting_profile=prod"));
+  assert.ok(markup.includes("env=env-c"));
   assert.ok(markup.includes(">Disconnect</button>"));
   assert.ok(
     markup.includes(
@@ -1074,17 +1080,19 @@ test("18: the unified list renders unmatched CLI profiles as an inventory group"
     siteProfiles,
   });
   assert.ok(markup.includes('<section class="provider-sites cli-sites">'));
-  assert.ok(markup.includes("<h2>Sites added by URL</h2>"));
+  assert.ok(markup.includes("<h2>Manually added sites</h2>"));
+  assert.ok(
+    markup.indexOf("<h2>Manually added sites</h2>") <
+      markup.indexOf("<p>Hosting account · "),
+  );
   assert.ok(
     markup.includes(
-      'class="inventory-group-heading"><h2>Sites added by URL</h2>',
+      'class="inventory-group-heading"><h2>Manually added sites</h2>',
     ),
   );
   assert.ok(markup.includes("<p>Hosting account · "));
   assert.ok(!markup.includes('class="hosting-account-heading"'));
-  assert.ok(
-    markup.includes("Added directly, without a linked hosting account."),
-  );
+  assert.ok(markup.includes("Sites not linked to a hosting account."));
   assert.ok(markup.includes("direct.example.com"));
   assert.ok(
     markup.includes(
@@ -1109,7 +1117,12 @@ test("19: adding a CLI site sends the optional custom name", async () => {
     }),
   );
   assert.deepEqual(connectCalls, ["https://example.com my-site"]);
-  assert.deepEqual(recorder.order, ["main/outer", "nav/outer", "toast/outer"]);
+  assert.deepEqual(recorder.order, [
+    "toast/outer",
+    "main/outer",
+    "nav/outer",
+    "toast/outer",
+  ]);
   assert.deepEqual(recorder.signals, [
     { cliSites: { open: false, url: "", name: "", loading: false } },
   ]);
@@ -1139,7 +1152,9 @@ test("a CLI profile on a site without a compatible Novamira setup is explicit", 
   const { markup } = await resultMarkup({ siteProfiles });
   assert.ok(markup.includes("Novamira not ready"));
   assert.ok(markup.includes("plugin may be missing"));
-  assert.ok(markup.includes(">Reconnect</button>"));
+  assert.ok(markup.includes(">Reconnect</span>"));
+  assert.ok(markup.includes(">Reconnecting…</span>"));
+  assert.ok(markup.includes('data-indicator="reconnecting'));
   assert.ok(!markup.includes('class="status-action'));
   assert.ok(!markup.includes(">Unknown</span>"));
 });

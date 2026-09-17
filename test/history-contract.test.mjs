@@ -534,5 +534,8 @@ test("history view explains uncertainty and escapes targets", async () => {
   assert.match(markup, /Needs attention \(1\)/);
   assert.match(markup, /&lt;script&gt;/);
   assert.doesNotMatch(markup, /<script>bad/);
-  assert.match(markup, /does not poll the provider or repeat operations/);
+  assert.match(markup, /does not check the provider or repeat operations/);
+  assert.doesNotMatch(markup, /<table/);
+  assert.match(markup, /Request details/);
+  assert.match(markup, /Copy report/);
 });

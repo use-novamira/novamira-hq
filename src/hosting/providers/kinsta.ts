@@ -36,6 +36,7 @@ import {
   type ProviderClient,
   type ReadRequest,
   assertNever,
+  unsupportedActionRequest,
 } from "../client.js";
 import type {
   ProviderClientContext,
@@ -531,6 +532,8 @@ class KinstaClient implements ProviderClient {
           request.body,
         );
 
+      case "setup-novamira":
+        throw unsupportedActionRequest(PROVIDER, request);
       default:
         return assertNever(request);
     }

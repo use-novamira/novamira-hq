@@ -15,6 +15,33 @@ import { CliError } from "../errors.js";
 export const CREDENTIAL_SERVICE = "ai.novamira.hq";
 export const CREDENTIAL_LABEL = "Novamira HQ";
 
+// Keychain access can wait for a person to unlock or authorize it. The
+// five-second command default is not an interactive authorization deadline.
+export const MACOS_KEYCHAIN_TIMEOUT_MS = 120_000;
+
+class SerialCommandExecutor implements CommandExecutor {
+  private pending: Promise<unknown> = Promise.resolve();
+
+  constructor(private readonly delegate: CommandExecutor) {}
+
+  execute(
+    command: string,
+    args: readonly string[],
+    stdin?: string,
+    environment?: NodeJS.ProcessEnv,
+  ): Promise<CommandResult> {
+    const result = this.pending.then(() =>
+      this.delegate.execute(command, args, stdin, environment),
+    );
+    // A denied request must not prevent the next request from running.
+    this.pending = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+}
+
 const MACOS_KEYCHAIN_WRITE_SCRIPT = String.raw`
 ObjC.import('Foundation');
 ObjC.import('Security');
@@ -23,17 +50,45 @@ function run(argv) {
   const service = argv[1];
   const secret = $.NSFileHandle.fileHandleWithStandardInput.readDataToEndOfFile;
   const query = $.NSMutableDictionary.dictionary;
-  query.setObjectForKey($.kSecClassGenericPassword, $.kSecClass);
-  query.setObjectForKey($(service), $.kSecAttrService);
-  query.setObjectForKey($(account), $.kSecAttrAccount);
+  // Security constants are CFStringRef values. JXA must bridge them to
+  // Objective-C objects before inserting them into an NSDictionary.
+  query.setObjectForKey(ObjC.castRefToObject($.kSecClassGenericPassword), ObjC.castRefToObject($.kSecClass));
+  query.setObjectForKey($(service), ObjC.castRefToObject($.kSecAttrService));
+  query.setObjectForKey($(account), ObjC.castRefToObject($.kSecAttrAccount));
   const update = $.NSMutableDictionary.dictionary;
-  update.setObjectForKey(secret, $.kSecValueData);
+  update.setObjectForKey(secret, ObjC.castRefToObject($.kSecValueData));
   let status = $.SecItemUpdate(query, update);
   if (status === -25300) {
-    query.setObjectForKey(secret, $.kSecValueData);
+    query.setObjectForKey(secret, ObjC.castRefToObject($.kSecValueData));
     status = $.SecItemAdd(query, null);
   }
   if (status !== 0) throw new Error('Keychain write failed with status ' + status);
+}`;
+
+// Use the same signed system executable for every Keychain operation. Mixing
+// osascript writes with security reads gives the Keychain two different clients.
+const MACOS_KEYCHAIN_READ_DELETE_SCRIPT = String.raw`
+ObjC.import('Foundation');
+ObjC.import('Security');
+function run(argv) {
+  const query = $.NSMutableDictionary.dictionary;
+  const object = (value) => ObjC.castRefToObject(value);
+  query.setObjectForKey(object($.kSecClassGenericPassword), object($.kSecClass));
+  query.setObjectForKey($(argv[1]), object($.kSecAttrService));
+  query.setObjectForKey($(argv[0]), object($.kSecAttrAccount));
+  if (argv[2] === 'delete') {
+    const status = $.SecItemDelete(query);
+    if (status !== 0 && status !== -25300) throw new Error('Keychain delete failed');
+    return;
+  }
+  query.setObjectForKey($.NSNumber.numberWithBool(true), object($.kSecReturnData));
+  query.setObjectForKey(object($.kSecMatchLimitOne), object($.kSecMatchLimit));
+  const result = Ref();
+  const status = $.SecItemCopyMatching(query, result);
+  if (status === -25300) return 'null';
+  if (status !== 0) throw new Error('Keychain read failed');
+  const value = $.NSString.alloc.initWithDataEncoding(object(result[0]), $.NSUTF8StringEncoding);
+  return JSON.stringify(ObjC.unwrap(value));
 }`;
 
 export interface CommandResult {
@@ -196,24 +251,48 @@ abstract class CommandCredentialBackend implements CredentialBackend {
 }
 
 export class MacOsKeychainBackend extends CommandCredentialBackend {
+  constructor(
+    executor: CommandExecutor = new SpawnCommandExecutor(
+      MACOS_KEYCHAIN_TIMEOUT_MS,
+    ),
+  ) {
+    // Inventory refreshes and account checks must not open competing prompts.
+    // Each child's deadline starts only when that child is actually spawned.
+    super(new SerialCommandExecutor(executor));
+  }
+
   async probe(): Promise<boolean> {
-    return this.available("security", ["help"]);
+    return this.available("/usr/bin/osascript", [
+      "-l",
+      "JavaScript",
+      "-e",
+      "ObjC.import('Security'); 'ok'",
+    ]);
   }
 
   async read(account: string): Promise<string | undefined> {
-    const result = await this.executor.execute("security", [
-      "find-generic-password",
-      "-s",
-      CREDENTIAL_SERVICE,
-      "-a",
+    const result = await this.executor.execute("/usr/bin/osascript", [
+      "-l",
+      "JavaScript",
+      "-e",
+      MACOS_KEYCHAIN_READ_DELETE_SCRIPT,
       account,
-      "-w",
+      CREDENTIAL_SERVICE,
+      "read",
     ]);
-    // 44 is `security`'s "the item cannot be found", and only a clean exit
-    // with that status means it.
-    if (this.exitedWith(result, 44)) return undefined;
     this.requireSuccess(result);
-    return result.stdout.replace(/\r?\n$/, "");
+    let value: unknown;
+    try {
+      value = JSON.parse(result.stdout);
+    } catch {
+      /* Never expose child output. */
+    }
+    if (value === null) return undefined;
+    if (typeof value === "string") return value;
+    throw new CliError(
+      "integration_unavailable",
+      "The OS credential service returned an invalid response.",
+    );
   }
 
   async replace(account: string, serialized: string): Promise<void> {
@@ -221,7 +300,7 @@ export class MacOsKeychainBackend extends CommandCredentialBackend {
     // interactive prompt truncates long values. JXA calls Security.framework
     // directly and reads the complete secret from stdin instead.
     const result = await this.executor.execute(
-      "osascript",
+      "/usr/bin/osascript",
       [
         "-l",
         "JavaScript",
@@ -236,14 +315,16 @@ export class MacOsKeychainBackend extends CommandCredentialBackend {
   }
 
   async delete(account: string): Promise<void> {
-    const result = await this.executor.execute("security", [
-      "delete-generic-password",
-      "-s",
-      CREDENTIAL_SERVICE,
-      "-a",
+    const result = await this.executor.execute("/usr/bin/osascript", [
+      "-l",
+      "JavaScript",
+      "-e",
+      MACOS_KEYCHAIN_READ_DELETE_SCRIPT,
       account,
+      CREDENTIAL_SERVICE,
+      "delete",
     ]);
-    if (!this.exitedWith(result, 44)) this.requireSuccess(result);
+    this.requireSuccess(result);
   }
 
   diagnostic(): CredentialDiagnostic {
@@ -395,7 +476,7 @@ export type OsCredentialBackend =
 
 export function osCredentialBackend(
   platform: NodeJS.Platform,
-  executor: CommandExecutor = new SpawnCommandExecutor(),
+  executor?: CommandExecutor,
 ): OsCredentialBackend {
   if (platform === "darwin") return new MacOsKeychainBackend(executor);
   if (platform === "win32")

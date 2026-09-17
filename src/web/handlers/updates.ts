@@ -76,7 +76,8 @@ export function patchUpdateCard(
     selectorId: "updates-card",
     mode: "outer",
   });
-  patchToast(stream, notice);
+  // The card already contains a failed check's error message.
+  patchToast(stream, view.error ? EMPTY_NOTICE : notice);
 }
 
 function boundedMessage(error: unknown): string {

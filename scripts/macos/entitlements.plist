@@ -14,12 +14,12 @@
       dies before it prints anything.
 
   disable-library-validation
-      `@webview/webview` resolves its native library through `@denosaurs/plug`,
+      The bare executable's `@webview/webview` resolves its native library through `@denosaurs/plug`,
       which downloads `libwebview.<arch>.dylib` into the Deno cache on first run
       and hands it to `Deno.dlopen`. That dylib is not signed by our Team ID, so
-      library validation refuses to load it. Vendoring the dylib into
-      `Contents/Frameworks/` and signing it with the bundle is how this key gets
-      deleted; until then the window cannot open without it.
+      library validation refuses to load it. The .app now bundles and signs its
+      dylib in Contents/Frameworks. This shared entitlement remains for the bare
+      executable until the two signing policies are separated and verified.
 
   Nothing here grants network, file or process access: those are Deno's own
   compile-time permissions, and the sandbox entitlements are not in use.

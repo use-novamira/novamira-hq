@@ -34,7 +34,6 @@ import { credentialId } from "../dist/credentials/store.js";
 import { createHostingClientFactory } from "../dist/hosting/factory.js";
 import { createDashboardServer } from "../dist/web/index.js";
 import { shuffledProviderKinds } from "../dist/web/views/providers.js";
-import { connCellId } from "../dist/web/patches.js";
 
 const TOKEN = "d".repeat(64);
 const TOKEN_HEADER = "x-novamira-dashboard-token";
@@ -282,14 +281,13 @@ test("1: only an empty root shows onboarding; Providers remains a section", asyn
   const markup = await page(server, "/");
   assert.ok(markup.includes('class="page onboarding"'));
   assert.equal((markup.match(/class="onboard-card[ "]/g) ?? []).length, 2);
-  assert.ok(markup.includes("Welcome to Novamira HQ"));
-  assert.ok(markup.includes("Your site. Your AI."));
-  assert.ok(markup.includes("Nothing in between."));
+  assert.ok(markup.includes("<h1>Add site</h1>"));
+  assert.ok(markup.includes("Then configure your AI client"));
   assert.ok(markup.includes("Connect a hosting account"));
-  assert.ok(markup.includes("Connect a site by URL"));
+  assert.ok(markup.includes("<h2>Manually</h2>"));
   assert.ok(
-    markup.indexOf("Connect a site by URL") <
-      markup.indexOf("Connect a hosting account"),
+    markup.indexOf("<h2>Manually</h2>") <
+      markup.indexOf("<h2>From a hosting account</h2>"),
   );
   assert.ok(markup.includes('href="/sites?new=cli"'));
   assert.ok(markup.includes('id="provider-flash"'));
@@ -402,7 +400,11 @@ test("2b: provider choices can be shuffled without favoring the catalog order", 
 test("3: the table has Go's four columns and no invented ones", async () => {
   const { server } = await fixture({ config: PROFILE_CONFIG });
   const markup = await page(server, "/providers");
-  assert.ok(markup.includes("<th>Connection</th>"));
+  assert.ok(!markup.includes("<th>Last check</th>"));
+  assert.ok(markup.includes('<details class="profile-menu">'));
+  assert.ok(markup.includes('aria-label="More actions for prod"'));
+  assert.ok(markup.includes('href="/history?profile=prod">Activity</a>'));
+  assert.ok(!markup.includes("<th>Connection</th>"));
   assert.ok(markup.includes("<th>Name</th>"));
   assert.ok(markup.includes("<th>Provider</th>"));
   for (const gone of [
@@ -412,9 +414,9 @@ test("3: the table has Go's four columns and no invented ones", async () => {
     "<th>Default</th>",
   ])
     assert.ok(!markup.includes(gone), gone);
-  assert.ok(markup.includes(">Check connection</button>"));
+  assert.ok(markup.includes(">Verify access</button>"));
   assert.ok(!markup.includes(">Validate</button>"));
-  assert.ok(markup.includes("1 provider profiles"));
+  assert.ok(markup.includes("1 hosting account"));
   assert.ok(
     markup.includes('href="/providers?actions=prod">Available actions</a>'),
   );
@@ -545,7 +547,14 @@ test("6: a posted credential reaches the store and nothing else, ever", async ()
   assert.equal(recorder.signals[0].providerForm.provider, "kinsta");
   assert.equal(recorder.signals[0].providerForm.detailsOpen, false);
   assert.equal(recorder.signals[0].providerForm.detailsOpen, false);
-  assert.ok(recorder.find("toast").markup.includes("Provider profile saved."));
+  assert.ok(
+    recorder.find("main").markup.includes("account saved and access verified."),
+  );
+  assert.ok(
+    !recorder
+      .find("toast")
+      .markup.includes("account saved and access verified."),
+  );
   assert.ok(recorder.closed);
 
   // And neither does the re-rendered page.
@@ -563,11 +572,29 @@ test("7: saving onto an existing name without force is Go's Edit notice", async 
     apiBaseUrl: "",
     force: false,
   });
-  const toast = recorder.find("toast").markup;
+  const toast = recorder.find("main").markup;
   assert.ok(toast.includes("Open it in Edit"));
   assert.ok(toast.includes("danger"));
   // No signal patch on the failure path: the operator's values stay in the form.
   assert.equal(recorder.signals.length, 0);
+  assert.ok(!recorder.body.includes(SECRET));
+});
+
+test("saving checks the connection immediately and reports an unverified saved account honestly", async () => {
+  const { server, store } = await fixture({
+    client: { validateError: new Error(SECRET) },
+  });
+  const { recorder } = await save(server, {
+    profile: "unverified",
+    provider: "kinsta",
+    credentialValue: SECRET,
+  });
+  assert.ok(await store.getHostingProfile("unverified"));
+  assert.match(
+    recorder.find("main").markup,
+    /saved, but access could not be verified/,
+  );
+  assert.doesNotMatch(recorder.body, /data-checked-at/);
   assert.ok(!recorder.body.includes(SECRET));
 });
 
@@ -631,7 +658,7 @@ test("10: remove deletes the profile, its secret and its check stamp", async () 
       body: JSON.stringify({ token: TOKEN }),
     }),
   );
-  assert.ok((await page(server, "/providers")).includes("data-checked-at"));
+  assert.ok(!(await page(server, "/providers")).includes("data-checked-at"));
 
   const { recorder } = await sse(
     server,
@@ -640,7 +667,7 @@ test("10: remove deletes the profile, its secret and its check stamp", async () 
     }),
   );
   assert.equal(Object.keys((await store.load()).hostingProfiles).length, 0);
-  assert.ok(recorder.find("toast").markup.includes("prod removed."));
+  assert.ok(recorder.find("main").markup.includes("prod removed."));
   assert.deepEqual(
     recorder.elements.map((patch) => patch.selectorId),
     ["main", "nav", "toast"],
@@ -670,7 +697,10 @@ test("10: remove deletes the profile, its secret and its check stamp", async () 
     force: false,
   });
   const markup = await page(server, "/providers");
-  assert.ok(!markup.includes("data-checked-at"));
+  assert.ok(
+    !markup.includes("data-checked-at"),
+    "a checked account does not acquire a persistent status badge",
+  );
 });
 
 /* -------------------------------------------------------------------------- */
@@ -687,13 +717,9 @@ test("11: a successful validate patches only the cell and the toast", async () =
   );
   assert.deepEqual(
     recorder.elements.map((patch) => `${patch.selectorId}/${patch.mode}`),
-    [`${connCellId("prod")}/outer`, "toast/outer"],
+    ["toast/outer"],
   );
-  const cell = recorder.find(connCellId("prod")).markup;
-  assert.ok(cell.startsWith(`<td id="${connCellId("prod")}"`));
-  assert.ok(cell.includes('<span class="pill ok">Connected</span>'));
-  assert.ok(cell.includes(`data-checked-at="${String(NOW)}"`));
-  assert.ok(recorder.find("toast").markup.includes("prod is connected."));
+  assert.ok(recorder.find("toast").markup.includes("prod: access verified."));
   // A validate must never repaint the page out from under an open form.
   assert.equal(recorder.find("main"), undefined);
   assert.equal(recorder.find("nav"), undefined);
@@ -714,16 +740,14 @@ test("12: a failing validate shows Error, keeps no stamp, and never patches main
       body: JSON.stringify({ token: TOKEN }),
     }),
   );
-  const cell = recorder.find(connCellId("prod")).markup;
-  assert.ok(cell.includes('<span class="pill danger">Error</span>'));
-  assert.ok(cell.includes("data-checked-at"));
+  assert.equal(recorder.elements.length, 1);
   assert.equal(recorder.find("main"), undefined);
   assert.ok(recorder.find("toast").markup.includes("danger"));
 
   // Go rendered the stamp on the failure path but did not record it, so the
   // page render still says "Not checked" rather than inferring a success.
   const markup = await page(server, "/providers");
-  assert.ok(markup.includes(">Not checked</span>"));
+  assert.ok(!markup.includes(">Not checked</span>"));
   assert.ok(!markup.includes("data-checked-at"));
 });
 
@@ -737,11 +761,9 @@ test("13: a malformed body patches #provider-flash, the only producer of it", as
   );
   assert.deepEqual(
     recorder.elements.map((patch) => `${patch.selectorId}/${patch.mode}`),
-    ["provider-flash/outer", "toast/outer"],
+    ["toast/outer"],
   );
-  const flash = recorder.find("provider-flash").markup;
-  assert.ok(flash.startsWith('<div id="provider-flash">'));
-  assert.ok(flash.includes('class="notice danger"'));
+  assert.ok(recorder.find("toast").markup.includes("danger"));
 });
 
 test("14: the connection cell states are Go's four", async () => {
@@ -751,7 +773,7 @@ test("14: the connection cell states are Go's four", async () => {
     environment: {},
   });
   assert.ok(
-    (await page(server, "/providers")).includes(
+    !(await page(server, "/providers")).includes(
       '<span class="pill warn">No credential</span>',
     ),
   );
@@ -759,7 +781,7 @@ test("14: the connection cell states are Go's four", async () => {
   // `unchecked`: the variable is present, nothing has been validated.
   const withEnv = await fixture({ config: PROFILE_CONFIG });
   const before = await page(withEnv.server, "/providers");
-  assert.ok(before.includes('<span class="pill">Not checked</span>'));
+  assert.ok(!before.includes('<span class="pill">Not checked</span>'));
   assert.ok(!before.includes("data-checked-at"));
 
   // `connected`: a recorded, successful check.
@@ -770,8 +792,8 @@ test("14: the connection cell states are Go's four", async () => {
     }),
   );
   const after = await page(withEnv.server, "/providers");
-  assert.ok(after.includes('<span class="pill ok">Connected</span>'));
-  assert.ok(after.includes(`data-checked-at="${String(NOW)}"`));
+  assert.ok(!after.includes('<span class="pill ok">Verified</span>'));
+  assert.ok(!after.includes("data-checked-at"));
   assert.ok(!after.includes(">Not checked</span>"));
 });
 

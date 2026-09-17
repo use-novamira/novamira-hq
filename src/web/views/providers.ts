@@ -85,7 +85,11 @@ import {
   type Html,
 } from "../html.js";
 import { connCellId } from "../patches.js";
-import { connCheckingSignal, providerDetailsSignal } from "../signals.js";
+import {
+  connCheckingSignal,
+  providerDetailsSignal,
+  dynamicSignalPath,
+} from "../signals.js";
 import { renderNotice } from "./layout.js";
 import {
   renderProviderActionsPage,
@@ -340,7 +344,7 @@ export function renderProvidersPage(model: ProvidersPageModel): Html {
     addProfile,
   )}>Connect hosting account</button><a class="button secondary"${hrefAttr(
     url("/providers"),
-  )}>Refresh</a></div></header>${renderProviderFlash(
+  )}>Refresh</a><a class="button secondary"${hrefAttr(url("/history"))}>Hosting history</a></div></header>${renderProviderFlash(
     model.notice,
   )}<div class="provider-grid">${renderProviderForm(
     model.formOpen,
@@ -358,14 +362,14 @@ function renderOnboarding(model: ProvidersPageModel): Html {
     set("providerForm.detailsOpen", jsBoolean(false)),
     focusElementById("provider-choice-heading"),
   );
-  return html`<section class="page onboarding"><header class="page-head"><div><span class="eyebrow">Welcome to Novamira HQ</span><h1>Your site. Your AI.<br>Nothing in between.</h1><p class="lede">Manage your hosting environments and prepare sites for Novamira. Choose how you want to start.</p></div></header>${renderProviderFlash(
+  return html`<section class="page onboarding"><header class="page-head"><div><h1>Add site</h1><p class="lede">Add a site manually or from a hosting account. Then configure your AI client to manage your sites.</p></div></header>${renderProviderFlash(
     model.notice,
   )}<div class="onboard-cards"><a class="onboard-card feat"${hrefAttr(
     url("/sites", { new: "cli" }),
-  )}><span class="kicker">Existing site</span><h2>Connect a site by URL</h2><p>Connect a site directly when Novamira is already installed and you know its URL.</p><span class="button primary">Connect a site by URL</span></a><button class="onboard-card" type="button"${ds.on(
+  )}><h2>Manually</h2><p>Connect a site directly when Novamira is already installed and you know its URL.</p><span class="button primary">Add site manually</span></a><button class="onboard-card" type="button"${ds.on(
     "click",
     openForm,
-  )}><span class="kicker">Hosting account</span><h2>Connect a hosting account</h2><p>Discover sites and environments from an existing account with a provider supported by Novamira HQ.</p><span class="button primary">Connect a hosting account</span></button></div>${renderProviderForm(
+  )}><h2>From a hosting account</h2><p>Discover sites and environments from an existing account with a provider supported by Novamira HQ.</p><span class="button primary">Connect a hosting account</span></button></div>${renderProviderForm(
     model.formOpen,
   )}</section>`;
 }
@@ -387,6 +391,7 @@ function renderOnboarding(model: ProvidersPageModel): Html {
  * signals travel in the body. `expr.get` refuses that scope outright.
  */
 export function renderProviderForm(open: boolean): Html {
+  const saving = dynamicSignalPath("providerSaving", "account");
   const action = post(url("/_dashboard/providers/save"), {
     include: ["providerForm"],
   });
@@ -396,7 +401,7 @@ export function renderProviderForm(open: boolean): Html {
     "form-panel",
     "ds-toggle",
     open && "open",
-  )}${ds.classes({ open: signal("providerForm.open") })}${ds.onSubmit(
+  )}${ds.classes({ open: signal("providerForm.open") })}${ds.indicator(saving)}${ds.onSubmit(
     action,
   )}><div class="panel-head"><div><h2>Connect a hosting account</h2><p>Novamira HQ uses this account to discover its sites and environments.</p></div></div><input type="hidden"${ds.bind(
     "providerForm.provider",
@@ -445,7 +450,7 @@ export function renderProviderForm(open: boolean): Html {
     placeholder: meta("companyPlaceholder"),
   })}><small class="field-help"${ds.text(
     meta("companyHelp"),
-  )}></small></label></div><div class="button-row"><button class="button primary" type="submit">Save account</button><button class="button secondary" type="button"${ds.on(
+  )}></small></label></div><div class="button-row"><button class="button primary" type="submit"${ds.attrs({ disabled: signal(saving) })}><span${ds.classes({ hidden: signal(saving) })}>Save and connect</span><span class="loading-inline ds-toggle"${ds.classes({ open: signal(saving) })}>Connecting…</span></button><button class="button secondary" type="button"${ds.on(
     "click",
     resetProviderForm(false),
   )}>Cancel</button></div></section></form>`;
@@ -460,7 +465,7 @@ export function renderProviderTable(
   profiles: readonly HostingProfileView[],
   formOpen: boolean,
 ): Html {
-  const count = `${String(profiles.length)} provider profiles`;
+  const count = `${String(profiles.length)} hosting ${profiles.length === 1 ? "account" : "accounts"}`;
   return html`<section${classAttr(
     "panel",
     "table-panel",
@@ -469,8 +474,8 @@ export function renderProviderTable(
     hidden: signal("providerForm.open"),
   })}><div class="panel-head"><div><h2>Configured</h2><p>${count}</p></div></div>${
     profiles.length === 0
-      ? html`<div class="empty">No hosting accounts connected.</div>`
-      : html`<div class="table-wrap"><table><thead><tr><th>Name</th><th>Provider</th><th>Connection</th><th></th></tr></thead><tbody>${profiles.map(
+      ? html`<div class="empty">No hosting accounts configured.</div>`
+      : html`<div class="table-wrap provider-table-wrap"><table><thead><tr><th>Name</th><th>Provider</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>${profiles.map(
           (profile) => renderProviderRow(profile),
         )}</tbody></table></div>`
   }</section>`;
@@ -487,27 +492,25 @@ export function renderProviderRow(profile: HostingProfileView): Html {
   const details = providerDetailsSignal(profile.name);
   return html`<tr><td><strong>${profile.name}</strong></td><td>${providerLabelFor(
     profile.provider,
-  )}</td>${renderConnCell(
-    profile.name,
-    pageConnState(profile),
-    profile.lastCheckedMillis,
-  )}<td class="actions"><a class="button link"${hrefAttr(url("/providers", { actions: profile.name }))}>Available actions</a><button class="button link" type="button"${ds.on(
+  )}</td><td class="actions"><details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", "More actions for " + profile.name)}>⋯</summary><div class="profile-menu-popover"><a class="button tiny quiet profile-menu-action"${hrefAttr(url("/providers", { actions: profile.name }))}>Available actions</a><a class="button tiny quiet profile-menu-action"${hrefAttr(url("/history", { profile: profile.name }))}>Activity</a><button class="button tiny quiet profile-menu-action" type="button"${ds.on(
     "click",
     editProviderForm(profile),
-  )}>Edit</button><button class="button link" type="button"${ds.on(
+  )}>Edit</button><button class="button tiny quiet profile-menu-action" type="button"${ds.on(
     "click",
     toggle(details),
   )}>Details</button>${renderCheckConnectionButton(
     profile.name,
-  )}<button class="button link" type="button"${ds.on(
+  )}<hr><button class="button tiny quiet profile-menu-action danger" type="button"${ds.on(
     "click",
     confirmThen(
       `Remove hosting account ${profile.name} from Novamira HQ?`,
       providerAction("/_dashboard/providers/remove", profile.name),
     ),
-  )}>Remove</button></td></tr><tr class="details-row ds-toggle"${ds.classes({
-    open: signal(details),
-  })}><td colspan="4"><dl class="details-list"><div><dt>Credential storage</dt><dd>${
+  )}>Remove</button></div></details></td></tr><tr class="details-row ds-toggle"${ds.classes(
+    {
+      open: signal(details),
+    },
+  )}><td colspan="3"><dl class="details-list"><div><dt>Credential storage</dt><dd>${
     profile.credential
   }</dd></div><div><dt>Account</dt><dd>${
     profile.companyId ?? "—"
@@ -517,12 +520,12 @@ export function renderProviderRow(profile: HostingProfileView): Html {
 }
 
 function renderCheckConnectionButton(profile: string): Html {
-  return html`<button class="button link" type="button"${ds.indicator(
+  return html`<button class="button tiny quiet profile-menu-action" type="button"${ds.indicator(
     connCheckingSignal(profile),
   )}${ds.on(
     "click",
     providerAction("/_dashboard/providers/validate", profile),
-  )}>Check connection</button>`;
+  )}>Verify access</button>`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -539,8 +542,8 @@ function renderCheckConnectionButton(profile: string): Html {
 export type ProviderConnState = "connected" | "error" | "nocred" | "unchecked";
 
 const CONN_PILLS: Readonly<Record<ProviderConnState, Html>> = {
-  connected: html`<span class="pill ok">Connected</span>`,
-  error: html`<span class="pill danger">Error</span>`,
+  connected: html`<span class="pill ok">Verified</span>`,
+  error: html`<span class="pill danger">Check failed</span>`,
   nocred: html`<span class="pill warn">No credential</span>`,
   unchecked: html`<span class="pill">Not checked</span>`,
 };

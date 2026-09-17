@@ -443,6 +443,7 @@ export const createPressableClient: ProviderClientFactory = (
       case "bulk-update-themes":
       case "set-denied-ips":
       case "apply-redirects":
+      case "setup-novamira":
         throw unsupportedActionRequest(PROVIDER, request);
       default:
         return assertNever(request);

@@ -137,12 +137,15 @@ to a person, survives a password change, and is scoped to one role.
 
 `scripts/macos/entitlements.plist` holds the three Hardened Runtime exceptions
 the shell needs, and its comment says why each one is there. Two are V8's.
-The third, `disable-library-validation`, exists only because
-`@webview/webview` resolves its native library through `@denosaurs/plug`, which
-downloads `libwebview.<arch>.dylib` into the Deno cache on first run and hands it
-to `Deno.dlopen`; that dylib is not signed by our Team ID, so library validation
-would refuse it. Vendoring the dylib into `Contents/Frameworks/` and signing it
-with the bundle is how that key gets deleted.
+The third, `disable-library-validation`, remains for the bare executable, which
+still downloads the upstream native library. The `.app` now includes the correct
+`libwebview.<arch>.dylib` under `Contents/Frameworks/`: `macos-native.mjs` selects
+the architecture from the executable, verifies the pinned upstream version and
+SHA-256, and includes its MIT license. The signing script signs the dylib before
+the app. The packaged window uses that local library only, including with an
+empty Deno cache; a missing library is an installation error, never a network
+fallback. Removing the remaining entitlement requires separating bare-executable
+and app entitlements and verifying both with Apple's signing workflow.
 
 If `APPLE_SIGNING_IDENTITY` is unset the job emits a warning annotation and
 uploads an unsigned executable rather than failing the release. Before

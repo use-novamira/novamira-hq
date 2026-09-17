@@ -26,6 +26,7 @@ const required = [
   "datastar.js",
   "relative-time.js",
   "sites-filter.js",
+  "ui-feedback.js",
   "novamira-hq-logo-white.svg",
   "fonts/montserrat-var.woff2",
   "fonts/montserrat-OFL.txt",
