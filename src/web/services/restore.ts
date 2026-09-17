@@ -24,6 +24,7 @@ export interface RestoreTarget {
   readonly env: string;
 }
 export interface RestoreReview extends RestoreTarget {
+  readonly provider?: string;
   readonly operation?: "create";
   readonly id: string;
   readonly targetUrl: string;
@@ -53,12 +54,15 @@ export function backupChoices(value: unknown): { id: string; label: string }[] {
     const row = value as Record<string, unknown>;
     if (collection) {
       const id = row.backup_id ?? row.backupId ?? row.id ?? row.uuid;
+      if (row.kind === "site_version" && row.status !== "completed") return;
       if (typeof id === "string" || typeof id === "number") {
         const date =
           row.created_at ?? row.createdAt ?? row.timestamp ?? row.date;
         entries.set(
           String(id),
-          `${String(id)}${typeof date === "string" ? ` · ${date}` : ""}`,
+          row.kind === "site_version"
+            ? `${typeof date === "string" && date ? `${date} · ` : ""}${typeof row.name === "string" ? row.name : "Site version"} · ID ${String(id)}`
+            : `${String(id)}${typeof date === "string" ? ` · ${date}` : ""}`,
         );
       }
     }
@@ -132,7 +136,7 @@ export function createRestoreService(
       controller.signal.throwIfAborted();
       for (const [id, entry] of plans)
         if (entry.review.expiresAt <= now()) plans.delete(id);
-      const { config, targetUrl } = await targetClient(target, true);
+      const { client, config, targetUrl } = await targetClient(target, true);
       controller.signal.throwIfAborted();
       if (plans.size >= 100)
         throw new CliError(
@@ -142,6 +146,7 @@ export function createRestoreService(
       const review: RestoreReview = {
         ...target,
         operation: "create",
+        provider: client.provider,
         id: randomUUID(),
         targetUrl,
         backupId: `Novamira HQ ${new Date(now()).toISOString()}`,

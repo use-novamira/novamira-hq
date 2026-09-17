@@ -336,6 +336,13 @@ a success an agent could not use.
 
 ## Handoff to the agent CLI
 
+InstaWP backup creation, listing and in-place restore use **Site Versions** (files
+and database), not the separate Snapshots product. CLI, MCP and dashboard use
+the same guarded restore flow, including a completed fresh safety version before
+restoring. Only task status `completed` confirms success. Labels are limited to
+25 characters; provider plan limits apply. Deletion and sharing are not exposed.
+This integration is covered by offline tests, not yet validated on a live account.
+
 Cloudways setup uses the official WP Manager API to upload the Novamira ZIP and
 activate it. WP Manager must be available for the application. HQ checks PHP,
 WordPress and the plugin inventory first, preserves existing plugins, and verifies

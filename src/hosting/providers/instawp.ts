@@ -26,6 +26,7 @@
  */
 
 import type { ProviderKind } from "../../config/schema.js";
+import { instaWpVersions } from "./instawp-versions.js";
 import { CliError } from "../../errors.js";
 import {
   redactAssociatedText,
@@ -113,7 +114,9 @@ const CAPABILITIES: readonly ProviderCapability[] = providerCapabilities([
   ["envs.push", false, NOTE_SINGLE_ENV],
   ["domains.list", false, NOTE_NOT_MAPPED],
   ["dns.domains.list", false, NOTE_NOT_MAPPED],
-  ["backups.list", false, NOTE_NOT_MAPPED],
+  ["backups.list", true, "lists restorable Site Versions"],
+  ["backups.create", true, "creates a Site Version"],
+  ["backups.restore", true, "restores a completed Site Version in place"],
   ["cache.clear", false, NOTE_UNSUPPORTED],
   ["php.restart", false, NOTE_UNSUPPORTED],
   ["php.set-version", false, NOTE_UNSUPPORTED],
@@ -153,6 +156,7 @@ export const createInstaWpClient: ProviderClientFactory = (
   const http: HttpClient = context.createHttpClient({
     auth: bearerAuth(context.secret.reveal()),
   });
+  const versions = instaWpVersions(http);
 
   /** Go's `resolveTeamID`: the per-call team wins over the profile's. */
   function resolveTeamId(requested?: string): string | undefined {
@@ -235,13 +239,14 @@ export const createInstaWpClient: ProviderClientFactory = (
     switch (request.kind) {
       case "capabilities":
         return Promise.resolve([...CAPABILITIES]);
+      case "backups":
+        return versions.list(request.envId);
       case "regions":
       case "activity":
       case "site-domains":
       case "site-domain-verification":
       case "dns-domains":
       case "dns-records":
-      case "backups":
       case "downloadable-backups":
       case "logs":
       case "redirects":
@@ -265,15 +270,17 @@ export const createInstaWpClient: ProviderClientFactory = (
         return createSite(request.mode, request.body);
       case "run-wp-cli":
         return runWpCli(request.envId, request.body);
+      case "create-backup":
+        return versions.create(request.envId, request.body);
+      case "restore-backup":
+        return versions.restore(request.targetEnvId, request.body);
       case "create-environment":
       case "push-environment":
-      case "restore-backup":
       case "clear-cache":
       case "restart-php":
       case "set-php-version":
       case "add-domain":
       case "change-primary-domain":
-      case "create-backup":
       case "update-plugin":
       case "bulk-update-plugins":
       case "update-theme":
@@ -326,6 +333,8 @@ export const createInstaWpClient: ProviderClientFactory = (
   async function operationStatus(
     operationId: string,
   ): Promise<OperationStatus> {
+    if (operationId.startsWith("version-task:"))
+      return versions.status(operationId);
     const path = `/tasks/${encodePathSegment(operationId)}/status`;
     const response = await http.request({ path });
     // Deviation: Go returns the task body verbatim. HQ redacts it the same way

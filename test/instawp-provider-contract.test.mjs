@@ -43,7 +43,12 @@ const AUTHORIZATION = `Bearer ${API_KEY}`;
 const BASE_PATH = "/api/v2";
 
 /** Every action InstaWP maps; the rest must report `provider_unsupported`. */
-const SUPPORTED_ACTIONS = ["create-site", "run-wp-cli"];
+const SUPPORTED_ACTIONS = [
+  "create-site",
+  "run-wp-cli",
+  "create-backup",
+  "restore-backup",
+];
 
 /** `capabilities()` in the Go declaration order. */
 const EXPECTED_CAPABILITIES = [
@@ -90,7 +95,9 @@ const EXPECTED_CAPABILITIES = [
   ],
   ["domains.list", false, "not mapped for InstaWP in Novamira"],
   ["dns.domains.list", false, "not mapped for InstaWP in Novamira"],
-  ["backups.list", false, "not mapped for InstaWP in Novamira"],
+  ["backups.list", true, "lists restorable Site Versions"],
+  ["backups.create", true, "creates a Site Version"],
+  ["backups.restore", true, "restores a completed Site Version in place"],
   [
     "cache.clear",
     false,
@@ -741,7 +748,7 @@ test("read exposes the capability list and refuses every other read request", as
     );
 
     for (const kind of READ_REQUEST_KINDS) {
-      if (kind === "capabilities") continue;
+      if (kind === "capabilities" || kind === "backups") continue;
       await assert.rejects(client.read({ kind }), (error) => {
         assert.equal(error.code, "provider_unsupported");
         assert.equal(error.details.provider, "instawp");

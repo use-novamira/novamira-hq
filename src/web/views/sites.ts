@@ -392,7 +392,9 @@ function hostingProfileMenu(
     ),
     view.connections?.cliAvailable ?? false,
   );
-  const restore = ["kinsta", "pantheon", "rocketnet"].includes(group.provider)
+  const restore = ["kinsta", "pantheon", "rocketnet", "instawp"].includes(
+    group.provider,
+  )
     ? html`<a class="profile-menu-action"${hrefAttr(url("/backup-restore", { profile: group.profile, site: site.id, env: env.id }))}>Restore backup…</a>`
     : false;
   const createBackup = [
@@ -401,6 +403,7 @@ function hostingProfileMenu(
     "rocketnet",
     "wpengine",
     "cloudways",
+    "instawp",
   ].includes(group.provider)
     ? html`<a class="profile-menu-action"${hrefAttr(url("/backup-create", { profile: group.profile, site: site.id, env: env.id }))}>Create backup…</a>`
     : false;

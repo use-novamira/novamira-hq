@@ -3,7 +3,7 @@
 ## Dashboard backup restore
 
 `GET /backup-create` offers backup creation from Sites for Kinsta, Pantheon,
-Rocket.net, WP Engine and Cloudways. Token-protected
+Rocket.net, WP Engine, Cloudways and InstaWP. Token-protected
 `POST /_dashboard/backups/create-plan` verifies `backups.create`, environment
 ownership and its URL before issuing a five-minute one-use confirmation.
 The shared dashboard backup job registry's apply/status routes execute only
@@ -14,7 +14,7 @@ require list/restore capabilities. Backups remain at the provider.
 
 `GET /backup-restore` is a dedicated Sites subpage. It performs no provider
 requests on page load. The environment menu offers restore for Kinsta, Pantheon,
-and Rocket.net; the service rechecks the governed list/create/restore capabilities.
+Rocket.net and InstaWP; the service rechecks the governed list/create/restore capabilities.
 Token-protected `POST /_dashboard/backups/catalog` loads the selected environment's
 backups. `POST /_dashboard/backups/plan` requires an explicit all-content
 acknowledgement and, for Kinsta, the notification user ID. It verifies environment
@@ -1848,3 +1848,21 @@ silently drops unresolved requests: when all slots are unresolved, another
 mutation fails before dispatch with an actionable conflict. Corrupt or unsafe
 history also fails closed. A post-dispatch persistence failure instructs the
 operator to verify at the provider before retrying.
+
+## InstaWP Site Versions
+
+The official InstaWP CLI's `src/commands/versions.ts` defines the provider API
+contract used here: create with `POST /site-versions`, list with
+`GET /site-versions?site_id=...`, restore with
+`PUT /sites/{site_id}/restore-versions/{version_id}`. These are Site Versions,
+not the separate Snapshots product. Restore overwrites files and database in place.
+Creation accepts only `tag`; optional naming uses a separate PUT, truncated to
+25 characters. Naming failure preserves the task ID and never retries creation.
+Restore accepts only `backup_id`, requires a completed version in the target
+catalog, and is never automatically retried. Shared CLI/MCP/dashboard safeguards
+require explicit confirmation and a completed fresh safety version first.
+Operation IDs `version-task:<task-id>` poll `/tasks/{task-id}/status`; only
+`completed` proves success. Unknown or missing states remain unconfirmed.
+The catalog exposes only IDs, names, dates, status and kind; no credentials or
+download URLs. Deletion and sharing remain unsupported. Offline tests do not
+establish live account eligibility; provider plan limits apply.

@@ -137,6 +137,8 @@ export function backupCatalogContains(
       return value.some((entry) => visit(entry, insideCollection));
     if (typeof value !== "object" || value === null) return false;
     const record = value as Record<string, unknown>;
+    if (record.kind === "site_version" && record.status !== "completed")
+      return false;
     if (insideCollection) {
       for (const [key, candidate] of Object.entries(record))
         if (ID_KEYS.has(key) && scalarId(candidate) === expected) return true;
