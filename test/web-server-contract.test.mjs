@@ -528,9 +528,7 @@ test("the sidebar Connect menu puts an existing site before a hosting account", 
     // Go rendered a <button>, which is inline-block; HQ renders an <a>, which is
     // inline. The pair that keeps it a full-width 38px button is this element
     // plus `.new-button`'s `display` in app.css, so pin both together.
-    assert.ok(
-      markup.includes('<span aria-hidden="true">+</span> Add site</button>'),
-    );
+    assert.ok(markup.includes(">Add site</button>"));
     assert.ok(
       markup.indexOf("<strong>Manually</strong>") <
         markup.indexOf("<strong>From a hosting account</strong>"),
@@ -774,6 +772,7 @@ test("the token appears exactly once, inside the root data-signals", async () =>
       "diagnostics",
       "providerForm",
       "pushForm",
+      "restoreForm",
       "setup",
       "sites",
       "token",
@@ -1038,6 +1037,13 @@ const SHIPPED_ROUTES = [
   "GET /_dashboard/updates/install",
   "GET /assets/",
   "GET /push",
+  "GET /backup-restore",
+  "GET /backup-create",
+  "GET /_dashboard/backups/create-plan",
+  "GET /_dashboard/backups/catalog",
+  "GET /_dashboard/backups/plan",
+  "GET /_dashboard/backups/apply",
+  "GET /_dashboard/backups/status",
   "GET /push/new",
   "GET /diagnostics",
   "GET /history",

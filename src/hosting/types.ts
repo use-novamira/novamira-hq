@@ -233,11 +233,18 @@ export const ENVIRONMENT_PUSH_PROVIDERS: ReadonlySet<ProviderKind> =
  * (`pressable.ts:525`), which `provisionNovamira` refuses outright
  * (`src/provisioning/setup.ts`) because a plugin install whose result cannot be
  * observed cannot be verified. Go arrived at the same three names by hard-coding
- * them. Hostinger instead uses a bounded API ZIP setup and activation receipt.
+ * them. Hostinger uses a bounded API ZIP setup and activation receipt;
+ * Cloudways uses WP Manager ZIP upload and verified plugin inventory.
  */
 export const NOVAMIRA_SETUP_PROVIDERS: ReadonlySet<ProviderKind> =
   Object.freeze(
-    new Set<ProviderKind>(["kinsta", "instawp", "rocketnet", "hostinger"]),
+    new Set<ProviderKind>([
+      "kinsta",
+      "instawp",
+      "rocketnet",
+      "hostinger",
+      "cloudways",
+    ]),
   );
 
 /** The setup-capable providers, spelled for an operator-facing sentence. */
@@ -246,6 +253,7 @@ export const NOVAMIRA_SETUP_PROVIDER_LABELS: readonly string[] = Object.freeze([
   "InstaWP",
   "Rocket.net",
   "Hostinger",
+  "Cloudways",
 ]);
 
 /** A JSON object as emitted to stdout or an HTTP response body. */

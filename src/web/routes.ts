@@ -58,6 +58,7 @@
  */
 
 import { PROVIDER_KINDS } from "../config/schema.js";
+import { createRestoreHandler } from "./handlers/restore.js";
 import { isMcpPageClient } from "./views/mcp.js";
 import { CliError } from "../errors.js";
 import {
@@ -69,6 +70,7 @@ import { createAcknowledgementHandler } from "./handlers/acknowledgement.js";
 import { renderAcknowledgement } from "./views/acknowledgement.js";
 import type { HistoryStore } from "../history/index.js";
 import { createConnectHandler } from "./handlers/connect.js";
+import { normalizeSiteUrl } from "../provisioning/site-url.js";
 import {
   createPushRemoveHandler,
   createPushSaveHandler,
@@ -147,6 +149,7 @@ export interface Route {
  * Keep it a flat list so a future batch's diff does not collide.
  */
 export interface RouteContext {
+  readonly restore?: import("./services/restore.js").RestoreService;
   readonly appAcknowledgement?: import("../config/app-acknowledgement.js").AppAcknowledgement;
   readonly pushExecution?: import("./services/push-execution.js").PushExecutionService;
   readonly mcpConnection?: import("../mcp-connection.js").McpConnectionService;
@@ -268,6 +271,8 @@ const PAGE_PATHS: Readonly<Record<string, DashboardPage>> = {
   "/sites": "sites",
   "/how-to-use": "how-to-use",
   "/push": "pushes",
+  "/backup-restore": "sites",
+  "/backup-create": "sites",
   "/push/new": "push-new",
   "/novamira-setup": "novamira-setup",
   "/diagnostics": "diagnostics",
@@ -321,6 +326,33 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
     page: DashboardPage,
     request: DashboardRequest,
   ): Partial<PageModel> => {
+    if (
+      request.path === "/backup-restore" ||
+      request.path === "/backup-create"
+    ) {
+      const id = request.query.get("job");
+      const job = id ? context.restore?.snapshot(id) : undefined;
+      return {
+        restore: {
+          create:
+            request.path === "/backup-create" &&
+            (!job || job.review.operation === "create"),
+          target: {
+            profile: request.query.get("profile") ?? "",
+            site: request.query.get("site") ?? "",
+            env: request.query.get("env") ?? "",
+          },
+          ...(job ? { job } : {}),
+          ...(id && !job
+            ? {
+                error:
+                  "This job is no longer available in this session. Check Activity and the hosting provider before retrying.",
+              }
+            : {}),
+          jobs: context.restore?.list() ?? [],
+        },
+      };
+    }
     if (page === "settings") {
       const tab = request.query.get("tab");
       return {
@@ -468,7 +500,19 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
       // form, which no longer exists; an unknown value is ignored in silence
       // rather than turned into an error page, because the only way to send one
       // is a stale bookmark.
+      let cliSiteUrl = "";
+      if (page === "sites" && request.query.get("new") === "cli") {
+        const candidate = request.query.get("site_url");
+        if (candidate && candidate.length <= 2048) {
+          try {
+            cliSiteUrl = normalizeSiteUrl(candidate, {}, "--url").siteUrl;
+          } catch {
+            /* Never reflect invalid URLs or embedded credentials. */
+          }
+        }
+      }
       const signals = defaultDashboardSignals(context.token, {
+        cliSiteUrl,
         openProviderForm: request.query.get("new") === "host",
         openCliSiteForm: request.query.get("new") === "cli",
         // Go's `defaultProviderFormSignals` preselected `providerKinds()[0]`,
@@ -564,6 +608,36 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
     });
   }
   routes.push(
+    {
+      method: "POST",
+      path: "/_dashboard/backups/create-plan",
+      auth: "token",
+      handler: createRestoreHandler(context, "create-plan"),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/backups/catalog",
+      auth: "token",
+      handler: createRestoreHandler(context, "catalog"),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/backups/plan",
+      auth: "token",
+      handler: createRestoreHandler(context, "plan"),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/backups/apply",
+      auth: "token",
+      handler: createRestoreHandler(context, "apply"),
+    },
+    {
+      method: "GET",
+      path: "/_dashboard/backups/status",
+      auth: "token",
+      handler: createRestoreHandler(context, "status"),
+    },
     {
       method: "GET",
       path: "/mcp/novamira-hq.mcpb",

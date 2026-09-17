@@ -229,7 +229,7 @@ function renderTargetPanel(view: SetupView, status: SetupDisplayStatus): Html {
  * command that connects the agent.
  */
 const SETUP_DESCRIPTION =
-  "This checks compatibility before changing the plugin. An outdated installation requires an explicit update. After setup, choose Connect this site to authorize access in your browser.";
+  "This checks compatibility before changing the plugin. An outdated installation requires an explicit update. On Cloudways, you may need to enable AI Abilities in WordPress after installation. After setup, choose Connect this site to authorize access in your browser.";
 
 const AI_ABILITIES_WARNING =
   "When enabled, AI agents can execute PHP code and perform filesystem operations on this site. Use AI Abilities only on development or staging sites with a current backup.";

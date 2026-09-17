@@ -38,6 +38,15 @@ import { asRecord } from "../json.js";
 import type { DashboardRequest } from "./request.js";
 import { siteProfileRenameSignal } from "./signals.js";
 
+export function parseRestoreForm(signals: Readonly<Record<string, unknown>>) {
+  const source = subtree(signals, "restoreForm");
+  return {
+    backupId: trimmedString(source, "backupId"),
+    notifiedUserId: trimmedString(source, "notifiedUserId"),
+    allContent: boolean(source, "allContent"),
+  };
+}
+
 /* -------------------------------------------------------------------------- */
 /* Primitives                                                                 */
 /* -------------------------------------------------------------------------- */

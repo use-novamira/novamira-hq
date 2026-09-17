@@ -94,6 +94,7 @@ export interface RuntimeEnvironment extends PathEnvironment {
  * gets the real, complete provider registry.
  */
 export interface MainOverrides {
+  readonly dashboard?: import("./cli/dashboard.js").DashboardCommandOverrides;
   readonly mcpLaunch?: McpLaunch;
   readonly distribution?: "npm" | "desktop";
   readonly historyChannel?: HistoryChannel;
@@ -277,6 +278,9 @@ export async function main(
       });
 
     const handlers = createCommandHandlers({
+      ...(overrides.dashboard === undefined
+        ? {}
+        : { dashboard: overrides.dashboard }),
       distribution: overrides.distribution ?? "npm",
       mcpConnection: createMcpConnectionService(
         overrides.mcpLaunch ?? DEFAULT_MCP_LAUNCH,

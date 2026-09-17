@@ -101,6 +101,7 @@ async function session(lines, overrides = {}) {
   await runMcpServer(
     {
       version: "1.2.3",
+      ...(overrides.onboarding ? { onboarding: overrides.onboarding } : {}),
       store: {
         listHostingProfiles: async () => [
           {
@@ -167,6 +168,64 @@ const initialize = request(1, "initialize", {
 const initialized = JSON.stringify({
   jsonrpc: "2.0",
   method: "notifications/initialized",
+});
+
+test("MCP onboarding accepts only public URLs or an empty hosting request", async () => {
+  const opened = [];
+  const { messages } = await session(
+    [
+      initialize,
+      initialized,
+      request(2, "tools/call", {
+        name: "novamira_hq_site_connect",
+        arguments: { url: "https://example.test" },
+      }),
+      request(3, "tools/call", {
+        name: "novamira_hq_hosting_connect",
+        arguments: {},
+      }),
+      request(4, "tools/call", {
+        name: "novamira_hq_hosting_connect",
+        arguments: { apiKey: "never-reflect-this" },
+      }),
+      request(5, "tools/call", {
+        name: "novamira_hq_site_connect",
+        arguments: { url: "https://example.test/?token=never-reflect-this" },
+      }),
+      request(6, "tools/call", {
+        name: "novamira_hq_site_connect",
+        arguments: {
+          url: "https://example.test",
+          password: "never-reflect-this",
+        },
+      }),
+    ],
+    {
+      onboarding: {
+        open: async (target) => {
+          opened.push(target);
+          return {
+            status: "awaiting_user_action",
+            browserOpened: true,
+            url: "http://127.0.0.1:1234/providers?new=host",
+          };
+        },
+      },
+    },
+  );
+  assert.equal(opened.length, 2);
+  assert.equal(opened[0].kind, "site");
+  assert.equal(opened[1].kind, "hosting");
+  for (const id of [4, 5, 6])
+    assert.equal(
+      messages.find((message) => message.id === id).result.isError,
+      true,
+    );
+  assert.equal(JSON.stringify(messages).includes("never-reflect-this"), false);
+  assert.match(
+    JSON.stringify(messages.find((message) => message.id === 2)),
+    /awaiting_user_action/,
+  );
 });
 
 test("WordPress MCP delegates structured operations to the optional site CLI", async () => {
@@ -244,7 +303,10 @@ test("MCP negotiates lifecycle and exposes the complete typed surface", async ()
     version: "1.2.3",
   });
   const tools = messages[1].result.tools;
-  assert.equal(tools[0].title, "Read the Novamira HQ guide");
+  assert.equal(
+    tools.find((tool) => tool.name === "novamira_hq_guide").title,
+    "Read the Novamira HQ guide",
+  );
   assert.match(messages[0].result.instructions, /novamira_hq_guide/);
   assert.match(messages[0].result.instructions, /novamira_hq_sites_list/);
   assert.equal(
@@ -262,6 +324,8 @@ test("MCP negotiates lifecycle and exposes the complete typed surface", async ()
   assert.deepEqual(
     tools.map((tool) => tool.name),
     [
+      "novamira_hq_site_connect",
+      "novamira_hq_hosting_connect",
       "novamira_hq_guide",
       "novamira_hq_sites_list",
       "wordpress_sites_list",

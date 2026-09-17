@@ -36,6 +36,7 @@ interface CommandResult {
 }
 
 export interface CommandDependencies {
+  readonly dashboard?: import("./dashboard.js").DashboardCommandOverrides;
   readonly distribution?: "npm" | "desktop";
   readonly mcpConnection?: import("../mcp-connection.js").McpConnectionService;
   readonly history: HistoryStore;
@@ -167,7 +168,7 @@ export function createCommandHandlers(
     // The `dashboard` command. It is a top-level peer of `hosting`, and its
     // handler is the only one that does not return: it binds, renders the one
     // envelope, and then blocks until the listener stops.
-    ...createDashboardHandlers(dependencies),
+    ...createDashboardHandlers(dependencies, dependencies.dashboard),
 
     // `skills` and `doctor`: two local groups that reach no provider. `doctor`
     // is the one command whose *contents* may report a failure while the

@@ -1,5 +1,33 @@
 # Novamira HQ v1 Contract
 
+## Dashboard backup restore
+
+`GET /backup-create` offers backup creation from Sites for Kinsta, Pantheon,
+Rocket.net, WP Engine and Cloudways. Token-protected
+`POST /_dashboard/backups/create-plan` verifies `backups.create`, environment
+ownership and its URL before issuing a five-minute one-use confirmation.
+The shared dashboard backup job registry's apply/status routes execute only
+`create-backup` for these plans, using a generated label, with no restore or
+site mutation. Completion requires positive provider operation evidence;
+acceptance or transport failure alone never means completion. Creation does not
+require list/restore capabilities. Backups remain at the provider.
+
+`GET /backup-restore` is a dedicated Sites subpage. It performs no provider
+requests on page load. The environment menu offers restore for Kinsta, Pantheon,
+and Rocket.net; the service rechecks the governed list/create/restore capabilities.
+Token-protected `POST /_dashboard/backups/catalog` loads the selected environment's
+backups. `POST /_dashboard/backups/plan` requires an explicit all-content
+acknowledgement and, for Kinsta, the notification user ID. It verifies environment
+ownership and URL and uses the shared backup-restore planner. Plans expire after
+five minutes and are session-local, bounded, and one-use.
+`POST /_dashboard/backups/apply` consumes the confirmation and starts a detached
+job, rechecking profile and destination identity. The shared executor revalidates
+the catalog and waits for a fresh safety backup before restore. Duplicate requests
+return the existing job, not another mutation. `GET /_dashboard/backups/status`
+is token-protected and observes only; request cancellation does not cancel jobs.
+Shutdown aborts jobs. Unconfirmed outcomes instruct the operator to check Activity
+and the provider before retrying. No provider output or credentials are rendered.
+
 Status: every section of this document is normative and implemented. One
 narrower reservation remains, stated where it applies: the dashboard's **view
 surface beyond the app shell and the seven shipped pages** is not frozen — the
@@ -436,6 +464,23 @@ One failed source cannot discard another source's inventory. These read-only too
 are shared by desktop bundles, manually configured clients and the Configure buttons.
 Registering MCP is not installing an agent skill; MCP guidance is self-contained.
 
+`novamira_hq_site_connect` accepts only a public site URL. It opens the existing
+local Sites connection form with that URL prefilled; the user confirms and
+authorizes in their browser. `novamira_hq_hosting_connect` accepts no arguments
+and opens the existing hosting-account form. Credentials are entered only in
+HQ, never passed as MCP arguments. Unknown arguments and credential-bearing,
+query-bearing or fragment-bearing URLs are rejected without reflecting them.
+Neither tool returns OAuth URLs, mutation tokens, credentials or child output.
+They return `awaiting_user_action`, `browserOpened` and a non-secret local form
+URL (also usable when automatic browser opening fails). Opening a form is not
+success: after the user finishes, the agent verifies the appropriate inventory.
+
+The browser forms use the normal consent gate, CSRF protection and storage.
+A full dashboard is started lazily on an ephemeral IPv4 loopback port, shared
+within the MCP session and stopped on transport closure. No extra listener is
+started merely by listing tools. `/sites?new=cli&site_url=…` pre-populates only a
+validated public URL and never starts authorization or provisioning on GET.
+
 The hosting typed read tools are `hosting_profiles_list`, `hosting_provider_validate`,
 `hosting_capabilities_get`, `hosting_sites_list`, `hosting_site_get`,
 `hosting_environments_list`, `hosting_operation_get`, `hosting_backups_list`, and `hosting_history_list`. The typed mutations
@@ -736,7 +781,7 @@ to write a `site_profiles` entry. HQ does neither.
 
 ### Sequence
 
-Hostinger uses the bounded API setup below instead of WP-CLI. For the other
+Hostinger and Cloudways use the bounded API setups below instead of WP-CLI. For the other
 setup providers, local validation runs first and issues no provider request:
 `--env` must be non-empty, the provider must expose WP-CLI output — otherwise
 `provider_unsupported`, because HQ reads back the PHP version, the plugin's
@@ -882,6 +927,36 @@ value's source, because supplying `--url` is what fixes it. No diagnostic ever
 repeats userinfo back: a rejected URL's credential is removed before the error
 is constructed. HQ never reads the site CLI's own
 `NOVAMIRA_ALLOW_INSECURE_HTTP`.
+
+### Cloudways API setup
+
+Cloudways exposes `novamira.setup` and `wp.plugins.list`, not generic plugin
+installation or WP-CLI. Setup requires a numeric `server_id:app_id`, an exact
+application match under that server, and a root-domain HTTPS URL. It checks
+`/server/manage/settings` for PHP 8+, `/wpsite/coreinfo/{server}/{app}` for
+WordPress 6.9+, and `/plugins/{server}/{app}` for existing Novamira before any
+write. Invalid inventories fail closed, never imply an absent plugin.
+
+For an absent plugin, `POST /plugins/upload` receives the canonical Novamira
+download URL and fixed `novamira.zip` filename. After the plugin appears in
+inventory, `POST /plugins/activate` receives only `novamira/novamira.php`.
+These WP Manager endpoints use form bodies, not the legacy query-string write
+transport. Neither mutation is retried. Fresh plugin inventory must confirm
+installation and activation; HTTP acceptance is not completion. Existing
+compatible plugins are reused, never deliberately replaced. Unknown/old versions
+are refused. A five-minute abort budget bounds the provider sequence.
+
+The same restrictions on custom sources, URL overrides, versions, force,
+network activation and skipped activation/wait as Hostinger apply. WP Manager
+availability is an account prerequisite; HQ never subscribes to a paid service.
+There is no documented AI-options write: setup preserves those settings and
+never claims to enable them. Public OAuth metadata is the readiness check; a
+failure explains how to enable AI Abilities in WordPress and reconnect. Skipping
+that check returns `ready: null` and an unverified-AI warning, not a ready site.
+No SSH, WordPress REST, temporary installer or site credential is used.
+
+Reference: https://developers.cloudways.com/api.yaml (`plugins/upload`,
+`plugins/activate`, `plugins/{server_id}/{app}`). Automated tests use mocks only.
 
 ### Hostinger API setup
 

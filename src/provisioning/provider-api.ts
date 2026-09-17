@@ -16,10 +16,12 @@ import type {
 import type { InvocationWarning } from "../output/render.js";
 
 /** Provider API provisioning, not a fabricated provider WP-CLI implementation. */
-export async function provisionHostinger(
+export async function provisionProviderApi(
   dependencies: NovamiraSetupDependencies,
   request: NovamiraSetupRequest,
 ): Promise<NovamiraSetupResult> {
+  const cloudways = dependencies.client.provider === "cloudways";
+  const label = cloudways ? "Cloudways" : "Hostinger";
   if (
     request.force ||
     request.activate === false ||
@@ -35,11 +37,13 @@ export async function provisionHostinger(
   )
     throw new CliError(
       "usage_error",
-      "Hostinger setup supports the official latest Novamira package on a root-domain installation with a five-minute timeout only; custom sources, URL overrides, versions, force, network activation and skipped activation/wait are not supported.",
+      `${label} setup supports the official latest Novamira package on a root-domain installation with a five-minute timeout only; custom sources, URL overrides, versions, force, network activation and skipped activation/wait are not supported.`,
     );
   dependencies.report?.(
     "info",
-    "Preparing Novamira through Hostinger: verified ZIP upload and temporary installer. Existing installations are never overwritten.",
+    cloudways
+      ? "Installing and activating Novamira through Cloudways WP Manager. Existing installations are never overwritten. AI Abilities settings cannot be changed through this API; readiness will be checked afterwards."
+      : "Preparing Novamira through Hostinger: verified ZIP upload and temporary installer. Existing installations are never overwritten.",
   );
   const action = await dependencies.client.action({
     kind: "setup-novamira",
@@ -62,7 +66,7 @@ export async function provisionHostinger(
   )
     throw new CliError(
       "provider_error",
-      "Hostinger setup returned an unverifiable result.",
+      `${label} setup returned an unverifiable result.`,
     );
   const site = normalizeSiteUrl(raw.siteUrl, dependencies.environment, "--url");
   const warnings: InvocationWarning[] = (raw.warnings as string[]).map(
@@ -107,7 +111,9 @@ export async function provisionHostinger(
     } catch (error) {
       throw new CliError(
         "server_unsupported",
-        "Novamira is active, but public OAuth readiness could not be verified. If LiteSpeed is serving an old 404, purge its cache and retry verification. Setup is not a completed site connection.",
+        cloudways
+          ? "Novamira is installed and active, but the site is not ready to connect. Open Novamira settings in WordPress, enable AI Abilities for this domain, then reconnect. If already enabled, check plugin compatibility and the site cache. Cloudways API cannot change these settings."
+          : "Novamira is active, but public OAuth readiness could not be verified. If LiteSpeed is serving an old 404, purge its cache and retry verification. Setup is not a completed site connection.",
         {
           details: {
             siteUrl: site.siteUrl,
@@ -127,8 +133,9 @@ export async function provisionHostinger(
     if (raw.aiEnabled === null)
       warnings.push({
         code: "ai_abilities_not_checked",
-        message:
-          "Existing AI Abilities settings were preserved and could not be verified through provider inventory.",
+        message: cloudways
+          ? "Cloudways cannot enable AI Abilities through its API. Enable them in Novamira settings in WordPress before connecting; readiness has not been verified."
+          : "Existing AI Abilities settings were preserved and could not be verified through provider inventory.",
       });
   }
   return {

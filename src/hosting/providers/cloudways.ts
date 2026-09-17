@@ -36,6 +36,11 @@
 
 import { CliError } from "../../errors.js";
 import {
+  cloudwaysPlugins,
+  cloudwaysSetupTarget,
+  setupCloudwaysNovamira,
+} from "./cloudways-setup.js";
+import {
   registerSensitiveValues,
   registeredSensitiveValues,
 } from "../../output/redact.js";
@@ -90,6 +95,11 @@ const NATIVE_FIELDS_NOTE =
 const NOT_MAPPED_NOTE = "not mapped for Cloudways in Novamira";
 
 const CAPABILITY_ENTRIES: readonly ProviderCapabilityInput[] = [
+  [
+    "novamira.setup",
+    true,
+    "Installs and activates Novamira through WP Manager; AI Abilities may need enabling in WordPress before connecting.",
+  ],
   ["providers.validate", true],
   ["providers.capabilities", true],
   ["sites.list", true, "uses GET /apps"],
@@ -143,7 +153,7 @@ const CAPABILITY_ENTRIES: readonly ProviderCapabilityInput[] = [
     "discovers the versioned php*-fpm service and uses POST /service/state",
   ],
   ["php.set-version", false, NOT_MAPPED_NOTE],
-  ["wp.plugins.list", false, NOT_MAPPED_NOTE],
+  ["wp.plugins.list", true, "uses Cloudways WP Manager"],
   [
     "wp.plugins.install",
     false,
@@ -280,6 +290,12 @@ class CloudwaysClient implements ProviderClient {
 
   async read(request: ReadRequest): Promise<unknown> {
     switch (request.kind) {
+      case "plugins": {
+        const [server, app] = cloudwaysSetupTarget(request.envId);
+        return cloudwaysPlugins(
+          await this.#readJson(`/plugins/${server}/${app}`, []),
+        );
+      }
       case "capabilities":
         return CAPABILITIES.map(serializeProviderCapability);
       case "regions": {
@@ -328,7 +344,6 @@ class CloudwaysClient implements ProviderClient {
       case "logs":
       case "redirects":
       case "denied-ips":
-      case "plugins":
       case "themes":
       case "company-plugins":
       case "company-themes":
@@ -418,8 +433,13 @@ class CloudwaysClient implements ProviderClient {
       case "run-wp-cli":
       case "set-denied-ips":
       case "apply-redirects":
-      case "setup-novamira":
         throw unsupportedActionRequest(PROVIDER, request);
+      case "setup-novamira":
+        return setupCloudwaysNovamira(
+          this.#http,
+          request.envId,
+          request.signal,
+        );
       default:
         return assertNever(request);
     }

@@ -334,6 +334,14 @@ a success an agent could not use.
 
 ## Handoff to the agent CLI
 
+Cloudways setup uses the official WP Manager API to upload the Novamira ZIP and
+activate it. WP Manager must be available for the application. HQ checks PHP,
+WordPress and the plugin inventory first, preserves existing plugins, and verifies
+installation and activation through fresh inventory reads. This API cannot set
+Novamira's AI Abilities options: enable them in WordPress if the final readiness
+check requests it, then reconnect. Installation alone is not a site connection.
+Generic WP-CLI and arbitrary plugin installation remain unavailable on Cloudways.
+
 Hostinger setup is also available through its provider APIs: HQ uploads the
 official ZIP and a temporary installer, verifies activation, and enables AI
 Abilities when requested. It requires a root-domain HTTPS WordPress installation

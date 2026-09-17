@@ -309,7 +309,11 @@ export function createSetupJobService(
         timeoutSeconds: 60,
         signal: AbortSignal.any([signal, controller.signal]),
       });
-      if (client.provider === "hostinger" && existing?.active && siteUrl) {
+      if (
+        (client.provider === "hostinger" || client.provider === "cloudways") &&
+        existing?.active &&
+        siteUrl
+      ) {
         const site = normalizeSiteUrl(siteUrl, options.environment, "--url");
         try {
           await checkSiteCompatibility(site, { fetch: options.fetch, signal });

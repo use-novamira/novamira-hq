@@ -1626,6 +1626,9 @@ dd {
   box-shadow: var(--shadow);
 }
 .profile-menu-label { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.profile-menu-group { min-width: 0; }
+.profile-menu-group + .profile-menu-group { border-top: 1px solid var(--border); padding-top: 4px; margin-top: 4px; }
+.profile-menu-group > .field-help { margin: 0; padding: 5px 10px; font-size: 11px; line-height: 16px; overflow-wrap: anywhere; }
 .profile-menu-popover .rename-profile { margin: 0; }
 .profile-menu-action { justify-content: flex-start; width: 100%; }
 .profile-menu-popover .profile-menu-action { display: flex; align-items: center; justify-content: flex-start; width: 100%; min-height: 34px; margin: 0; padding: 7px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--text); font: 500 13px/20px var(--font-sans); text-align: left; text-decoration: none; cursor: pointer; box-shadow: none; }

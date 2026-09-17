@@ -18,6 +18,8 @@ import {
 import { PROVIDER_REGISTRY } from "../hosting/providers/index.js";
 import { VERSION } from "../version.js";
 import { runMcpServer } from "./server.js";
+import { createMcpOnboarding } from "./onboarding.js";
+import { openInBrowser } from "../browser.js";
 import { CliError } from "../errors.js";
 import { main } from "../main.js";
 import { HistoryStore } from "../history/index.js";
@@ -33,6 +35,7 @@ export interface McpEnvironment extends PathEnvironment, NodeJS.ProcessEnv {}
 
 export interface McpMainOverrides {
   readonly registry?: ProviderRegistry;
+  readonly openBrowser?: (url: string) => Promise<void>;
 }
 
 export async function mcpMain(
@@ -101,23 +104,66 @@ export async function mcpMain(
     return { exitCode, stdout, stderr };
   };
 
-  await runMcpServer(
-    {
-      version: VERSION,
-      store,
-      hosting,
-      history,
-      executeCli,
-      siteOperations: createSiteOperations({
-        resolve: createSiteCliResolver({
+  const dashboardLifecycle = new AbortController();
+  let dashboardTask: Promise<number> | undefined;
+  const onboarding = createMcpOnboarding({
+    openBrowser: overrides.openBrowser ?? openInBrowser,
+    start: () =>
+      new Promise<string>((resolve, reject) => {
+        // Reuse the complete dashboard composition, consent and credential forms.
+        // Its output is discarded, never forwarded to the MCP transport.
+        dashboardTask = main(
+          ["dashboard", "--json", "--listen", "127.0.0.1:0"],
+          {
+            stdout: { write: () => undefined },
+            stderr: { write: () => undefined },
+          },
           environment,
-          platform: process.platform,
-          isFile: nodeIsFile,
-        }),
-        spawn: nodeSpawnChild,
-        environment,
+          {
+            ...(overrides.registry === undefined
+              ? {}
+              : { registry: overrides.registry }),
+            dashboard: {
+              signal: dashboardLifecycle.signal,
+              onReady: (bound) => {
+                resolve(bound.url);
+              },
+            },
+          },
+        );
+        void dashboardTask.then(
+          () => {
+            reject(new Error("Dashboard stopped"));
+          },
+          () => {
+            reject(new Error("Dashboard unavailable"));
+          },
+        );
       }),
-    },
-    streams,
-  );
+  });
+  try {
+    await runMcpServer(
+      {
+        onboarding,
+        version: VERSION,
+        store,
+        hosting,
+        history,
+        executeCli,
+        siteOperations: createSiteOperations({
+          resolve: createSiteCliResolver({
+            environment,
+            platform: process.platform,
+            isFile: nodeIsFile,
+          }),
+          spawn: nodeSpawnChild,
+          environment,
+        }),
+      },
+      streams,
+    );
+  } finally {
+    dashboardLifecycle.abort();
+    await dashboardTask;
+  }
 }

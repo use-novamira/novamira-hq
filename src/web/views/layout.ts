@@ -125,7 +125,7 @@ export function renderSidebar(
   )}><button class="button primary new-button" type="button" aria-haspopup="menu"${ds.on(
     "click",
     toggle("sites.newMenuOpen"),
-  )}><span aria-hidden="true">+</span> Add site</button><div${classAttr(
+  )}>Add site</button><div${classAttr(
     "new-pop",
   )}${ds.classes({ open: signal("sites.newMenuOpen") })} role="menu"><a${hrefAttr(
     url("/sites", { new: "cli" }),

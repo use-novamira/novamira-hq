@@ -815,7 +815,7 @@ test("8: the four connection states render their documented pill and actions", a
   );
   assert.ok(!markup.includes('<span class="pill">Not connected</span>'));
   assert.ok(markup.includes(">Connect to Novamira</button>"));
-  assert.ok(markup.includes(">Unknown</span>"));
+  assert.ok(markup.includes(">Unable to verify authorization</span>"));
   assert.ok(markup.includes("novamira auth login https://env-c.example.com"));
   assert.ok(markup.includes("/_dashboard/connect?url="));
   // `connected` offers nothing; the Setup CTA belongs to the two unconnected
@@ -830,7 +830,7 @@ test("8: the four connection states render their documented pill and actions", a
   });
   assert.ok(!absent.markup.includes('class="pill ok">Novamira authorized'));
   assert.equal(
-    absent.markup.split(">Unknown</span>").length - 1,
+    absent.markup.split(">Unable to verify authorization</span>").length - 1,
     5,
     "one per environment",
   );
@@ -849,7 +849,9 @@ test("9: Push from here appears on each environment of a push-capable multi-env 
   const { markup } = await resultMarkup();
   const hints = [
     ...markup.matchAll(/class="profile-menu-action" href="([^"]*)"/g),
-  ].map((match) => match[1]);
+  ]
+    .map((match) => match[1])
+    .filter((href) => href.startsWith("/push/new?"));
   assert.equal(hints.length, 2, "kinsta's two eligible environments only");
   for (const href of hints) {
     assert.ok(href.includes("profile=prod"));
@@ -1053,6 +1055,12 @@ test("16: matched CLI profiles stay in the hosting row and CLI-only sites are se
   );
   await plain.run(cold.stream);
   assert.ok(!cold.find("sites-result").markup.includes("/site-profiles"));
+  assert.equal(
+    (markup.match(/class="profile-menu"/g) ?? []).length,
+    (cold.find("sites-result").markup.match(/class="profile-menu"/g) ?? [])
+      .length,
+    "matched profiles share the hosting menu instead of adding another ellipsis",
+  );
 });
 
 test("18: the unified list renders unmatched CLI profiles as an inventory group", async () => {

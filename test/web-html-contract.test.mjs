@@ -1251,7 +1251,7 @@ function rootSignals(markup) {
   return JSON.parse(values[0]);
 }
 
-test("33: the root signal object carries exactly the eight keys, and no siteForm", async () => {
+test("33: the root signal object carries exactly the nine keys, and no siteForm", async () => {
   const signals = rootSignals(await page(await dashboard(), "/sites?new=site"));
   // `cliSites` is the site-profile panel's subtree — a site URL box and a
   // loading flag. It is *not* Go's `siteForm`, which held a WordPress
@@ -1261,6 +1261,7 @@ test("33: the root signal object carries exactly the eight keys, and no siteForm
     "diagnostics",
     "providerForm",
     "pushForm",
+    "restoreForm",
     "setup",
     "sites",
     "token",
@@ -1312,6 +1313,33 @@ test("35b: ?new=cli opens the custom CLI-site form", async () => {
   assert.ok(markup.includes('href="/sites">Back to Sites</a>'));
   assert.ok(!markup.includes('id="sites-result"'));
   assert.ok(!markup.includes("Search by name or domain"));
+});
+
+test("AI connection links prefill only validated public URLs and never trigger a connection", async () => {
+  const server = await dashboard();
+  const form = await page(
+    server,
+    "/sites?new=cli&site_url=" +
+      encodeURIComponent("https://example.test/blog"),
+  );
+  assert.equal(rootSignals(form).cliSites.url, "https://example.test/blog");
+  for (const url of [
+    "https://user:secret@example.test",
+    "https://example.test/?token=secret",
+    "javascript:secret",
+  ]) {
+    const markup = await page(
+      server,
+      "/sites?new=cli&site_url=" + encodeURIComponent(url),
+    );
+    assert.equal(rootSignals(markup).cliSites.url, "");
+    assert.equal(markup.includes("secret"), false);
+  }
+  assert.equal(
+    rootSignals(await page(server, "/sites?site_url=https://example.test"))
+      .cliSites.url,
+    "",
+  );
 });
 
 test("36: the site browser defaults to every provider, environments included", async () => {

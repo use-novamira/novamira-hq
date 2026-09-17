@@ -34,7 +34,7 @@
  * category of bug worth not having.
  */
 
-import { spawn } from "node:child_process";
+import { openInBrowser } from "../browser.js";
 import { createAppAcknowledgement } from "../config/app-acknowledgement.js";
 import { componentInstaller, withComponentSetup } from "../setup/components.js";
 import type { Command } from "commander";
@@ -96,6 +96,9 @@ export interface DashboardHandlers {
  * replaces the whole service, for a test that wants to script its answers.
  */
 export interface DashboardCommandOverrides {
+  /** Embedded dashboard lifecycle: the MCP owns and closes its own listener. */
+  readonly signal?: AbortSignal;
+  readonly onReady?: (bound: BoundAddress) => void;
   readonly fetch?: HttpFetch;
   readonly randomToken?: () => string;
   readonly now?: () => number;
@@ -268,36 +271,7 @@ export function createDashboardUpdates(
   };
 }
 
-/**
- * Launch the platform's URL opener with an argv array and no shell.
- *
- * Go's `OpenBrowser` (server.go:136-149), command for command. The child is
- * detached and unref'd so it cannot keep the process alive after the dashboard
- * stops, and its output goes nowhere: a browser's stderr is not the operator's
- * business.
- */
-async function openInBrowser(target: string): Promise<void> {
-  const [command, args] =
-    process.platform === "darwin"
-      ? (["open", [target]] as const)
-      : process.platform === "win32"
-        ? (["rundll32", ["url.dll,FileProtocolHandler", target]] as const)
-        : (["xdg-open", [target]] as const);
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(command, [...args], {
-      shell: false,
-      windowsHide: true,
-      stdio: "ignore",
-      detached: true,
-    });
-    child.once("error", reject);
-    child.once("spawn", () => {
-      child.unref();
-      resolve();
-    });
-  });
-}
-
+/** Identify an existing dashboard before reusing its loopback port. */
 async function probeDashboard(target: string): Promise<boolean> {
   try {
     const response = await fetch(target, {
@@ -540,9 +514,13 @@ export function createDashboardHandlers(
       };
       process.on("SIGINT", stop);
       process.on("SIGTERM", stop);
+      overrides.signal?.addEventListener("abort", stop, { once: true });
       try {
+        if (overrides.signal?.aborted) stop();
+        else overrides.onReady?.(bound);
         await running.closed();
       } finally {
+        overrides.signal?.removeEventListener("abort", stop);
         process.off("SIGINT", stop);
         process.off("SIGTERM", stop);
       }

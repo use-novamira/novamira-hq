@@ -319,7 +319,7 @@ function renderSiteItem(
   const domain = site.primaryDomain ?? "";
   const envs = site.environments ?? [];
   const state = novamiraRowState(group, site, view);
-  const visibility = html`<button class="button tiny quiet hosting-visibility" type="button"${attr("aria-label", `Hide ${title} from this list`)}>Hide from list</button>`;
+  const visibility = html`<button class="button tiny quiet profile-menu-action hosting-visibility" type="button"${attr("aria-label", `Hide ${title} from this list`)}>Hide from list</button>`;
 
   if (envs.length > 1) {
     return html`<details${classAttr(
@@ -339,7 +339,7 @@ function renderSiteItem(
     state,
   )}><span class="site-name">${title}</span><span class="site-domain">${domain}</span><span class="site-state">${
     only === undefined ? false : renderStateCell(group, site, only, title, view)
-  }<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${title}`)}>⋯</summary><div class="profile-menu-popover">${visibility}</div></details></span></div>`;
+  }<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${title}`)}>⋯</summary><div class="profile-menu-popover">${only ? hostingProfileMenu(group, site, only, title, view) : false}${visibility}</div></details></span></div>`;
 }
 
 /** Go's `renderEnvironment` (`views.go:1006-1029`). */
@@ -375,7 +375,36 @@ function renderEnvironment(
     env,
     siteLabel,
     view,
-  )}<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${siteLabel}: ${name}`)}>⋯</summary><div class="profile-menu-popover">${pushFromHere}${environmentDetails}<button class="button tiny quiet profile-menu-action hosting-visibility" type="button" title="Hide this site and all its environments from this browser's list">Hide from list</button></div></details></span></div>`;
+  )}<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${siteLabel}: ${name}`)}>⋯</summary><div class="profile-menu-popover">${hostingProfileMenu(group, site, env, siteLabel, view)}${pushFromHere}${environmentDetails}<button class="button tiny quiet profile-menu-action hosting-visibility" type="button" title="Hide this site and all its environments from this browser's list">Hide from list</button></div></details></span></div>`;
+}
+
+function hostingProfileMenu(
+  group: SiteGroup,
+  site: HostingSite,
+  env: HostingEnvironment,
+  label: string,
+  view: SitesResultView,
+): Html | false {
+  const connection = connectionView(
+    connectionFor(
+      view.connections,
+      connectionKey(group.profile, site.id, env.id),
+    ),
+    view.connections?.cliAvailable ?? false,
+  );
+  const restore = ["kinsta", "pantheon", "rocketnet"].includes(group.provider)
+    ? html`<a class="profile-menu-action"${hrefAttr(url("/backup-restore", { profile: group.profile, site: site.id, env: env.id }))}>Restore backup…</a>`
+    : false;
+  const createBackup = [
+    "kinsta",
+    "pantheon",
+    "rocketnet",
+    "wpengine",
+    "cloudways",
+  ].includes(group.provider)
+    ? html`<a class="profile-menu-action"${hrefAttr(url("/backup-create", { profile: group.profile, site: site.id, env: env.id }))}>Create backup…</a>`
+    : false;
+  return html`${renderProfileLink(connection, view, group, env, label, "inline")}${createBackup}${restore}`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -455,7 +484,7 @@ function renderStateCell(
     case "unavailable":
       return html`<span class="pill"${titleAttr(
         connection.hint,
-      )}>${connection.reason === "site_incompatible" ? "Novamira not ready" : "Unknown"}</span>${renderProfileLink(connection, view, group, env, siteLabel)}${
+      )}>${connection.reason === "site_incompatible" ? "Novamira not ready" : "Unable to verify authorization"}</span>${renderProfileLink(connection, view, group, env, siteLabel)}${
         connection.profiles.length === 0
           ? renderConnectButton(
               connection,
@@ -500,6 +529,7 @@ function renderProfileLink(
   group: SiteGroup,
   env: HostingEnvironment,
   siteLabel: string,
+  menuMode: "hidden" | "inline" = "hidden",
 ): Html | false {
   if (connection.profiles.length === 0) return false;
   return html`${connection.profiles.map((name) => {
@@ -509,6 +539,9 @@ function renderProfileLink(
     return profile === undefined
       ? html`<span class="push-hint">${name}</span>`
       : renderSiteProfileActions(siteProfileRowView(profile), {
+          menuMode,
+          suppressReconnect: connection.state === "unavailable",
+          showProfileHeading: connection.profiles.length > 1,
           profile: view.profile,
           includeEnvs: view.includeEnvs,
           reconnectAction: NOVAMIRA_SETUP_PROVIDERS.has(group.provider)

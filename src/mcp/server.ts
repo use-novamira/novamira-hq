@@ -27,6 +27,7 @@ import { redact, redactText } from "../output/redact.js";
 import type { SiteOperations } from "../integration/index.js";
 import { MCP_GUIDE, MCP_INSTRUCTIONS } from "./guidance.js";
 import { listAllSites } from "./inventory.js";
+import { onboardingSiteUrl, type McpOnboarding } from "./onboarding.js";
 
 const SUPPORTED_PROTOCOL_VERSIONS = [
   "2025-11-25",
@@ -79,6 +80,7 @@ interface McpServerState {
 }
 
 export interface McpServerDependencies {
+  readonly onboarding?: McpOnboarding;
   readonly siteOperations?: SiteOperations;
   readonly history: Pick<HistoryStore, "list">;
   readonly version: string;
@@ -177,6 +179,27 @@ const RESTORE_PROPERTIES = {
 } as const;
 
 const TOOL_DEFINITIONS: readonly (McpTool & {})[] = [
+  {
+    name: "novamira_hq_site_connect",
+    description:
+      "Open HQ's local site connection form with a public WordPress URL. The user confirms and authorizes in their browser. Never ask for or pass passwords, API keys, tokens or OAuth URLs. Opening the form is not successful authorization; after the user finishes, verify with novamira_hq_sites_list.",
+    inputSchema: objectSchema(
+      {
+        url: nonEmptyString(
+          "Public WordPress site URL only, without credentials, query or fragment.",
+        ),
+      },
+      ["url"],
+    ),
+    annotations: annotations(false, false),
+  },
+  {
+    name: "novamira_hq_hosting_connect",
+    description:
+      "Open HQ's local add-hosting-account form. Takes no credentials or other arguments. The user selects the provider and enters credentials only in HQ, never in chat. After the user finishes, verify with hosting_profiles_list. Opening the form does not mean the account is connected.",
+    inputSchema: objectSchema({}, []),
+    annotations: annotations(false, false),
+  },
   {
     name: "novamira_hq_guide",
     description:
@@ -417,6 +440,8 @@ const TOOL_DEFINITIONS: readonly (McpTool & {})[] = [
 const TOOL_BY_NAME = new Map(TOOL_DEFINITIONS.map((tool) => [tool.name, tool]));
 
 const TOOL_TITLES: Readonly<Record<string, string>> = {
+  novamira_hq_site_connect: "Connect a site in Novamira HQ",
+  novamira_hq_hosting_connect: "Connect a hosting account in Novamira HQ",
   novamira_hq_guide: "Read the Novamira HQ guide",
   novamira_hq_sites_list: "List all sites in Novamira HQ",
   wordpress_sites_list: "List WordPress sites",
@@ -648,6 +673,30 @@ async function callTool(
     const definition = TOOL_BY_NAME.get(name);
     if (definition === undefined)
       throw new CliError("usage_error", `Unknown MCP tool: ${name}.`);
+
+    if (
+      name === "novamira_hq_site_connect" ||
+      name === "novamira_hq_hosting_connect"
+    ) {
+      const site = name === "novamira_hq_site_connect";
+      if (Object.keys(argumentsValue).some((key) => !site || key !== "url"))
+        throw new CliError(
+          "usage_error",
+          "This tool accepts no credentials or extra arguments. Enter credentials only in the local HQ form.",
+        );
+      const target = site ? onboardingSiteUrl(argumentsValue.url) : undefined;
+      if (!dependencies.onboarding)
+        throw new CliError(
+          "not_found",
+          "Open Novamira HQ to connect the site or hosting account; browser onboarding is unavailable in this instance.",
+        );
+      const result = await dependencies.onboarding.open(
+        target === undefined
+          ? { kind: "hosting" }
+          : { kind: "site", url: target },
+      );
+      return toolResult(result);
+    }
 
     if (name === "novamira_hq_guide")
       return toolResult({ version: dependencies.version, guide: MCP_GUIDE });

@@ -73,12 +73,13 @@ function renderProfileMenu(
   routeContext: Readonly<Record<string, string | boolean>>,
   logout: Expr,
   remove: Expr | null,
+  inline = false,
 ): Html {
   const renameSignal = siteProfileRenameSignal(name);
   const rename = post(url(RENAME_PATH, { name, ...routeContext }), {
     include: [renameSignal],
   });
-  return html`<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${name}`)}>⋯</summary><div class="profile-menu-popover"><details class="profile-rename"><summary class="button tiny quiet profile-menu-action">Rename</summary><form class="rename-profile"${ds.signals(
+  const items = html`<details class="profile-rename"><summary class="button tiny quiet profile-menu-action">Rename</summary><form class="rename-profile"${ds.signals(
     {
       [renameSignal]: name,
     },
@@ -98,7 +99,10 @@ function renderProfileMenu(
           "title",
           `novamira sites remove ${name}`,
         )}${ds.on("click", remove)}>Remove from list</button>`
-  }</div></details>`;
+  }`;
+  return inline
+    ? items
+    : html`<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${name}`)}>⋯</summary><div class="profile-menu-popover">${items}</div></details>`;
 }
 
 /**
@@ -223,6 +227,9 @@ export function renderSiteProfileActions(
     readonly includeEnvs: boolean;
     readonly hideName?: boolean;
     readonly reconnectAction?: Expr | undefined;
+    readonly menuMode?: "hidden" | "inline";
+    readonly suppressReconnect?: boolean;
+    readonly showProfileHeading?: boolean;
   },
 ): Html {
   const routeContext = {
@@ -242,9 +249,13 @@ export function renderSiteProfileActions(
       include: [],
     }),
   );
+  if (listContext.menuMode === "inline")
+    return html`<div class="profile-menu-group">${listContext.showProfileHeading ? html`<p class="field-help">${row.name}</p>` : false}${renderProfileMenu(row.name, routeContext, logout, null, true)}</div>`;
   return html`<span class="cli-profile-actions">${listContext.hideName ? false : html`<strong>${row.name}</strong>`}${
-    row.state === "connected" ? false : reconnectButton(row, reconnect)
-  }${renderProfileMenu(row.name, routeContext, logout, null)}</span>`;
+    row.state === "connected" || listContext.suppressReconnect
+      ? false
+      : reconnectButton(row, reconnect)
+  }${listContext.menuMode === "hidden" ? false : renderProfileMenu(row.name, routeContext, logout, null)}</span>`;
 }
 
 /**

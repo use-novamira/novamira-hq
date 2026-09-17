@@ -684,6 +684,65 @@ test("cloudways reads regions and analytics", async () => {
   });
 });
 
+test("cloudways WP Manager setup uses authenticated form bodies and confirms activation", async () => {
+  const inactive = {
+    success: true,
+    data: [{ slug: "novamira", version: "1.12.4", status: "inactive" }],
+  };
+  const active = {
+    success: true,
+    data: [{ slug: "novamira", version: "1.12.4", status: "active" }],
+  };
+  const routes = [
+    AUTH_ROUTE,
+    {
+      body: JSON.stringify({
+        servers: [{ id: 123, apps: [{ id: 456, cname: "example.test" }] }],
+      }),
+    },
+    {
+      body: JSON.stringify({ settings: { package_versions: { php: "8.3" } } }),
+    },
+    { body: JSON.stringify({ success: true, data: { core_version: "6.9" } }) },
+    { body: JSON.stringify(inactive) },
+    { body: JSON.stringify({ success: true, operation_id: "fake-op" }) },
+    { body: JSON.stringify(active) },
+  ];
+  await withServer(routes, async ({ baseUrl, requests }) => {
+    const result = await clientFor(baseUrl).action({
+      kind: "setup-novamira",
+      envId: "123:456",
+    });
+    assert.equal(result.raw.aiEnabled, null);
+    assert.equal(result.raw.version, "1.12.4");
+    assert.deepEqual(
+      requests.slice(1).map((request) => request.line),
+      [
+        "GET /server",
+        "GET /server/manage/settings?server_id=123",
+        "GET /wpsite/coreinfo/123/456",
+        "GET /plugins/123/456",
+        "POST /plugins/activate",
+        "GET /plugins/123/456",
+      ],
+    );
+    const activation = requests[5];
+    assert.match(
+      activation.headers["content-type"],
+      /application\/x-www-form-urlencoded/,
+    );
+    assert.equal(
+      new URLSearchParams(activation.body).get("filename"),
+      "novamira/novamira.php",
+    );
+    for (const request of requests.slice(1)) {
+      assert.equal(request.headers.authorization, `Bearer ${ACCESS_TOKEN}`);
+      assert.equal(request.target.includes(ACCESS_TOKEN), false);
+      assert.equal(request.body.includes(ACCESS_TOKEN), false);
+    }
+  });
+});
+
 test("cloudways reports its capability list", async () => {
   await withServer([], async ({ baseUrl, requests }) => {
     const client = clientFor(baseUrl);
@@ -716,7 +775,6 @@ test("cloudways reports its capability list", async () => {
       "domains.list",
       "backups.list",
       "php.set-version",
-      "wp.plugins.list",
       "wp.plugins.install",
       "wp.themes.list",
       "wp-cli.run",
@@ -727,6 +785,8 @@ test("cloudways reports its capability list", async () => {
       assert.equal(typeof byName.get(name).notes, "string");
     }
     for (const name of [
+      "wp.plugins.list",
+      "novamira.setup",
       "providers.capabilities",
       "sites.get",
       "envs.list",
@@ -768,7 +828,6 @@ test("cloudways refuses the operations it deliberately does not map", async () =
       { kind: "logs", envId: "123:456", fileName: "error.log", lines: 10 },
       { kind: "redirects", envId: "123:456" },
       { kind: "denied-ips", envId: "123:456" },
-      { kind: "plugins", envId: "123:456" },
       { kind: "themes", envId: "123:456" },
       { kind: "company-plugins" },
       { kind: "company-themes" },

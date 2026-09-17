@@ -100,6 +100,7 @@ import { streamSse } from "./sse.js";
 import { createPushService } from "./services/pushes.js";
 import { createPushExecutionService } from "./services/push-execution.js";
 import { createProviderService } from "./services/providers.js";
+import { createRestoreService } from "./services/restore.js";
 import { createSetupJobService } from "./services/setup-jobs.js";
 import { createSitesService } from "./services/sites.js";
 import {
@@ -522,6 +523,10 @@ export function createDashboardServer(
     dependencies.store,
     dependencies.hosting,
   );
+  const restore = createRestoreService(
+    dependencies.store,
+    dependencies.hosting,
+  );
 
   // The job registry is process-lifetime state, like `lastChecked` and the
   // sites cache: an operator who restarts the dashboard has run nothing. It
@@ -568,6 +573,7 @@ export function createDashboardServer(
   };
 
   const table = createRouteTable({
+    restore,
     history: dependencies.history,
     ...(dependencies.appAcknowledgement
       ? { appAcknowledgement: dependencies.appAcknowledgement }
@@ -966,6 +972,7 @@ export function createDashboardServer(
     shutdown = (async () => {
       const jobsStopped = setupJobs.shutdown();
       const pushesStopped = pushExecution.shutdown();
+      const restoresStopped = restore.shutdown();
       const server = httpServer;
       if (server !== undefined) {
         // Keep-alive sockets would otherwise hold `close` open until timeout.
@@ -978,6 +985,7 @@ export function createDashboardServer(
       }
       await jobsStopped;
       await pushesStopped;
+      await restoresStopped;
     })();
     return shutdown;
   };

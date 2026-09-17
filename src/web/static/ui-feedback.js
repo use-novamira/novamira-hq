@@ -2,6 +2,33 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 (function () {
   "use strict";
+  // Delegated listeners also cover menus inserted by dashboard patches.
+  function closeOtherMenus(keep) {
+    document.querySelectorAll("details.profile-menu[open]").forEach(function (menu) {
+      if (menu !== keep) menu.open = false;
+    });
+  }
+  document.addEventListener("toggle", function (event) {
+    var menu = event.target;
+    if (menu && menu.matches && menu.matches("details.profile-menu") && menu.open) closeOtherMenus(menu);
+  }, true);
+  document.addEventListener("click", function (event) {
+    var menu = event.target && event.target.closest ? event.target.closest("details.profile-menu") : null;
+    closeOtherMenus(menu);
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Escape") return;
+    var menus = document.querySelectorAll("details.profile-menu[open]");
+    if (!menus.length) return;
+    var focused = document.activeElement;
+    menus.forEach(function (menu) {
+      menu.open = false;
+      if (menu.contains(focused)) {
+        var summary = menu.querySelector("summary");
+        if (summary) summary.focus();
+      }
+    });
+  });
   var active = null;
 
   function notice(message) {

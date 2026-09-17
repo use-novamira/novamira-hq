@@ -7,6 +7,46 @@ import test from "node:test";
 import { createDashboardHandlers } from "../dist/cli/dashboard.js";
 import { CliError } from "../dist/errors.js";
 
+test("embedded dashboard reports ready and closes its owned server on cancellation", async () => {
+  const controller = new AbortController();
+  let closeCount = 0;
+  let resolveClosed;
+  const closed = new Promise((resolve) => {
+    resolveClosed = resolve;
+  });
+  const handlers = createDashboardHandlers(
+    {
+      paths: { stateDir: "/test/state" },
+      security: {},
+      store: { configFile: "/test/config.json" },
+      io: { env: {} },
+      rendererFor: () => ({ success() {}, diagnostic() {} }),
+    },
+    {
+      integration: {},
+      doctor: async () => ({}),
+      updates: {},
+      signal: controller.signal,
+      onReady: (bound) => {
+        assert.equal(bound.port, 12345);
+        controller.abort();
+      },
+      createServer: () => ({
+        async listen(address) {
+          return { ...address, port: 12345, url: "http://127.0.0.1:12345" };
+        },
+        async close() {
+          closeCount++;
+          resolveClosed();
+        },
+        closed: () => closed,
+      }),
+    },
+  );
+  await handlers.dashboard({ listen: "127.0.0.1:0" }, {});
+  assert.equal(closeCount, 1);
+});
+
 test("dashboard --open reopens a verified running dashboard", async () => {
   const successes = [];
   const warnings = [];

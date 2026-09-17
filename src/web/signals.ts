@@ -137,6 +137,12 @@ export interface SetupSignals {
 }
 
 export interface DashboardSignals {
+  readonly restoreForm: {
+    readonly backupId: string;
+    readonly notifiedUserId: string;
+    readonly allContent: boolean;
+    readonly submitting: boolean;
+  };
   /** The per-process mutation token; the page's only copy of it. */
   readonly token: string;
   readonly providerForm: ProviderFormSignals;
@@ -286,6 +292,8 @@ export interface DefaultSignalOptions {
   readonly openProviderForm?: boolean;
   /** `?new=cli` opens the site-CLI connection form on the unified Sites page. */
   readonly openCliSiteForm?: boolean;
+  /** Public URL only, validated by the page handler. Never an OAuth URL. */
+  readonly cliSiteUrl?: string;
   /** Preselects the provider `<select>`, as Go's `defaultProviderFormSignals` did. */
   readonly firstProviderKind?: string;
 }
@@ -302,6 +310,12 @@ export function defaultDashboardSignals(
       open: options?.openProviderForm ?? false,
     },
     pushForm: defaultPushFormSignals(),
+    restoreForm: {
+      backupId: "",
+      notifiedUserId: "",
+      allContent: false,
+      submitting: false,
+    },
     sites: {
       profile: ALL_PROFILES_SENTINEL,
       includeEnvs: true,
@@ -311,7 +325,7 @@ export function defaultDashboardSignals(
     },
     cliSites: {
       open: options?.openCliSiteForm ?? false,
-      url: "",
+      url: options?.cliSiteUrl ?? "",
       name: "",
       loading: false,
     },
@@ -341,6 +355,7 @@ export function toSignalRecord(
     token: signals.token,
     providerForm: { ...signals.providerForm },
     pushForm: { ...signals.pushForm },
+    restoreForm: { ...signals.restoreForm },
     sites: { ...signals.sites },
     cliSites: { ...signals.cliSites },
     diagnostics: { ...signals.diagnostics },

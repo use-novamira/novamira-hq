@@ -35,6 +35,7 @@
  */
 
 import { CliError } from "../../errors.js";
+import { renderRestore, type RestoreView } from "./restore.js";
 import { renderAboutPage } from "./about.js";
 import type { ProviderActionsView } from "./provider-actions.js";
 import type { McpConfiguration } from "../../mcp-connection.js";
@@ -70,6 +71,7 @@ import {
 import type { ConfigView, DashboardNotice, DashboardPage } from "./types.js";
 
 export interface PageModel {
+  readonly restore?: RestoreView;
   readonly providerActions?: ProviderActionsView;
   readonly settingsTab?: SettingsTab;
   readonly sitesSnapshot?: SitesResult;
@@ -139,6 +141,7 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
         formOpen: model.signals.providerForm.open,
       });
     case "sites":
+      if (model.restore) return renderRestore(model.restore);
       return model.siteConnectSuccess
         ? renderSiteConnectSuccess(model.siteConnectSuccess)
         : renderSitesPage(
