@@ -9,6 +9,11 @@
   hicolor PNGs from `scripts/macos/icon.png`, the same committed master the
   macOS bundle already used, converting Display P3 to sRGB and resampling in
   linear light with no build-time image dependency.
+- `novamira-hq-desktop-macos-x86_64` and `novamira-hq-desktop-macos-x86_64.app.zip`:
+  the macOS desktop application now ships for Intel as well as Apple Silicon.
+  Each architecture is compiled natively on its own runner and signed and
+  notarized by the same `scripts/macos-sign.sh`, and the dispatch-only
+  **Verify macOS signing** workflow proves both.
 - `novamira-hq-desktop-linux-x86_64.tar.gz`: a new release asset carrying the
   Linux executable, its freedesktop entry, its icons and an `INSTALL.txt`,
   because an ELF executable cannot hold an icon. The bare executable is still

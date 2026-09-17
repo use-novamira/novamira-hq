@@ -269,9 +269,16 @@ jobs:
           gh release upload "$RELEASE_TAG" $assets --clobber
 
   # The same compile, plus Apple's three steps: Developer ID signature,
-  # notarization, stapled ticket. It publishes two assets — the bare executable
-  # this release has always published, and "Novamira HQ.app" zipped, which is
-  # the only one of the two that can carry its notarization ticket offline.
+  # notarization, stapled ticket. Each architecture publishes two assets — the
+  # bare executable this release has always published, and "Novamira HQ.app"
+  # zipped, which is the only one of the two that can carry its notarization
+  # ticket offline.
+  #
+  # Both architectures build on their own runner, because `deno compile` emits a
+  # binary for the host and an Intel smoke test cannot run on Apple Silicon
+  # without Rosetta: the arm64 image and `macos-15-intel`, GitHub's Intel image
+  # (`macos-13` is retired), each build natively. Signing does not care which one
+  # it runs on.
   #
   # `macos-signing` is a secrets scope, not a second approval gate: the human
   # gate is `npm-release`, which this job already sits downstream of. Restrict
@@ -285,13 +292,21 @@ jobs:
   # workflow, that decides a release must be signed.
   desktop-macos:
     needs: [prepare, github-release]
-    name: desktop / macos-latest
-    runs-on: macos-latest
+    name: desktop / ${{ matrix.asset }}
+    runs-on: ${{ matrix.runner }}
     environment: macos-signing
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            asset: novamira-hq-desktop-macos-arm64
+          - runner: macos-15-intel
+            asset: novamira-hq-desktop-macos-x86_64
     permissions:
       contents: write
     env:
-      ASSET: novamira-hq-desktop-macos-arm64
+      ASSET: ${{ matrix.asset }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:

@@ -74,9 +74,11 @@ run from moving `latest` or `next` backward.
 The `desktop` job compiles the Deno shell on `ubuntu-latest` and
 `windows-latest`, runs the compiled executable's `--serve` role before it is
 uploaded, and attaches it to the release the job above created. macOS is a
-separate job, below, because it is the only one that signs.
+separate job, below, because it is the only one that signs, and it runs twice
+because `deno compile` emits a binary for the host — arm64 on `macos-latest`
+and Intel on `macos-15-intel`.
 
-All three carry the same icon, derived at build time by
+Every build carries the same icon, derived at build time by
 `scripts/desktop-icons.mjs` from `scripts/macos/icon.png`, the one committed
 1024x1024 master. Nothing derived is committed, so no size can drift from it:
 
@@ -102,20 +104,27 @@ hold; it is listed under Accepted Risks below.
 
 ## macOS Desktop Signing
 
-The `desktop-macos` job compiles the Deno shell, then runs
-`scripts/macos-sign.sh`, which signs it with a Developer ID Application
-certificate under the Hardened Runtime, notarizes it, staples the ticket to the
-bundle, and publishes two assets:
+The `desktop-macos` job runs on both macOS architectures — arm64 on
+`macos-latest`, Intel on `macos-15-intel` — compiles the Deno shell natively on
+each, then runs `scripts/macos-sign.sh`, which signs it with a Developer ID
+Application certificate under the Hardened Runtime, notarizes it, staples the
+ticket to the bundle, and publishes two assets per architecture:
 
-- `novamira-hq-desktop-macos-arm64` — the executable, signed and notarized.
+- `novamira-hq-desktop-macos-arm64` — the arm64 executable, signed and
+  notarized.
 - `novamira-hq-desktop-macos-arm64.app.zip` — `Novamira HQ.app` around that same
   executable, signed, notarized and **stapled**.
+- `novamira-hq-desktop-macos-x86_64` — the Intel executable, signed and
+  notarized.
+- `novamira-hq-desktop-macos-x86_64.app.zip` — `Novamira HQ.app` around it,
+  signed, notarized and **stapled**.
 
-Both exist because `xcrun stapler` accepts only a bundle, a disk image or an
-installer package. A bare executable can be notarized but never carries its
-ticket, so Gatekeeper has to reach Apple the first time it runs; the `.app`
-carries the ticket in the download and opens on a machine that is offline.
-Point people at the `.app`, and keep the executable for scripts.
+The `.app` exists beside the bare executable because `xcrun stapler` accepts
+only a bundle, a disk image or an installer package. A bare executable can be
+notarized but never carries its ticket, so Gatekeeper has to reach Apple the
+first time it runs; the `.app` carries the ticket in the download and opens on a
+machine that is offline. Point people at the `.app`, and keep the executable for
+scripts.
 
 Set these six secrets on the `macos-signing` environment. Nothing else in the
 repository may hold them.
@@ -147,9 +156,10 @@ empty Deno cache; a missing library is an installation error, never a network
 fallback. Removing the remaining entitlement requires separating bare-executable
 and app entitlements and verifying both with Apple's signing workflow.
 
-If `APPLE_SIGNING_IDENTITY` is unset the job emits a warning annotation and
+If `APPLE_SIGNING_IDENTITY` is unset each job emits a warning annotation and
 uploads an unsigned executable rather than failing the release. Before
-announcing a release, check the `desktop / macos-latest` job for that warning.
+announcing a release, check both `desktop / novamira-hq-desktop-macos-*` jobs
+for that warning.
 
 ### Downloading test builds without a release
 
@@ -157,9 +167,10 @@ announcing a release, check the `desktop / macos-latest` job for that warning.
 manually. Each desktop job uploads its build only after the server and MCP
 smoke tests pass. Download it from the run's **Artifacts** section within seven
 days. Linux includes its installation archive; Windows includes the unsigned
-executable. The macOS test artifact is an unsigned arm64 executable in a tarball,
-not a signed `.app` suitable for sharing with colleagues. Use the signing
-workflow below for that. Neither workflow publishes to npm or creates a release.
+executable. The macOS test artifacts are unsigned arm64 and Intel executables in
+tarballs, not signed `.app`s suitable for sharing with colleagues. Use the
+signing workflow below for that. Neither workflow publishes to npm or creates a
+release.
 
 ### Proving the signing path without a release
 
@@ -180,8 +191,8 @@ date is the wrong place to notice.
 The artifacts are files, not an unpacked bundle, because GitHub re-zips an
 artifact's contents and drops the symlinks, modes and extended attributes a
 signed bundle is made of. Unzip the download once to get
-`novamira-hq-desktop-macos-arm64.app.zip` back byte for byte, then unzip that to
-get the stapled bundle. The bare executable loses its mode the same way, so
+`novamira-hq-desktop-macos-<arch>.app.zip` back byte for byte, then unzip that
+to get the stapled bundle. The bare executable loses its mode the same way, so
 `chmod +x` it before running.
 
 ## Accepted Risks
@@ -193,12 +204,13 @@ get the stapled bundle. The bare executable loses its mode the same way, so
 - README installer URLs follow mutable `main` rather than a release asset.
 - Runtime dependency ranges can resolve newer compatible dependency graphs than
   the release lockfile.
-- The macOS desktop app is signed and notarized for arm64 only, and its first
-  launch downloads the webview dylib, so it needs the network once even though
-  its notarization ticket is stapled.
+- The macOS desktop app is signed and notarized for both arm64 and Intel, but
+  only the `.app` bundles its native webview library; the bare executable still
+  downloads it on first launch. Only the `.app` carries a stapled ticket, so it
+  is the one that opens offline.
 - The Windows desktop executable is unsigned, so SmartScreen warns on first run.
-- One architecture per platform ships: arm64 on macOS, x86_64 on Linux and
-  Windows.
+- macOS ships two architectures, arm64 and x86_64; Linux and Windows ship x86_64
+  only, so there is no Linux or Windows release asset for arm64.
 - The Linux desktop archive is installed by hand from three documented commands;
   there is no Linux desktop installer, and no AppImage or distribution package.
 - The desktop icons are verified structurally — sizes, encodings and headers —
