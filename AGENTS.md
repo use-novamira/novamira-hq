@@ -311,16 +311,18 @@ package:acceptance` runs it, and all three packaging jobs plus the release job
   and why `@webview/webview` is imported lazily in the window role only. The
   runtime dependencies pinned in `desktop/deno.json` must match `package.json`'s;
   `test/desktop-contract.test.mjs` asserts that and runs `deno fmt`/`lint` when
-  a `deno` is on `PATH`. Never add a `deno`-only code path under `src/`. The release's macOS asset is
-  signed by `scripts/macos-sign.sh`, which lives in `scripts/` and not in
-  `desktop/` because it is a packaging step, not part of the shell: it wraps the
-  compiled executable in `Novamira HQ.app`, gives it the `novamira-hq.icns` it
+  a `deno` is on `PATH`. Never add a `deno`-only code path under `src/`. The
+  release's macOS assets — arm64 and Intel, each compiled natively on its own
+  runner — are signed by `scripts/macos-sign.sh`, which lives in `scripts/` and
+  not in `desktop/` because it is a packaging step, not part of the shell: it
+  wraps the compiled executable in `Novamira HQ.app`, gives it the `novamira-hq.icns` it
   builds with `sips` and `iconutil` from `scripts/macos/icon.png` — the one
   committed 1024x1024 master, so no derived size can drift from it — signs both
   under the Hardened Runtime with `scripts/macos/entitlements.plist`, notarizes
   them in one submission and staples the bundle. Two jobs run it and no others may:
   `release.yml`'s `desktop-macos`, and `macos-signing.yml`, the dispatch-only
-  **Verify macOS signing** that proves the path without publishing anything. The
+  **Verify macOS signing** that proves the path without publishing anything;
+  each runs both architectures as a matrix. The
   Apple secrets reach them through the `macos-signing` environment and live
   nowhere else.
 - The desktop application's three platform builds differ only in how the icon

@@ -109,8 +109,12 @@ test("macOS signing secrets are reachable from the signing job alone", () => {
       `the job must pass ${secret}`,
     );
   }
-  // Both macOS assets, and the signed executable proved to still run.
+  // Both macOS architectures, each compiled natively and signed on its own
+  // runner, and each publishing its bare executable and its `.app.zip`.
+  assert.match(signing[0], /runner: macos-latest/);
+  assert.match(signing[0], /runner: macos-15-intel/);
   assert.match(signing[0], /novamira-hq-desktop-macos-arm64/);
+  assert.match(signing[0], /novamira-hq-desktop-macos-x86_64/);
   assert.match(signing[0], /\$ASSET\.app\.zip/);
   assert.match(
     signing[0],
@@ -236,9 +240,12 @@ test("signing can be proved on demand, without publishing anything", () => {
   assert.ok(!verification.includes("gh release"));
   assert.ok(!verification.includes("contents: write"));
   assert.ok(!verification.includes("npm publish"));
-  // The same script and the same secret scope as the release job.
+  // The same script, the same secret scope and the same two architectures as
+  // the release job, so a release cannot be the first time Intel is signed.
   assert.match(verification, /environment: macos-signing/);
   assert.match(verification, /bash scripts\/macos-sign\.sh/);
+  assert.match(verification, /runner: macos-15-intel/);
+  assert.match(verification, /novamira-hq-desktop-macos-x86_64/);
   // Here a missing secret is a failure: the release job's warning fallback
   // would make an unconfigured repository look configured.
   assert.ok(!verification.includes("::warning"));

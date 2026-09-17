@@ -225,6 +225,8 @@ test("desktop CI offers tested artifacts without publishing a release", async ()
   assert.match(workflow, /retention-days: 7/);
   assert.match(workflow, /if-no-files-found: error/);
   assert.match(workflow, /macos-arm64-unsigned\.tar\.gz/);
+  assert.match(workflow, /macos-x86_64-unsigned\.tar\.gz/);
+  assert.match(workflow, /macos-15-intel/);
   assert.ok(
     workflow.indexOf("Smoke-test the compiled server role") <
       workflow.indexOf("actions/upload-artifact@"),

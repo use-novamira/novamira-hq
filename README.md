@@ -279,20 +279,22 @@ from the checkout after `bun run build`.
 
 ### Release assets
 
-Every release attaches a compiled executable per platform. All three carry the
-same application icon, derived at build time from the one committed
-1024x1024 master — `deno compile --icon` embeds it on Windows,
-`scripts/macos-sign.sh` builds the `.icns` for the macOS bundle, and Linux, where
-an executable cannot hold an icon at all, gets a tarball that carries it beside
-the binary.
+Every release attaches a compiled executable per platform and architecture.
+Each one carries the same application icon, derived at build time from the one
+committed 1024x1024 master — `deno compile --icon` embeds it on Windows,
+`scripts/macos-sign.sh` builds the `.icns` for each macOS bundle, and Linux,
+where an executable cannot hold an icon at all, gets a tarball that carries it
+beside the binary.
 
-| Asset                                     | What it is                                                         |
-| ----------------------------------------- | ------------------------------------------------------------------ |
-| `novamira-hq-desktop-macos-arm64.app.zip` | `Novamira HQ.app`, signed, notarized and stapled. Double-click it. |
-| `novamira-hq-desktop-macos-arm64`         | the same executable, bare, for a script.                           |
-| `novamira-hq-desktop-windows-x86_64.exe`  | the window, with its icon. Unsigned, so SmartScreen asks once.     |
-| `novamira-hq-desktop-linux-x86_64.tar.gz` | the executable, its freedesktop entry and its hicolor icons.       |
-| `novamira-hq-desktop-linux-x86_64`        | the same executable, bare, for a script.                           |
+| Asset                                      | What it is                                                       |
+| ------------------------------------------ | ---------------------------------------------------------------- |
+| `novamira-hq-desktop-macos-arm64.app.zip`  | `Novamira HQ.app` for Apple Silicon, signed, notarized, stapled. |
+| `novamira-hq-desktop-macos-arm64`          | the same executable, bare, for a script.                         |
+| `novamira-hq-desktop-macos-x86_64.app.zip` | `Novamira HQ.app` for Intel, signed, notarized and stapled.      |
+| `novamira-hq-desktop-macos-x86_64`         | the same executable, bare, for a script.                         |
+| `novamira-hq-desktop-windows-x86_64.exe`   | the window, with its icon. Unsigned, so SmartScreen asks once.   |
+| `novamira-hq-desktop-linux-x86_64.tar.gz`  | the executable, its freedesktop entry and its hicolor icons.     |
+| `novamira-hq-desktop-linux-x86_64`         | the same executable, bare, for a script.                         |
 
 On Linux, the tarball installs for the current user with three commands, and
 `INSTALL.txt` inside it repeats them:

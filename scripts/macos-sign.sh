@@ -5,6 +5,10 @@
 # Sign, notarize and staple the compiled macOS desktop executable.
 #
 #   scripts/macos-sign.sh dist-desktop/novamira-hq-desktop-macos-arm64
+#   scripts/macos-sign.sh dist-desktop/novamira-hq-desktop-macos-x86_64
+#
+# The architecture does not matter to the script: it signs and notarizes the
+# executable it is given, whatever it was compiled for.
 #
 # Produces two release assets beside the input:
 #

@@ -28,11 +28,19 @@ permissions:
 
 jobs:
   verify:
-    name: sign, notarize and staple
-    runs-on: macos-latest
+    name: sign, notarize and staple / ${{ matrix.asset }}
+    runs-on: ${{ matrix.runner }}
     environment: macos-signing
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            asset: novamira-hq-desktop-macos-arm64
+          - runner: macos-15-intel
+            asset: novamira-hq-desktop-macos-x86_64
     env:
-      ASSET: novamira-hq-desktop-macos-arm64
+      ASSET: ${{ matrix.asset }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -79,9 +87,9 @@ jobs:
       # same way, so `chmod +x` it before running.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: novamira-hq-desktop-macos-arm64-signed
+          name: ${{ matrix.asset }}-signed
           path: |
-            dist-desktop/novamira-hq-desktop-macos-arm64
-            dist-desktop/novamira-hq-desktop-macos-arm64.app.zip
+            dist-desktop/${{ matrix.asset }}
+            dist-desktop/${{ matrix.asset }}.app.zip
           retention-days: 7
           if-no-files-found: error
