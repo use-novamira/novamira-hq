@@ -93,8 +93,9 @@ test("macOS signing secrets are reachable from the signing job alone", () => {
   assert.ok(signing[0].startsWith("desktop-macos:"));
   assert.match(signing[0], /environment: macos-signing/);
   assert.match(signing[0], /bash scripts\/macos-sign\.sh/);
-  // The gate is npm-release, upstream; this environment only scopes secrets.
-  assert.match(signing[0], /needs: \[prepare, github-release\]/);
+  // Signing precedes npm publication, which includes the universal helper.
+  // The npm-release approval gate protects publication, not compilation.
+  assert.match(signing[0], /needs: \[prepare, acceptance\]/);
   for (const secret of [
     "APPLE_CERT_P12_BASE64",
     "APPLE_CERT_PASSWORD",

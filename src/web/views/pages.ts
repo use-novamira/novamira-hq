@@ -35,6 +35,7 @@
  */
 
 import { CliError } from "../../errors.js";
+import { renderHostingTools, type HostingToolsView } from "./hosting-tools.js";
 import { renderRestore, type RestoreView } from "./restore.js";
 import { renderAboutPage } from "./about.js";
 import type { ProviderActionsView } from "./provider-actions.js";
@@ -71,6 +72,7 @@ import {
 import type { ConfigView, DashboardNotice, DashboardPage } from "./types.js";
 
 export interface PageModel {
+  readonly hostingTools?: HostingToolsView;
   readonly restore?: RestoreView;
   readonly providerActions?: ProviderActionsView;
   readonly settingsTab?: SettingsTab;
@@ -141,6 +143,7 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
         formOpen: model.signals.providerForm.open,
       });
     case "sites":
+      if (model.hostingTools) return renderHostingTools(model.hostingTools);
       if (model.restore) return renderRestore(model.restore);
       return model.siteConnectSuccess
         ? renderSiteConnectSuccess(model.siteConnectSuccess)

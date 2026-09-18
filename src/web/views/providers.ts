@@ -343,8 +343,8 @@ export function renderProvidersPage(model: ProvidersPageModel): Html {
     "click",
     addProfile,
   )}>Connect hosting account</button><a class="button secondary"${hrefAttr(
-    url("/providers"),
-  )}>Refresh</a><a class="button secondary"${hrefAttr(url("/history"))}>Hosting history</a></div></header>${renderProviderFlash(
+    url("/hosting-accounts"),
+  )}>Refresh</a><a class="button secondary"${hrefAttr(url("/hosting-activity"))}>Hosting history</a></div></header>${renderProviderFlash(
     model.notice,
   )}<div class="provider-grid">${renderProviderForm(
     model.formOpen,
@@ -492,7 +492,7 @@ export function renderProviderRow(profile: HostingProfileView): Html {
   const details = providerDetailsSignal(profile.name);
   return html`<tr><td><strong>${profile.name}</strong></td><td>${providerLabelFor(
     profile.provider,
-  )}</td><td class="actions"><details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", "More actions for " + profile.name)}>⋯</summary><div class="profile-menu-popover"><a class="button tiny quiet profile-menu-action"${hrefAttr(url("/providers", { actions: profile.name }))}>Available actions</a><a class="button tiny quiet profile-menu-action"${hrefAttr(url("/history", { profile: profile.name }))}>Activity</a><button class="button tiny quiet profile-menu-action" type="button"${ds.on(
+  )}</td><td class="actions"><details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", "More actions for " + profile.name)}>⋯</summary><div class="profile-menu-popover"><a class="button tiny quiet profile-menu-action"${hrefAttr(url("/hosting-accounts", { actions: profile.name }))}>Available actions</a><a class="button tiny quiet profile-menu-action"${hrefAttr(url("/hosting-activity", { profile: profile.name }))}>Activity</a><button class="button tiny quiet profile-menu-action" type="button"${ds.on(
     "click",
     editProviderForm(profile),
   )}>Edit</button><button class="button tiny quiet profile-menu-action" type="button"${ds.on(

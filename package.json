@@ -23,6 +23,7 @@
     "dist",
     "skills",
     "legal",
+    "native/macos/Novamira HQ Credentials.app",
     "README.md",
     "LICENSE"
   ],
@@ -39,7 +40,8 @@
     "pack:inspect": "bun run build && bun pm pack --dry-run --ignore-scripts",
     "package:acceptance": "bun run build && node scripts/package-acceptance.mjs",
     "desktop:check": "bun run build && deno fmt --check desktop && deno lint desktop && deno check desktop/main.ts",
-    "desktop:build": "bun run build && node scripts/desktop-build.mjs"
+    "desktop:build": "bun run build && node scripts/desktop-build.mjs",
+    "keychain:build": "node scripts/macos-keychain-build.mjs"
   },
   "publishConfig": {
     "access": "public",

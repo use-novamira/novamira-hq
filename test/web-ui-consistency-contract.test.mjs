@@ -73,8 +73,8 @@ test("responsive navigation stays visible and Push follows Hosting accounts", ()
 
 test("history anchors encode IDs separately from the page path", () => {
   assert.equal(
-    renderUrl(fragmentUrl(url("/history"), "request-a#b")),
-    "/history#request-a%23b",
+    renderUrl(fragmentUrl(url("/hosting-activity"), "request-a#b")),
+    "/hosting-activity#request-a%23b",
   );
 });
 

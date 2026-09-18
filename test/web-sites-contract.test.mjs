@@ -1019,7 +1019,7 @@ test("16: matched CLI profiles stay in the hosting row and CLI-only sites are se
   // rendered one until now: the cell said "Connected" without saying what was
   // connected, which left two site listings with no visible relation.
   assert.ok(
-    markup.includes('<span class="cli-profile-actions"><strong>prod</strong>'),
+    !markup.includes('<span class="cli-profile-actions"><strong>prod</strong>'),
   );
   // Every matching profile is named. Two `auth login`s against one URL under
   // different names both match, and hiding the second would make "Connected"
@@ -1088,6 +1088,18 @@ test("18: the unified list renders unmatched CLI profiles as an inventory group"
     siteProfiles,
   });
   assert.ok(markup.includes('<section class="provider-sites cli-sites">'));
+  assert.ok(
+    markup.includes('class="inventory-group" open id="inventory-manual"'),
+  );
+  const groupIds = [
+    ...markup.matchAll(/<details class="inventory-group" open id="([^"]+)"/g),
+  ].map((match) => match[1]);
+  assert.ok(groupIds.length > 1);
+  assert.equal(new Set(groupIds).size, groupIds.length);
+  assert.ok(
+    !markup.includes('class="inventory-group" name='),
+    "groups collapse independently, not as an exclusive accordion",
+  );
   assert.ok(markup.includes("<h2>Manually added sites</h2>"));
   assert.ok(
     markup.indexOf("<h2>Manually added sites</h2>") <
@@ -1109,7 +1121,7 @@ test("18: the unified list renders unmatched CLI profiles as an inventory group"
   );
   assert.ok(!markup.includes("Reconnect required"));
   assert.ok(markup.includes("name=direct"));
-  assert.equal(markup.split(">cli-prod<").length - 1, 1);
+  assert.equal(markup.split(">cli-prod<").length - 1, 0);
 });
 
 test("19: adding a CLI site sends the optional custom name", async () => {

@@ -21,6 +21,11 @@ export interface ProviderActionsView {
 
 /** Only actions exposed through the dashboard or typed AI tools belong here. */
 export const ACTION_LABELS: Readonly<Record<string, string>> = {
+  "cache.clear": "Clear cache",
+  "logs.get": "Read site logs",
+  "activity.list": "Read provider activity",
+  "analytics.usage": "Read site usage statistics",
+  "analytics.env": "Read environment statistics",
   "providers.validate": "Check the hosting account connection",
   "sites.list": "List sites",
   "sites.get": "View site details",
@@ -34,6 +39,11 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
 
 /** Contract tests verify these against the actual MCP tools/list response. */
 export const ACTION_TOOLS: Readonly<Record<string, readonly string[]>> = {
+  "cache.clear": ["hosting_cache_clear"],
+  "logs.get": ["hosting_logs_get"],
+  "activity.list": ["hosting_activity_list"],
+  "analytics.usage": ["hosting_statistics_get"],
+  "analytics.env": ["hosting_statistics_get"],
   "providers.validate": ["hosting_provider_validate"],
   "sites.list": ["hosting_sites_list"],
   "sites.get": ["hosting_site_get"],
@@ -52,7 +62,7 @@ export const ACTION_TOOLS: Readonly<Record<string, readonly string[]>> = {
 };
 
 export function renderProviderActionsPage(view: ProviderActionsView): Html {
-  const header = html`<header class="page-head"><div><h1>Available actions</h1><p>${view.profile} · ${providerLabelFor(view.provider)}</p></div><a class="button secondary"${hrefAttr(url("/providers"))}>Back to Hosting accounts</a></header>`;
+  const header = html`<header class="page-head"><div><h1>Available actions</h1><p>${view.profile} · ${providerLabelFor(view.provider)}</p></div><a class="button secondary"${hrefAttr(url("/hosting-accounts"))}>Back to Hosting accounts</a></header>`;
   const document = applyHqCapabilityPolicy(view.capabilities);
   if (
     !Array.isArray(document) ||

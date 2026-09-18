@@ -37,7 +37,7 @@ test("each AI client has a dedicated choice and closed manual fallback", () => {
   assert.doesNotMatch(choice, /Choose the app|Claude Code in VS Code/);
   for (const client of MCP_PAGE_CLIENTS) {
     assert.ok(isMcpPageClient(client));
-    assert.ok(choice.includes(`/mcp?client=${client}`));
+    assert.ok(choice.includes(`/configure-ai?client=${client}`));
     const markup = page(client);
     assert.ok(markup.includes('<details class="mcp-manual">'));
     assert.ok(

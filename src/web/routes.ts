@@ -57,7 +57,8 @@
  * stays a one-line diff for the batch that adds it.
  */
 
-import { PROVIDER_KINDS } from "../config/schema.js";
+import { PROVIDER_KINDS, isProviderKind } from "../config/schema.js";
+import { createHostingToolsHandler } from "./handlers/hosting-tools.js";
 import { createRestoreHandler } from "./handlers/restore.js";
 import { isMcpPageClient } from "./views/mcp.js";
 import { CliError } from "../errors.js";
@@ -149,6 +150,7 @@ export interface Route {
  * Keep it a flat list so a future batch's diff does not collide.
  */
 export interface RouteContext {
+  readonly hostingTools?: import("./services/hosting-tools.js").HostingToolsService;
   readonly restore?: import("./services/restore.js").RestoreService;
   readonly appAcknowledgement?: import("../config/app-acknowledgement.js").AppAcknowledgement;
   readonly pushExecution?: import("./services/push-execution.js").PushExecutionService;
@@ -268,17 +270,21 @@ const PAGE_PATHS: Readonly<Record<string, DashboardPage>> = {
   "/about": "about",
   "/": "providers",
   "/providers": "providers",
+  "/hosting-accounts": "providers",
   "/sites": "sites",
   "/how-to-use": "how-to-use",
   "/push": "pushes",
   "/backup-restore": "sites",
   "/backup-create": "sites",
+  "/hosting-tools": "sites",
   "/push/new": "push-new",
   "/novamira-setup": "novamira-setup",
   "/diagnostics": "diagnostics",
   "/settings": "settings",
   "/history": "history",
+  "/hosting-activity": "history",
   "/mcp": "mcp",
+  "/configure-ai": "mcp",
 };
 
 /**
@@ -521,6 +527,22 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
         firstProviderKind: PROVIDER_KINDS[0],
       });
       const extras = pageExtras(renderedPage, request);
+      if (request.path === "/hosting-tools") {
+        const profile = request.query.get("profile") ?? "";
+        const provider = view.profiles.find(
+          (entry) => entry.name === profile,
+        )?.provider;
+        Object.assign(extras, {
+          hostingTools: {
+            target: {
+              profile,
+              site: request.query.get("site") ?? "",
+              env: request.query.get("env") ?? "",
+            },
+            ...(provider && isProviderKind(provider) ? { provider } : {}),
+          },
+        });
+      }
       const actionProfile = request.query.get("actions");
       if (renderedPage === "providers" && actionProfile !== null) {
         const profile = view.profiles.find(
@@ -608,6 +630,18 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
     });
   }
   routes.push(
+    {
+      method: "GET",
+      path: "/_dashboard/hosting-tools/run",
+      auth: "token",
+      handler: createHostingToolsHandler(context),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/hosting-tools/run",
+      auth: "token",
+      handler: createHostingToolsHandler(context),
+    },
     {
       method: "POST",
       path: "/_dashboard/backups/create-plan",

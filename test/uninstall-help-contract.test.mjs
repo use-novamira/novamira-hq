@@ -20,6 +20,17 @@ test("uninstall help separates executable removal from optional disconnection", 
   ])
     assert.ok(markup.includes(text), text);
   assert.doesNotMatch(markup, /<button|data-on:|rm -rf/);
+  assert.equal(
+    (markup.match(/<details class="uninstall-extra">/g) ?? []).length,
+    2,
+  );
+  const simple = markup.slice(0, markup.indexOf("<details"));
+  assert.ok(simple.includes("What stays"));
+  assert.ok(!simple.includes("<pre"));
+  assert.ok(
+    markup.indexOf("novamira --site PROFILE_NAME auth logout") <
+      markup.indexOf("npm uninstall -g @novamira/cli"),
+  );
 });
 
 test("both installers disclose the independent CLI before installing it", async () => {

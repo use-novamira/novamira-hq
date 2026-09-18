@@ -9,6 +9,7 @@ import {
   powerShellLiteral,
 } from "../config/powershell.js";
 import { CliError } from "../errors.js";
+import { macOsHelperPath } from "./macos-helper.js";
 
 // HQ's keychain namespace is disjoint from the site CLI's `ai.novamira.cli`.
 // Nothing in this package may ever read or write the site CLI's records.
@@ -41,55 +42,6 @@ class SerialCommandExecutor implements CommandExecutor {
     return result;
   }
 }
-
-const MACOS_KEYCHAIN_WRITE_SCRIPT = String.raw`
-ObjC.import('Foundation');
-ObjC.import('Security');
-function run(argv) {
-  const account = argv[0];
-  const service = argv[1];
-  const secret = $.NSFileHandle.fileHandleWithStandardInput.readDataToEndOfFile;
-  const query = $.NSMutableDictionary.dictionary;
-  // Security constants are CFStringRef values. JXA must bridge them to
-  // Objective-C objects before inserting them into an NSDictionary.
-  query.setObjectForKey(ObjC.castRefToObject($.kSecClassGenericPassword), ObjC.castRefToObject($.kSecClass));
-  query.setObjectForKey($(service), ObjC.castRefToObject($.kSecAttrService));
-  query.setObjectForKey($(account), ObjC.castRefToObject($.kSecAttrAccount));
-  const update = $.NSMutableDictionary.dictionary;
-  update.setObjectForKey(secret, ObjC.castRefToObject($.kSecValueData));
-  let status = $.SecItemUpdate(query, update);
-  if (status === -25300) {
-    query.setObjectForKey(secret, ObjC.castRefToObject($.kSecValueData));
-    status = $.SecItemAdd(query, null);
-  }
-  if (status !== 0) throw new Error('Keychain write failed with status ' + status);
-}`;
-
-// Use the same signed system executable for every Keychain operation. Mixing
-// osascript writes with security reads gives the Keychain two different clients.
-const MACOS_KEYCHAIN_READ_DELETE_SCRIPT = String.raw`
-ObjC.import('Foundation');
-ObjC.import('Security');
-function run(argv) {
-  const query = $.NSMutableDictionary.dictionary;
-  const object = (value) => ObjC.castRefToObject(value);
-  query.setObjectForKey(object($.kSecClassGenericPassword), object($.kSecClass));
-  query.setObjectForKey($(argv[1]), object($.kSecAttrService));
-  query.setObjectForKey($(argv[0]), object($.kSecAttrAccount));
-  if (argv[2] === 'delete') {
-    const status = $.SecItemDelete(query);
-    if (status !== 0 && status !== -25300) throw new Error('Keychain delete failed');
-    return;
-  }
-  query.setObjectForKey($.NSNumber.numberWithBool(true), object($.kSecReturnData));
-  query.setObjectForKey(object($.kSecMatchLimitOne), object($.kSecMatchLimit));
-  const result = Ref();
-  const status = $.SecItemCopyMatching(query, result);
-  if (status === -25300) return 'null';
-  if (status !== 0) throw new Error('Keychain read failed');
-  const value = $.NSString.alloc.initWithDataEncoding(object(result[0]), $.NSUTF8StringEncoding);
-  return JSON.stringify(ObjC.unwrap(value));
-}`;
 
 export interface CommandResult {
   /** Exit status, or `null` when the child was killed by a signal. */
@@ -255,6 +207,7 @@ export class MacOsKeychainBackend extends CommandCredentialBackend {
     executor: CommandExecutor = new SpawnCommandExecutor(
       MACOS_KEYCHAIN_TIMEOUT_MS,
     ),
+    private readonly helperPath: string = macOsHelperPath(),
   ) {
     // Inventory refreshes and account checks must not open competing prompts.
     // Each child's deadline starts only when that child is actually spawned.
@@ -262,24 +215,23 @@ export class MacOsKeychainBackend extends CommandCredentialBackend {
   }
 
   async probe(): Promise<boolean> {
-    return this.available("/usr/bin/osascript", [
-      "-l",
-      "JavaScript",
-      "-e",
-      "ObjC.import('Security'); 'ok'",
-    ]);
+    try {
+      const result = await this.executor.execute(this.helperPath, ["probe"]);
+      if (!this.exitedWith(result, 0)) return false;
+      const value: unknown = JSON.parse(result.stdout);
+      return (
+        typeof value === "object" &&
+        value !== null &&
+        "protocol" in value &&
+        value.protocol === 1
+      );
+    } catch {
+      return false;
+    }
   }
 
   async read(account: string): Promise<string | undefined> {
-    const result = await this.executor.execute("/usr/bin/osascript", [
-      "-l",
-      "JavaScript",
-      "-e",
-      MACOS_KEYCHAIN_READ_DELETE_SCRIPT,
-      account,
-      CREDENTIAL_SERVICE,
-      "read",
-    ]);
+    const result = await this.run("read", account);
     this.requireSuccess(result);
     let value: unknown;
     try {
@@ -296,35 +248,47 @@ export class MacOsKeychainBackend extends CommandCredentialBackend {
   }
 
   async replace(account: string, serialized: string): Promise<void> {
-    // `security add-generic-password -w` requires the value in argv, while its
-    // interactive prompt truncates long values. JXA calls Security.framework
-    // directly and reads the complete secret from stdin instead.
-    const result = await this.executor.execute(
-      "/usr/bin/osascript",
-      [
-        "-l",
-        "JavaScript",
-        "-e",
-        MACOS_KEYCHAIN_WRITE_SCRIPT,
-        account,
-        CREDENTIAL_SERVICE,
-      ],
-      serialized,
-    );
+    const result = await this.run("write", account, serialized);
     this.requireSuccess(result);
   }
 
   async delete(account: string): Promise<void> {
-    const result = await this.executor.execute("/usr/bin/osascript", [
-      "-l",
-      "JavaScript",
-      "-e",
-      MACOS_KEYCHAIN_READ_DELETE_SCRIPT,
-      account,
-      CREDENTIAL_SERVICE,
-      "delete",
-    ]);
+    const result = await this.run("delete", account);
     this.requireSuccess(result);
+  }
+
+  private async run(
+    action: "read" | "write" | "delete",
+    account: string,
+    stdin = "",
+  ): Promise<CommandResult> {
+    if (
+      account.length !== 64 ||
+      !/^[0-9a-f]{64}$/.test(account) ||
+      Buffer.byteLength(stdin) > 524_288
+    ) {
+      throw new CliError("usage_error", "Invalid Keychain request.");
+    }
+    let result: CommandResult;
+    try {
+      result = await this.executor.execute(
+        this.helperPath,
+        [action, account],
+        stdin,
+      );
+    } catch {
+      throw new CliError(
+        "integration_unavailable",
+        "The Novamira HQ Keychain helper is missing or could not start. Reinstall HQ; credentials were not saved to a fallback file.",
+      );
+    }
+    if (this.exitedWith(result, 77)) {
+      throw new CliError(
+        "integration_unavailable",
+        "Keychain access was not authorized. Allow the request only if you initiated this operation in Novamira HQ.",
+      );
+    }
+    return result;
   }
 
   diagnostic(): CredentialDiagnostic {

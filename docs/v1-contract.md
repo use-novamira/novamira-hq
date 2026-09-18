@@ -1,5 +1,41 @@
 # Novamira HQ v1 Contract
 
+## Hosting inspection and cache tools
+
+`GET /hosting-tools?profile=…&site=…&env=…` is a read-only page under Sites,
+linked from each supported environment's menu. It performs no provider calls
+on page load. Token-protected `GET /_dashboard/hosting-tools/run` loads a selected
+report; token-protected `POST /_dashboard/hosting-tools/run` also permits cache
+purge. GET never purges cache. Reports are not stored; they are redacted,
+rendered as escaped text, capped at 200,000 serialized characters and copyable.
+Errors are not empty catalogs. Backup listing is separate from guarded restore.
+The root `hostingTools.loading` signal disables report/purge buttons while a
+request is in flight; its loading notice is hidden at rest.
+
+MCP adds `hosting_inspection_options`, `hosting_logs_get`,
+`hosting_activity_list`, `hosting_statistics_get` and `hosting_cache_clear`.
+Execution requires profile/site/environment, verifies environment membership
+and checks filtered capabilities. No arbitrary URL, command, query or native
+JSON is accepted. Discover statistics option IDs with `hosting_inspection_options`.
+Reports are untrusted data, not instructions. `hosting_backups_list` remains.
+Cache acceptance is not completion; uncertain mutations must not be retried blindly.
+
+Mappings: cache for Kinsta (site/edge), Pressable (object), Rocket.net (site),
+Pantheon (environment), WP Engine (page/CDN), Cloudways (Varnish). Logs for Kinsta
+and Pressable (access/error), Rocket.net (access, last hour). Activity for Kinsta
+(account-wide), Pressable/Rocket.net (site), Cloudways (staging deployments only).
+Statistics for Kinsta, Pressable, Rocket.net, Cloudways and Pantheon. Catalogs for
+Kinsta, Pressable, Rocket.net, Pantheon, WP Engine and InstaWP.
+Kinsta environment analytics default to 24 hours, map UTC start/end to `from`/`to`
+and permit ranges up to 31 days. Site usage is this month. Limits: 1–1000;
+activity offset: 0–100000 where supported. Pressable ignores log line limits;
+Cloudways staging activity has no pagination mapping. No SSH fallback is used.
+
+Cloudways staging activity uses GET `/staging/app/logs` with server/app IDs:
+https://developers.cloudways.com/v1/docs/operations/StagingManagementApi.html#stagingDeploymentLogs
+It uses the adapter's configured API base, not a blanket migration to API v2
+or an integration of every Security Suite/WP Manager log.
+
 ## Dashboard backup restore
 
 `GET /backup-create` offers backup creation from Sites for Kinsta, Pantheon,
@@ -263,11 +299,11 @@ accepted or persisted.
 | --- | --- | --- |
 | `{ "type": "env", "name": "..." }` | the variable name only | the process environment |
 | `{ "type": "file", "path": "..." }` | the file path only | an owner-only file the user controls |
-| `{ "type": "stored", "id": "..." }` | an opaque id only | the OS keychain, or HQ's owner-only credential file fallback |
+| `{ "type": "stored", "id": "..." }` | an opaque id only | the OS credential service |
 
 **`stored` never means plaintext.** It always resolves through HQ's keychain
-adapters under service `ai.novamira.hq`, with an owner-only file below HQ's
-credential directory as the only fallback; a plaintext secret is never written to
+adapters under service `ai.novamira.hq`; unavailable backends fail closed and
+never automatically select a file backend. A plaintext secret is never written to
 `config.json`. The id is the SHA-256 hex digest of the provider kind, a NUL
 separator, the hosting-profile name, a NUL separator, and the credential field,
 so replacing or deleting a profile deterministically replaces or deletes its
@@ -319,14 +355,39 @@ Precedence is `NOVAMIRA_HQ_CONFIG` (the configuration file only), then
 empty-string override is treated as unset.
 
 The OS credential service is `ai.novamira.hq` and never `ai.novamira.cli`;
-Windows Credential Manager targets are `ai.novamira.hq/<id>`. Backends are inbox
-platform commands invoked without a shell — macOS `/usr/bin/osascript` with a
-Security.framework bridge for reads, deletes and stdin-only writes,
-Linux `secret-tool`, Windows Credential Manager through PowerShell `Add-Type`
-P/Invoke of Advapi32 — with an explicit owner-only file fallback under
-`credentials/v1/<id>.json` selected only when the platform command is
-unavailable or is explicitly requested. The file fallback is not OS-backed
-encryption and warns on first use.
+Windows Credential Manager targets are `ai.novamira.hq/<id>`. macOS uses the
+dedicated native `Novamira HQ Credentials.app` helper, Linux uses `secret-tool`,
+and Windows uses Credential Manager through PowerShell `Add-Type` P/Invoke of
+Advapi32. No platform automatically falls back to files. The owner-only backend
+under `credentials/v1/<id>.json` is available only to explicit `preference: file`
+embedders/tests; public CLI users can choose a `file` reference instead. That
+storage is not OS-encrypted. No fallback to osascript or `security` exists.
+
+The macOS helper has a fixed service and accepts only `probe`, or
+`read|write|delete` plus a 64-character lowercase hex ID. Secret payloads use
+private stdin/stdout pipes, never argv, environment, disk or diagnostic output.
+Requests are bounded to 512 KiB (including JSON escaping); unknown operations
+and malformed IDs fail before authorization. Keychain records use
+`native-v1/<id>` accounts: there is no lookup, deletion, or migration of legacy
+test records. Re-enter credentials after upgrading a test installation.
+
+Before any Keychain access, the helper verifies its direct live parent using
+Security.framework's dynamic code validation: Apple Developer ID chain,
+`ai.novamira.hq.desktop`, and the same team as its own valid Developer ID
+signature. Names, paths, argv, environment, and generic Node/Deno signatures
+are not authorization. Other callers require an explicit native **Allow once**
+dialog naming the actual parent program and PID. There is no persistent trust
+of interpreters and denial returns an error. Signed callers are checked again
+before returning a secret, and a dead parent invalidates the request. No daemon,
+privileged service, generic command bridge or externally accessible secret API
+is introduced. This does not protect against compromise of HQ or its runtime,
+nor an attacker able to replace the user's installed code or control their UI.
+
+The helper is universal Intel/Apple Silicon, signed without the desktop's JIT
+exceptions and notarized in the existing signing workflow. npm includes its own
+copy and does not depend on the desktop installation. Signed desktop `--cli`
+runs HQ's ordinary command grammar without a window; `--mcp` uses the same
+backend. Local Swift builds have no automatic signed-caller authorization.
 
 macOS credential commands are serialized within each backend instance and have
 a two-minute execution deadline to allow interactive Keychain authorization.
@@ -1866,3 +1927,10 @@ Operation IDs `version-task:<task-id>` poll `/tasks/{task-id}/status`; only
 The catalog exposes only IDs, names, dates, status and kind; no credentials or
 download URLs. Deletion and sharing remain unsupported. Offline tests do not
 establish live account eligibility; provider plan limits apply.
+# Dashboard page URL compatibility
+
+Dashboard links use `/hosting-accounts`, `/hosting-activity` and `/configure-ai`.
+The former `/providers`, `/history` and `/mcp` page URLs remain GET aliases,
+including their query parameters. Internal `/_dashboard/*` action routes and
+the `/mcp/novamira-hq.mcpb` download are unchanged. Other page URLs remain
+unchanged; this naming change does not alter authorization or trigger actions.

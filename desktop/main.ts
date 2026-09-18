@@ -51,6 +51,18 @@ if (Deno.args[0] === "--mcp") {
     mcpMain(argv: readonly string[]): Promise<void>;
   };
   await mcpMain(Deno.args.slice(1));
+} else if (Deno.args[0] === "--cli") {
+  // Signed terminal entry point: same commands and credential backend as the
+  // dashboard, without opening a window or exposing a raw-secret bridge.
+  await prepareCommandPath();
+  const specifier = new URL("../dist/main.js", import.meta.url).href;
+  const { main } = (await import(specifier)) as typeof import("./hq.d.ts");
+  Deno.exit(
+    await main(Deno.args.slice(1), undefined, undefined, {
+      distribution: "desktop",
+      mcpLaunch: { command: Deno.execPath(), args: [...serverArgs(), "--mcp"] },
+    }),
+  );
 } else if (Deno.args[0] === SERVE_FLAG) {
   await serve();
 } else {

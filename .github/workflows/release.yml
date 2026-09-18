@@ -76,6 +76,8 @@ jobs:
           bun-version: 1.2.19
       - run: npm config set ignore-scripts true
       - run: bun install --frozen-lockfile --ignore-scripts
+      - if: runner.os == 'macOS'
+        run: bun run keychain:build
       - if: runner.os != 'Windows'
         run: bun run check
       - if: runner.os == 'Windows'
@@ -86,7 +88,7 @@ jobs:
       - run: bun run package:acceptance
 
   publish:
-    needs: [prepare, acceptance]
+    needs: [prepare, acceptance, desktop-macos]
     runs-on: ubuntu-latest
     environment: npm-release
     permissions:
@@ -106,6 +108,18 @@ jobs:
       - run: npm config set ignore-scripts true
       - run: bun install --frozen-lockfile --ignore-scripts
       - run: bun run build
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: novamira-hq-desktop-macos-arm64-signed
+          path: signed-macos
+      - name: Include the signed universal Keychain helper in npm
+        run: |
+          unzip -q signed-macos/novamira-hq-desktop-macos-arm64.keychain.zip -d native/macos
+          test -f 'native/macos/Novamira HQ Credentials.app/Contents/MacOS/novamira-hq-keychain'
+      - name: Accept the package including its native helper
+        env:
+          NOVAMIRA_HQ_REQUIRE_SIGNED_HELPER: "1"
+        run: bun run package:acceptance
       - name: Install trusted-publishing npm client
         run: npm install --global npm@12.0.1 --ignore-scripts
       - name: Pack the exact candidate
@@ -181,7 +195,7 @@ jobs:
         run: bun run package:acceptance -- --package=@novamira/hq@$VERSION
 
   github-release:
-    needs: [prepare, publish]
+    needs: [prepare, publish, desktop-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -202,6 +216,15 @@ jobs:
             if [ "$PRERELEASE" = true ]; then prerelease=--prerelease; fi
             gh release create "$RELEASE_TAG" --verify-tag --generate-notes --title "$RELEASE_TAG" $prerelease install.sh install.ps1
           fi
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: novamira-hq-desktop-macos-*-signed
+          path: signed-macos
+          merge-multiple: true
+      - name: Attach signed macOS assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$RELEASE_TAG" signed-macos/* --clobber
 
   # One compiled desktop executable per platform, attached to the release the
   # job above created. It runs after `github-release` so `gh release upload`
@@ -281,17 +304,15 @@ jobs:
   # it runs on.
   #
   # `macos-signing` is a secrets scope, not a second approval gate: the human
-  # gate is `npm-release`, which this job already sits downstream of. Restrict
+  # gate is `npm-release` for publication, after this compile/sign job. Restrict
   # the environment to release tags and give it no reviewers. The secrets are
   # here and nowhere else, so no other job — and no fork's pull request — can
   # reach the certificate.
   #
-  # A repository without those secrets still releases: the signing step is
-  # skipped with a loud warning and the unsigned executable is uploaded, exactly
-  # as it was before signing existed. It is the release runbook, not this
-  # workflow, that decides a release must be signed.
+  # npm needs the universal signed helper too. Missing signing credentials
+  # therefore stop publication instead of producing an unsigned fallback.
   desktop-macos:
-    needs: [prepare, github-release]
+    needs: [prepare, acceptance]
     name: desktop / ${{ matrix.asset }}
     runs-on: ${{ matrix.runner }}
     environment: macos-signing
@@ -304,7 +325,7 @@ jobs:
           - runner: macos-15-intel
             asset: novamira-hq-desktop-macos-x86_64
     permissions:
-      contents: write
+      contents: read
     env:
       ASSET: ${{ matrix.asset }}
     steps:
@@ -335,12 +356,13 @@ jobs:
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
         run: |
           if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
-            echo "::warning title=Unsigned macOS desktop build::APPLE_SIGNING_IDENTITY is not set on the macos-signing environment. Uploading an unsigned, un-notarized executable; Gatekeeper will refuse it on a machine that downloads it."
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "::error::The macOS Keychain helper must be signed before publishing HQ."
+            exit 1
           fi
           bash scripts/macos-sign.sh "dist-desktop/$ASSET"
           echo "signed=true" >> "$GITHUB_OUTPUT"
+      - name: Test the native helper protocol without accessing credentials
+        run: node --test test/macos-keychain-contract.test.mjs
       # Re-signing rewrites the Mach-O the embedded `dist/` and `skills/` live
       # in, so the signed executable is the one that has to prove it still runs.
       # The server role only: headless, loopback, no window, no WebKit, and no
@@ -356,13 +378,12 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$RUNNER_TEMP/verify/Novamira HQ.app"
           xcrun stapler validate "$RUNNER_TEMP/verify/Novamira HQ.app"
           spctl --assess --type execute -vv "$RUNNER_TEMP/verify/Novamira HQ.app"
-      - env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ env.RELEASE_TAG }}
-        run: |
-          assets="dist-desktop/$ASSET"
-          if [ -f "dist-desktop/$ASSET.app.zip" ]; then
-            assets="$assets dist-desktop/$ASSET.app.zip"
-          fi
-          # shellcheck disable=SC2086
-          gh release upload "$RELEASE_TAG" $assets --clobber
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.asset }}-signed
+          path: |
+            dist-desktop/${{ matrix.asset }}
+            dist-desktop/${{ matrix.asset }}.app.zip
+            dist-desktop/${{ matrix.asset }}.keychain.zip
+          retention-days: 30
+          if-no-files-found: error

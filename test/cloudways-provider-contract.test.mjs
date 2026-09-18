@@ -684,6 +684,40 @@ test("cloudways reads regions and analytics", async () => {
   });
 });
 
+test("cloudways staging activity uses the bounded documented log endpoint", async () => {
+  await withServer(
+    [
+      AUTH_ROUTE,
+      {
+        body: JSON.stringify({
+          logs: [{ action: "sync", status: "completed" }],
+        }),
+      },
+    ],
+    async ({ baseUrl, requests }) => {
+      const client = clientFor(baseUrl);
+      await assert.rejects(client.read({ kind: "activity" }), {
+        code: "usage_error",
+      });
+      assert.equal(requests.length, 0);
+      const result = await client.read({
+        kind: "activity",
+        query: [
+          ["site_id", "123:456"],
+          ["unknown", "ignored"],
+        ],
+      });
+      assert.deepEqual(result, {
+        logs: [{ action: "sync", status: "completed" }],
+      });
+      assert.equal(
+        requests[1].line,
+        "GET /staging/app/logs?server_id=123&app_id=456",
+      );
+    },
+  );
+});
+
 test("cloudways WP Manager setup uses authenticated form bodies and confirms activation", async () => {
   const inactive = {
     success: true,
@@ -769,7 +803,6 @@ test("cloudways reports its capability list", async () => {
       notes: "uses POST /service/varnish with action=purge",
     });
     for (const name of [
-      "activity.list",
       "envs.create-plain",
       "envs.push",
       "domains.list",
@@ -786,6 +819,7 @@ test("cloudways reports its capability list", async () => {
     }
     for (const name of [
       "wp.plugins.list",
+      "activity.list",
       "novamira.setup",
       "providers.capabilities",
       "sites.get",
@@ -818,7 +852,6 @@ test("cloudways refuses the operations it deliberately does not map", async () =
     const client = clientFor(baseUrl);
 
     const unsupportedReads = [
-      { kind: "activity" },
       { kind: "site-domains", envId: "123:456" },
       { kind: "site-domain-verification", siteDomainId: "1" },
       { kind: "dns-domains" },

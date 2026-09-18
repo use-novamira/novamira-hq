@@ -101,6 +101,7 @@ import { createPushService } from "./services/pushes.js";
 import { createPushExecutionService } from "./services/push-execution.js";
 import { createProviderService } from "./services/providers.js";
 import { createRestoreService } from "./services/restore.js";
+import { createHostingToolsService } from "./services/hosting-tools.js";
 import { createSetupJobService } from "./services/setup-jobs.js";
 import { createSitesService } from "./services/sites.js";
 import {
@@ -573,6 +574,7 @@ export function createDashboardServer(
   };
 
   const table = createRouteTable({
+    hostingTools: createHostingToolsService(dependencies.hosting),
     restore,
     history: dependencies.history,
     ...(dependencies.appAcknowledgement

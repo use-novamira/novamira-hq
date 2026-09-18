@@ -165,7 +165,14 @@ calls just to test.
 - `src/config/` resolves HQ paths and owns locks, atomic writes, owner-only file
   security, the `config.json` v1 schema, and the config store.
 - `src/credentials/` resolves env/file/stored credential references and backs
-  `stored` with the OS keychain plus an owner-only file fallback.
+  `stored` with the OS credential service. No automatic file fallback is allowed.
+  The file backend is explicit for embedders/tests; CLI file references remain
+  an explicit user choice. On macOS `native/macos/keychain.swift` is the sole
+  Keychain helper, packaged as a universal signed bundle for desktop and npm.
+  Only the live HQ parent signed by the helper's Developer ID team gets silent
+  caller authorization; interpreted callers require per-operation consent.
+  Never trust an interpreter, argv, path, or environment as proof of HQ identity.
+  Legacy test records are not migrated; there is no osascript/security fallback.
 - `src/hosting/` holds the shared HTTP client, provider-neutral types, the
   `ProviderClient` request unions, the profile-to-client factory, and the eight
   provider clients under `src/hosting/providers/`. `shell.ts` builds WP-CLI

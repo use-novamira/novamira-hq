@@ -226,11 +226,11 @@ function renderAvailableDirections(
   if (!view.profiles.length) {
     title = "Connect a hosting account";
     message = pushesStatusLine(view.profiles, warm);
-    action = html`<a class="button primary"${hrefAttr(url("/providers"))}>Connect a hosting provider</a>`;
+    action = html`<a class="button primary"${hrefAttr(url("/hosting-accounts"))}>Connect a hosting provider</a>`;
   } else if (!capable.length) {
     title = "Environment push is not supported";
     message = pushesStatusLine(view.profiles, warm);
-    action = html`<a class="button secondary"${hrefAttr(url("/providers"))}>Review hosting accounts</a>`;
+    action = html`<a class="button secondary"${hrefAttr(url("/hosting-accounts"))}>Review hosting accounts</a>`;
   } else if (!warm.cacheWarm || incomplete) {
     title = warm.cacheWarm
       ? "Hosting inventory needs updating"

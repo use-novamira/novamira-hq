@@ -319,9 +319,9 @@ export class BackendCredentialStore implements CredentialStore {
 }
 
 /**
- * Owner-only file fallback below HQ's credentials directory, used when no OS
- * credential service is available. Fails closed: unsafe permissions are an
- * error, never a downgrade.
+ * Explicit owner-only file backend for embedders and isolated tests. It is
+ * never selected because an OS credential service failed. Unsafe permissions
+ * are an error, never a downgrade.
  */
 export class FileCredentialBackend implements CredentialBackend {
   constructor(
@@ -409,8 +409,17 @@ export async function createCredentialStore(
       options.executor === undefined
         ? osCredentialBackend(platform)
         : osCredentialBackend(platform, options.executor);
-    if (await backend.probe())
-      return new BackendCredentialStore(backend, options.onWarning);
+    // A missing helper/keyring is an installation error, never consent to
+    // plaintext storage. Probe is non-interactive and does not read secrets.
+    if (!(await backend.probe())) {
+      throw new CliError(
+        "integration_unavailable",
+        platform === "darwin"
+          ? "The Novamira HQ Keychain helper is unavailable. Reinstall HQ or build the development helper. No file fallback was used."
+          : "The OS credential service is unavailable. Install or enable it before saving hosting credentials. No file fallback was used.",
+      );
+    }
+    return new BackendCredentialStore(backend, options.onWarning);
   }
   return new BackendCredentialStore(
     new FileCredentialBackend(credentialsDir, security),

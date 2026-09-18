@@ -71,7 +71,7 @@ test("app acknowledgement and MCP connection use token-protected POST routes", a
     },
   });
   try {
-    const initial = await server.dispatch(request("/mcp"));
+    const initial = await server.dispatch(request("/configure-ai"));
     assert.match(renderHtml(initial.body), /Before you start/);
     for (const path of [
       "/_dashboard/app/acknowledge",
@@ -111,7 +111,7 @@ test("app acknowledgement and MCP connection use token-protected POST routes", a
       patches.map(renderHtml).join(""),
       /You can now configure hosting/,
     );
-    const page = await server.dispatch(request("/mcp"));
+    const page = await server.dispatch(request("/configure-ai"));
     assert.doesNotMatch(renderHtml(page.body), /Before you start/);
     assert.match(renderHtml(page.body), /Claude Desktop/);
     const review = await server.dispatch(request("/?review-notice=1"));
@@ -446,7 +446,7 @@ test("#main carries its per-page class, and renderPlaceholderBody is gone", asyn
   try {
     for (const [path, page] of [
       ["/", "sites"],
-      ["/providers", "providers"],
+      ["/hosting-accounts", "providers"],
       ["/sites", "sites"],
       ["/how-to-use", "how-to-use"],
       ["/push", "pushes"],
@@ -478,7 +478,7 @@ test("the nav active link follows the two page aliases", async () => {
   try {
     for (const [path, href] of [
       ["/", "/sites"],
-      ["/providers", "/providers"],
+      ["/hosting-accounts", "/hosting-accounts"],
       ["/sites", "/sites"],
       ["/how-to-use", undefined],
       ["/novamira-setup", "/sites"],
@@ -505,7 +505,7 @@ test("How to use it explains the complete handoff and links to both entry paths"
       ">Prepare a site</strong>",
       ">Connect it</strong>",
       ">Ask your AI</strong>",
-      'href="/providers?new=host"',
+      'href="/hosting-accounts?new=host"',
       'href="/sites?new=cli"',
       "AI agent you selected during Novamira HQ installation",
       "does not contain an AI chat",
@@ -524,7 +524,8 @@ test("How to use it explains the complete handoff and links to both entry paths"
 test("the sidebar Connect menu puts an existing site before a hosting account", async () => {
   const { server, cleanup } = await fixture();
   try {
-    const markup = (await server.dispatch(request("/providers"))).body.markup;
+    const markup = (await server.dispatch(request("/hosting-accounts"))).body
+      .markup;
     // Go rendered a <button>, which is inline-block; HQ renders an <a>, which is
     // inline. The pair that keeps it a full-width 38px button is this element
     // plus `.new-button`'s `display` in app.css, so pin both together.
@@ -534,13 +535,13 @@ test("the sidebar Connect menu puts an existing site before a hosting account", 
         markup.indexOf("<strong>From a hosting account</strong>"),
     );
     assert.ok(markup.includes('class="new-pop"'));
-    assert.ok(markup.includes('href="/providers?new=host"'));
+    assert.ok(markup.includes('href="/hosting-accounts?new=host"'));
     assert.ok(markup.includes('href="/sites?new=cli"'));
     assert.ok(markup.includes("Connect an existing Novamira site"));
     assert.ok(markup.includes("Connect an account and discover its sites"));
     assert.ok(
       markup.indexOf('href="/sites?new=cli"') <
-        markup.indexOf('href="/providers?new=host"'),
+        markup.indexOf('href="/hosting-accounts?new=host"'),
     );
     const css = await readFile(
       new URL("../src/web/static/app.css", import.meta.url),
@@ -605,7 +606,7 @@ test("a wrong method on a known path is 405 with Allow", async () => {
   const { server, cleanup } = await fixture();
   try {
     const response = await server.dispatch(
-      request("/providers", { method: "POST" }),
+      request("/hosting-accounts", { method: "POST" }),
     );
     assert.equal(response.status, 405);
     assert.equal(response.headers.Allow, "GET");
@@ -770,6 +771,7 @@ test("the token appears exactly once, inside the root data-signals", async () =>
     assert.deepEqual(Object.keys(parsed).sort(), [
       "cliSites",
       "diagnostics",
+      "hostingTools",
       "providerForm",
       "pushForm",
       "restoreForm",
@@ -1039,6 +1041,8 @@ const SHIPPED_ROUTES = [
   "GET /push",
   "GET /backup-restore",
   "GET /backup-create",
+  "GET /hosting-tools",
+  "GET /_dashboard/hosting-tools/run",
   "GET /_dashboard/backups/create-plan",
   "GET /_dashboard/backups/catalog",
   "GET /_dashboard/backups/plan",
@@ -1047,6 +1051,9 @@ const SHIPPED_ROUTES = [
   "GET /push/new",
   "GET /diagnostics",
   "GET /history",
+  "GET /hosting-activity",
+  "GET /hosting-accounts",
+  "GET /configure-ai",
   "GET /mcp",
   "GET /mcp/novamira-hq.mcpb",
   "GET /how-to-use",

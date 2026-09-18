@@ -126,6 +126,7 @@ try {
     "dist",
     "skills",
     "legal",
+    "native/macos/Novamira HQ Credentials.app",
     "README.md",
     "LICENSE",
   ]);
@@ -141,6 +142,7 @@ try {
     "package.json",
     "skills",
     "legal",
+    "native",
   ]);
   for (const file of manifest.files)
     assert.ok(
@@ -163,6 +165,29 @@ try {
     "skills/hosting/SKILL.md",
     ...STATIC_ASSETS.map((asset) => `dist/web/static/${asset}`),
   ];
+  for (const file of manifest.files.filter((file) =>
+    file.path.startsWith("native/"),
+  )) {
+    assert.ok(
+      file.path.startsWith("native/macos/Novamira HQ Credentials.app/"),
+      "only the built helper belongs in npm",
+    );
+  }
+  if (process.env.NOVAMIRA_HQ_REQUIRE_SIGNED_HELPER === "1") {
+    for (const path of [
+      "Contents/MacOS/novamira-hq-keychain",
+      "Contents/Info.plist",
+      "Contents/_CodeSignature/CodeResources",
+    ]) {
+      assert.ok(
+        manifest.files.some(
+          (file) =>
+            file.path === `native/macos/Novamira HQ Credentials.app/${path}`,
+        ),
+        `missing signed helper ${path}`,
+      );
+    }
+  }
   for (const path of required)
     assert.ok(
       manifest.files.some((file) => file.path === path),

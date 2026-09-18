@@ -297,7 +297,7 @@ test("1: only an empty root shows onboarding; Providers remains a section", asyn
     assert.ok(!markup.includes(gone), gone);
   assert.ok(!/application[-_ ]?password/i.test(markup));
 
-  const providers = await page(server, "/providers");
+  const providers = await page(server, "/hosting-accounts");
   assert.ok(providers.includes("<h1>Hosting accounts</h1>"));
   assert.ok(providers.includes("nav-link active"));
   assert.ok(!providers.includes('class="page onboarding"'));
@@ -341,7 +341,7 @@ test("1: only an empty root shows onboarding; Providers remains a section", asyn
 
 test("2: the form chooses a provider before requesting account details", async () => {
   const { server } = await fixture({ config: PROFILE_CONFIG });
-  const markup = await page(server, "/providers");
+  const markup = await page(server, "/hosting-accounts");
   for (const want of [
     ">Connect hosting account</button>",
     'data-class="{open: $providerForm.open}"',
@@ -399,11 +399,13 @@ test("2b: provider choices can be shuffled without favoring the catalog order", 
 
 test("3: the table has Go's four columns and no invented ones", async () => {
   const { server } = await fixture({ config: PROFILE_CONFIG });
-  const markup = await page(server, "/providers");
+  const markup = await page(server, "/hosting-accounts");
   assert.ok(!markup.includes("<th>Last check</th>"));
   assert.ok(markup.includes('<details class="profile-menu">'));
   assert.ok(markup.includes('aria-label="More actions for prod"'));
-  assert.ok(markup.includes('href="/history?profile=prod">Activity</a>'));
+  assert.ok(
+    markup.includes('href="/hosting-activity?profile=prod">Activity</a>'),
+  );
   assert.ok(!markup.includes("<th>Connection</th>"));
   assert.ok(markup.includes("<th>Name</th>"));
   assert.ok(markup.includes("<th>Provider</th>"));
@@ -418,7 +420,9 @@ test("3: the table has Go's four columns and no invented ones", async () => {
   assert.ok(!markup.includes(">Validate</button>"));
   assert.ok(markup.includes("1 hosting account"));
   assert.ok(
-    markup.includes('href="/providers?actions=prod">Available actions</a>'),
+    markup.includes(
+      'href="/hosting-accounts?actions=prod">Available actions</a>',
+    ),
   );
 });
 
@@ -434,14 +438,16 @@ test("account actions page reads capabilities only for the selected account", as
       validateError: new Error("must not validate"),
     },
   });
-  await page(server, "/providers");
+  await page(server, "/hosting-accounts");
   assert.equal(calls.length, 0);
-  const markup = await page(server, "/providers?actions=prod");
+  const markup = await page(server, "/hosting-accounts?actions=prod");
   assert.deepEqual(calls, [{ kind: "capabilities" }]);
   assert.ok(markup.includes("List sites"));
   assert.ok(markup.includes("prod · Kinsta"));
   assert.ok(!markup.includes("env:KINSTA_API_KEY"));
-  const missing = await server.dispatch(request("/providers?actions=missing"));
+  const missing = await server.dispatch(
+    request("/hosting-accounts?actions=missing"),
+  );
   assert.equal(missing.status, 404);
   assert.equal(calls.length, 1);
 });
@@ -455,20 +461,20 @@ test("account actions loading failure does not leak adapter errors", async () =>
       },
     },
   });
-  const markup = await page(server, "/providers?actions=prod");
+  const markup = await page(server, "/hosting-accounts?actions=prod");
   assert.ok(markup.includes("Available actions could not be loaded"));
   assert.ok(!markup.includes("private-error-detail"));
 });
 
 test("4: the table hides itself while the form is open, on both paints", async () => {
   const { server } = await fixture({ config: PROFILE_CONFIG });
-  const closed = await page(server, "/providers");
+  const closed = await page(server, "/hosting-accounts");
   assert.ok(closed.includes('data-class="{hidden: $providerForm.open}"'));
   assert.ok(closed.includes('class="panel table-panel"'));
   assert.ok(closed.includes('class="panel form-panel ds-toggle"'));
 
   // `?new=host` opens the form server-side, so there is no first-paint flash.
-  const open = await page(server, "/providers?new=host");
+  const open = await page(server, "/hosting-accounts?new=host");
   assert.ok(open.includes('class="panel table-panel hidden"'));
   assert.ok(open.includes('class="panel form-panel ds-toggle open"'));
   assert.ok(open.includes('class="toolbar inline-toolbar hidden"'));
@@ -477,7 +483,7 @@ test("4: the table hides itself while the form is open, on both paints", async (
 
 test("5: the details row renders the credential reference, never a value", async () => {
   const { server } = await fixture({ config: PROFILE_CONFIG });
-  const markup = await page(server, "/providers");
+  const markup = await page(server, "/hosting-accounts");
   assert.ok(markup.includes(">Details</button>"));
   assert.ok(markup.includes("<dt>Credential storage</dt>"));
   assert.ok(markup.includes("env:KINSTA_API_KEY"));
@@ -558,7 +564,7 @@ test("6: a posted credential reaches the store and nothing else, ever", async ()
   assert.ok(recorder.closed);
 
   // And neither does the re-rendered page.
-  assert.ok(!(await page(server, "/providers")).includes(SECRET));
+  assert.ok(!(await page(server, "/hosting-accounts")).includes(SECRET));
 });
 
 test("7: saving onto an existing name without force is Go's Edit notice", async () => {
@@ -658,7 +664,9 @@ test("10: remove deletes the profile, its secret and its check stamp", async () 
       body: JSON.stringify({ token: TOKEN }),
     }),
   );
-  assert.ok(!(await page(server, "/providers")).includes("data-checked-at"));
+  assert.ok(
+    !(await page(server, "/hosting-accounts")).includes("data-checked-at"),
+  );
 
   const { recorder } = await sse(
     server,
@@ -696,7 +704,7 @@ test("10: remove deletes the profile, its secret and its check stamp", async () 
     apiBaseUrl: "",
     force: false,
   });
-  const markup = await page(server, "/providers");
+  const markup = await page(server, "/hosting-accounts");
   assert.ok(
     !markup.includes("data-checked-at"),
     "a checked account does not acquire a persistent status badge",
@@ -746,7 +754,7 @@ test("12: a failing validate shows Error, keeps no stamp, and never patches main
 
   // Go rendered the stamp on the failure path but did not record it, so the
   // page render still says "Not checked" rather than inferring a success.
-  const markup = await page(server, "/providers");
+  const markup = await page(server, "/hosting-accounts");
   assert.ok(!markup.includes(">Not checked</span>"));
   assert.ok(!markup.includes("data-checked-at"));
 });
@@ -773,14 +781,14 @@ test("14: the connection cell states are Go's four", async () => {
     environment: {},
   });
   assert.ok(
-    !(await page(server, "/providers")).includes(
+    !(await page(server, "/hosting-accounts")).includes(
       '<span class="pill warn">No credential</span>',
     ),
   );
 
   // `unchecked`: the variable is present, nothing has been validated.
   const withEnv = await fixture({ config: PROFILE_CONFIG });
-  const before = await page(withEnv.server, "/providers");
+  const before = await page(withEnv.server, "/hosting-accounts");
   assert.ok(!before.includes('<span class="pill">Not checked</span>'));
   assert.ok(!before.includes("data-checked-at"));
 
@@ -791,7 +799,7 @@ test("14: the connection cell states are Go's four", async () => {
       body: JSON.stringify({ token: TOKEN }),
     }),
   );
-  const after = await page(withEnv.server, "/providers");
+  const after = await page(withEnv.server, "/hosting-accounts");
   assert.ok(!after.includes('<span class="pill ok">Verified</span>'));
   assert.ok(!after.includes("data-checked-at"));
   assert.ok(!after.includes(">Not checked</span>"));

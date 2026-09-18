@@ -5,3 +5,4 @@ dist-desktop/
 .DS_Store
 .envrc
 .direnv/
+native/macos/Novamira HQ Credentials.app/

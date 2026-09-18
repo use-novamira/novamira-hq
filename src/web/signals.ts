@@ -137,6 +137,7 @@ export interface SetupSignals {
 }
 
 export interface DashboardSignals {
+  readonly hostingTools: { readonly loading: boolean };
   readonly restoreForm: {
     readonly backupId: string;
     readonly notifiedUserId: string;
@@ -305,6 +306,7 @@ export function defaultDashboardSignals(
 ): DashboardSignals {
   return {
     token,
+    hostingTools: { loading: false },
     providerForm: {
       ...defaultProviderFormSignals(options?.firstProviderKind),
       open: options?.openProviderForm ?? false,
@@ -353,6 +355,7 @@ export function toSignalRecord(
 ): Readonly<Record<string, JsonValue>> {
   return {
     token: signals.token,
+    hostingTools: { ...signals.hostingTools },
     providerForm: { ...signals.providerForm },
     pushForm: { ...signals.pushForm },
     restoreForm: { ...signals.restoreForm },

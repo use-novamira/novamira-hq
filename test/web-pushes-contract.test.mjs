@@ -319,7 +319,7 @@ test("1: the empty page exposes the next useful action for every state", async (
   );
   assert.ok(
     (await line(none.server)).includes(
-      'href="/providers">Connect a hosting provider',
+      'href="/hosting-accounts">Connect a hosting provider',
     ),
   );
 

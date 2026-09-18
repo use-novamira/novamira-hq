@@ -120,12 +120,23 @@ sign() {
     fail "the signature on $1 does not verify"
 }
 
+# The credential helper has no JIT/FFI exceptions. A universal bundle is also
+# shipped in npm so terminal/MCP installations do not need the desktop app.
+node "$root/scripts/macos-keychain-build.mjs"
+helper="$root/native/macos/Novamira HQ Credentials.app"
+codesign --force --timestamp --options runtime \
+  --identifier ai.novamira.hq.credentials \
+  --keychain "$keychain" --sign "$APPLE_SIGNING_IDENTITY" "$helper"
+codesign --verify --strict --verbose=2 "$helper"
+"$helper/Contents/MacOS/novamira-hq-keychain" probe
+
 # --- the application bundle -------------------------------------------------
 
 version=$(node -e 'const fs=require("node:fs");process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).version)' "$root/package.json")
 app=$(dirname "$binary")/Novamira\ HQ.app
 rm -rf "$app"
-mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Helpers"
+ditto "$helper" "$app/Contents/Helpers/Novamira HQ Credentials.app"
 
 # The icon is one 1024x1024 master; `iconutil` wants every representation the
 # Finder, the Dock and Get Info ask for, at both scale factors, or it refuses
@@ -190,7 +201,10 @@ sign "$native_library"
 # The standalone executable first, then the bundle. Signing the bundle re-signs
 # its own copy of the executable; the two are separate code objects and each
 # needs its own Developer ID signature.
-sign "$binary"
+codesign --force --timestamp --options runtime --entitlements "$entitlements" \
+  --identifier ai.novamira.hq.desktop --keychain "$keychain" \
+  --sign "$APPLE_SIGNING_IDENTITY" "$binary"
+codesign --verify --strict --verbose=2 "$binary"
 sign "$app"
 
 # --- notarization, both artifacts in one submission -------------------------
@@ -201,6 +215,7 @@ printf '%s' "$APPLE_API_KEY_P8_BASE64" | base64 --decode >"$api_key" ||
 rm -rf "$staging"
 mkdir -p "$staging"
 ditto "$app" "$staging/Novamira HQ.app"
+ditto "$helper" "$staging/Novamira HQ Credentials.app"
 cp "$binary" "$staging/$(basename "$binary")"
 ditto -c -k --sequesterRsrc "$staging" "$work/notarize.zip"
 
@@ -232,6 +247,8 @@ rm -f "$api_key"
 # notarization record and nothing more, which is exactly why the bundle exists.
 xcrun stapler staple "$app" || fail "could not staple the notarization ticket"
 xcrun stapler validate "$app" || fail "the stapled ticket does not validate"
+xcrun stapler staple "$helper" || fail "could not staple the helper ticket"
+xcrun stapler validate "$helper" || fail "the helper ticket does not validate"
 
 spctl --assess --type execute -vv "$app" ||
   fail "Gatekeeper did not accept the stapled bundle"
@@ -239,6 +256,9 @@ spctl --assess --type execute -vv "$app" ||
 # --- the release asset ------------------------------------------------------
 
 ditto -c -k --sequesterRsrc --keepParent "$app" "$binary.app.zip"
+ditto -c -k --sequesterRsrc --keepParent "$helper" "$binary.keychain.zip"
+# The bare executable finds its helper beside itself. The app has its own copy.
+ditto "$helper" "$(dirname "$binary")/Novamira HQ Credentials.app"
 rm -rf "$app"
 
 printf 'Signed and notarized %s\n' "$binary"

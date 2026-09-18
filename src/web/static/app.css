@@ -886,6 +886,19 @@ select:focus {
 .hosting-visibility { flex-shrink: 0; }
 
 .last-updated,
+.hosting-tools-sections { display: grid; gap: 20px; }
+.hosting-tools .card { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+.hosting-tools .card-header { padding: 20px; border-bottom: 1px solid var(--border); }
+.hosting-tools .card-header h2 { margin: 0; }
+.hosting-tools .card-header p { margin: 10px 0 0; max-width: 75ch; }
+.hosting-tool-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+.hosting-tools .card-body { padding: 20px; }
+.hosting-tools .page-head p { overflow-wrap: anywhere; }
+.hosting-report-table { max-width: 100%; overflow-x: auto; margin-bottom: 20px; }
+.hosting-report-table table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.hosting-report-table th, .hosting-report-table td { padding: 10px; text-align: left; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; max-width: 320px; }
+.hosting-tools .code-output { max-height: 480px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+
 .loading-inline {
   font-size: 12px;
   font-weight: 600;
@@ -1784,6 +1797,17 @@ dd {
   font-size: 12px;
 }
 .inventory-group-heading { min-width: 0; }
+.uninstall-extra { border-top: 1px solid var(--border); padding: 16px 0; }
+.uninstall-extra > summary { cursor: pointer; font-weight: 600; }
+.uninstall-extra > div { padding-top: 12px; }
+.uninstall-extra li { margin: 8px 0; }
+.inventory-group > summary { cursor: pointer; list-style: none; }
+.inventory-group > summary::-webkit-details-marker { display: none; }
+.inventory-group > summary::before { content: "›"; flex: 0 0 auto; font-size: 22px; line-height: 1; transition: transform 120ms ease; }
+.inventory-group[open] > summary::before { transform: rotate(90deg); }
+.inventory-group > summary .inventory-group-heading { flex: 1; }
+.inventory-group > summary:focus-visible { outline: 2px solid var(--gold); outline-offset: -3px; border-radius: 12px; }
+.inventory-group:not([open]) > summary { border-bottom: 0; }
 .inventory-group-heading h2 { overflow-wrap: anywhere; }
 .provider-sites .group-head { padding: 16px 20px; }
 .env-subrows { background: var(--surface); }

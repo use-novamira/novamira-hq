@@ -170,6 +170,112 @@ const initialized = JSON.stringify({
   method: "notifications/initialized",
 });
 
+test("typed inspection MCP tools dispatch bounded reads and cache mutations", async () => {
+  const reads = [];
+  const actions = [];
+  const { messages } = await session(
+    [
+      initialize,
+      initialized,
+      request(2, "tools/call", {
+        name: "hosting_inspection_options",
+        arguments: { profile: "production" },
+      }),
+      request(3, "tools/call", {
+        name: "hosting_logs_get",
+        arguments: {
+          profile: "production",
+          siteId: "site-1",
+          environmentId: "env-target",
+          fileName: "error",
+          limit: 25,
+        },
+      }),
+      request(4, "tools/call", {
+        name: "hosting_statistics_get",
+        arguments: {
+          profile: "production",
+          siteId: "site-1",
+          environmentId: "env-target",
+          option: "usage:visits",
+        },
+      }),
+      request(5, "tools/call", {
+        name: "hosting_activity_list",
+        arguments: {
+          profile: "production",
+          siteId: "site-1",
+          environmentId: "env-target",
+        },
+      }),
+      request(6, "tools/call", {
+        name: "hosting_cache_clear",
+        arguments: {
+          profile: "production",
+          siteId: "site-1",
+          environmentId: "env-target",
+          cache: "edge",
+        },
+      }),
+      request(7, "tools/call", {
+        name: "hosting_statistics_get",
+        arguments: {
+          profile: "production",
+          siteId: "site-1",
+          environmentId: "env-target",
+          option: "cache:site",
+        },
+      }),
+      request(8, "tools/call", {
+        name: "hosting_logs_get",
+        arguments: {
+          profile: "production",
+          siteId: "site-1",
+          environmentId: "env-target",
+          limit: "100",
+        },
+      }),
+    ],
+    {
+      client: {
+        read: async (value) => {
+          reads.push(value);
+          if (value.kind === "capabilities")
+            return [
+              "logs.get",
+              "analytics.usage",
+              "activity.list",
+              "cache.clear",
+            ].map((name) => ({ name, supported: true }));
+          return { data: [{ message: "Bearer private-token-value" }] };
+        },
+        action: async (value) => {
+          actions.push(value);
+          return actionResult("cache.clear");
+        },
+      },
+    },
+  );
+  for (const id of [2, 3, 4, 5, 6])
+    assert.notEqual(
+      messages.find((message) => message.id === id).result.isError,
+      true,
+    );
+  for (const id of [7, 8])
+    assert.equal(
+      messages.find((message) => message.id === id).result.isError,
+      true,
+    );
+  assert.equal(actions.length, 1);
+  assert.deepEqual(actions[0], {
+    kind: "clear-cache",
+    cache: "edge",
+    body: { environment_id: "env-target" },
+  });
+  assert.ok(reads.some((value) => value.kind === "logs" && value.lines === 25));
+  assert.ok(!JSON.stringify(messages).includes("private-token-value"));
+});
+
 test("MCP onboarding accepts only public URLs or an empty hosting request", async () => {
   const opened = [];
   const { messages } = await session(
@@ -343,6 +449,11 @@ test("MCP negotiates lifecycle and exposes the complete typed surface", async ()
       "hosting_environments_list",
       "hosting_operation_get",
       "hosting_backups_list",
+      "hosting_logs_get",
+      "hosting_activity_list",
+      "hosting_statistics_get",
+      "hosting_cache_clear",
+      "hosting_inspection_options",
       "hosting_backup_create",
       "hosting_novamira_setup",
       "hosting_environment_push_plan",

@@ -14,7 +14,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { inspect } from "node:util";
-import { runInNewContext } from "node:vm";
 import { UnixFileSecurity } from "../dist/config/file-security.js";
 import { ProfileLockManager, lockFilePath } from "../dist/config/lock.js";
 import { platformPaths } from "../dist/config/paths.js";
@@ -359,9 +358,8 @@ test("macOS keychain replacement sends the secret only through stdin", async () 
   await new MacOsKeychainBackend(executor).replace(account, serialized);
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].command, "/usr/bin/osascript");
-  assert.deepEqual(calls[0].args.slice(0, 3), ["-l", "JavaScript", "-e"]);
-  assert.deepEqual(calls[0].args.slice(-2), [account, CREDENTIAL_SERVICE]);
+  assert.ok(calls[0].command.endsWith("/Contents/MacOS/novamira-hq-keychain"));
+  assert.deepEqual(calls[0].args, ["write", account]);
   assert.equal(calls[0].stdin, serialized);
   assert.equal(calls[0].environment, undefined);
   assert.equal(
@@ -374,11 +372,9 @@ test("macOS keychain replacement sends the secret only through stdin", async () 
     ),
     false,
   );
-  assert.match(calls[0].args[3], /readDataToEndOfFile/);
-  assert.match(calls[0].args[3], /SecItemUpdate/);
 });
 
-test("macOS uses one system client and never treats a failed read as absence", async () => {
+test("macOS uses one dedicated helper and never treats a failed read as absence", async () => {
   const calls = [];
   let response = {
     code: 0,
@@ -392,82 +388,27 @@ test("macOS uses one system client and never treats a failed read as absence", a
       return response;
     },
   });
-  assert.equal(await backend.read("account"), PLACEHOLDER + "\n");
-  await backend.replace("account", PLACEHOLDER);
-  await backend.delete("account");
-  assert.ok(calls.every((call) => call.command === "/usr/bin/osascript"));
-  assert.equal(calls[0].args.at(-1), "read");
-  assert.equal(calls[2].args.at(-1), "delete");
+  const account = "d".repeat(64);
+  assert.equal(await backend.read(account), PLACEHOLDER + "\n");
+  await backend.replace(account, PLACEHOLDER);
+  await backend.delete(account);
+  assert.ok(
+    calls.every((call) =>
+      call.command.endsWith("/Contents/MacOS/novamira-hq-keychain"),
+    ),
+  );
+  assert.equal(calls[0].args[0], "read");
+  assert.equal(calls[2].args[0], "delete");
   response = { ...response, code: 1, stdout: "null" };
-  await assert.rejects(backend.read("account"), {
+  await assert.rejects(backend.read(account), {
     code: "integration_unavailable",
   });
   response = { ...response, code: 0, stdout: "invalid sensitive output" };
-  await assert.rejects(backend.read("account"), (error) => {
+  await assert.rejects(backend.read(account), (error) => {
     assert.equal(error.code, "integration_unavailable");
     assert.doesNotMatch(error.message, /sensitive/);
     return true;
   });
-});
-
-test("macOS keychain writes bridge CFString constants for both create and update", async () => {
-  let script;
-  await new MacOsKeychainBackend({
-    async execute(_command, args) {
-      script = args[3];
-      return { code: 0, signal: null, truncated: false, stdout: "" };
-    },
-  }).replace("synthetic-account", PLACEHOLDER);
-  for (const exists of [false, true]) {
-    const constants = [
-      "kSecClassGenericPassword",
-      "kSecClass",
-      "kSecAttrService",
-      "kSecAttrAccount",
-      "kSecValueData",
-    ];
-    const bridge = (value) => value;
-    for (const name of constants) bridge[name] = { reference: name };
-    let added = false;
-    bridge.NSFileHandle = {
-      fileHandleWithStandardInput: { readDataToEndOfFile: PLACEHOLDER },
-    };
-    bridge.NSMutableDictionary = {
-      get dictionary() {
-        const values = new Map();
-        return {
-          values,
-          setObjectForKey(value, key) {
-            assert.equal(typeof key, "string", "CFString keys must be bridged");
-            assert.equal(
-              typeof value,
-              "string",
-              "CFString values must be bridged",
-            );
-            values.set(key, value);
-          },
-        };
-      },
-    };
-    bridge.SecItemUpdate = (query, update) => {
-      assert.equal(query.values.get("kSecClass"), "kSecClassGenericPassword");
-      assert.equal(query.values.get("kSecAttrAccount"), "synthetic-account");
-      assert.equal(query.values.get("kSecAttrService"), CREDENTIAL_SERVICE);
-      assert.equal(update.values.get("kSecValueData"), PLACEHOLDER);
-      return exists ? 0 : -25300;
-    };
-    bridge.SecItemAdd = (query) => {
-      added = true;
-      assert.equal(query.values.get("kSecValueData"), PLACEHOLDER);
-      return 0;
-    };
-    runInNewContext(`${script}\nrun(args)`, {
-      $: bridge,
-      ObjC: { import() {}, castRefToObject: (value) => value.reference },
-      args: ["synthetic-account", CREDENTIAL_SERVICE],
-    });
-    assert.equal(added, !exists);
-  }
 });
 
 test("macOS keychain requests are serialized and recover after a failure", async () => {
@@ -486,9 +427,9 @@ test("macOS keychain requests are serialized and recover after a failure", async
       return { code: 0, signal: null, truncated: false, stdout: "null\n" };
     },
   });
-  const first = backend.read("first");
-  const rejected = assert.rejects(first, /synthetic denial/);
-  const second = backend.read("second");
+  const first = backend.read("a".repeat(64));
+  const rejected = assert.rejects(first, { code: "integration_unavailable" });
+  const second = backend.read("b".repeat(64));
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(started.length, 1);
   release();

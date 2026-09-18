@@ -109,7 +109,11 @@ const CAPABILITY_ENTRIES: readonly ProviderCapabilityInput[] = [
   ["ops.get", true, "uses GET /operation/{id}"],
   ["ops.wait", true, "uses GET /operation/{id}"],
   ["regions.list", true, "uses GET /regions"],
-  ["activity.list", false, NOT_MAPPED_NOTE],
+  [
+    "activity.list",
+    true,
+    "uses GET /staging/app/logs for a site_id (server_id:app_id); staging deployment activity only",
+  ],
   ["sites.create", true, `uses POST /app; ${NATIVE_FIELDS_NOTE}`],
   ["sites.create-plain", true, `uses POST /app; ${NATIVE_FIELDS_NOTE}`],
   [
@@ -334,7 +338,21 @@ class CloudwaysClient implements ProviderClient {
       }
       // Deliberate gaps. Go answers `backups` with its own message and the rest
       // through the `default` arm; both are the same `provider_unsupported`.
-      case "activity":
+      case "activity": {
+        const ref = request.query?.find(([key]) => key === "site_id")?.[1];
+        if (!ref)
+          throw new CliError(
+            "usage_error",
+            "Cloudways staging activity requires site_id as server_id:app_id.",
+          );
+        const query = envQuery(ref, undefined);
+        if (!query.some(([key, value]) => key === "app_id" && value !== ""))
+          throw new CliError(
+            "usage_error",
+            "Select a Cloudways application, not a whole server.",
+          );
+        return this.#readJson("/staging/app/logs", query);
+      }
       case "site-domains":
       case "site-domain-verification":
       case "dns-domains":

@@ -247,8 +247,8 @@ test("MCP page chooses a client before showing its setup", () => {
     ),
   );
   assert.ok(choice.includes("Which AI client do you use?"));
-  assert.ok(choice.includes("/mcp?client=chatgpt"));
-  assert.ok(choice.includes("/mcp?client=claude"));
+  assert.ok(choice.includes("/configure-ai?client=chatgpt"));
+  assert.ok(choice.includes("/configure-ai?client=claude"));
   assert.ok(!choice.includes("Copy configuration"));
 
   const markup = renderHtml(

@@ -118,7 +118,7 @@ export function renderSidebar(
   page: DashboardPage,
   activeNav = true,
 ): Html {
-  return html`<aside class="sidebar"><a class="brand"${hrefAttr(url("/providers"))} aria-label="Novamira HQ dashboard home"><img class="brand-logo" src="/assets/novamira-hq-logo-white.svg" alt="Novamira HQ" width="170" height="25"></a><div id="sidebar-navigation" class="sidebar-navigation"><div class="new-menu"${ds.on(
+  return html`<aside class="sidebar"><a class="brand"${hrefAttr(url("/hosting-accounts"))} aria-label="Novamira HQ dashboard home"><img class="brand-logo" src="/assets/novamira-hq-logo-white.svg" alt="Novamira HQ" width="170" height="25"></a><div id="sidebar-navigation" class="sidebar-navigation"><div class="new-menu"${ds.on(
     "click",
     set("sites.newMenuOpen", jsBoolean(false)),
     "outside",
@@ -130,7 +130,7 @@ export function renderSidebar(
   )}${ds.classes({ open: signal("sites.newMenuOpen") })} role="menu"><a${hrefAttr(
     url("/sites", { new: "cli" }),
   )}><strong>Manually</strong><span>Connect an existing Novamira site by URL</span></a><a${hrefAttr(
-    url("/providers", { new: "host" }),
+    url("/hosting-accounts", { new: "host" }),
   )}><strong>From a hosting account</strong><span>Connect an account and discover its sites</span></a></div></div>${renderNav(page, activeNav)}<div class="sidebar-foot"><a class="sidebar-about"${hrefAttr(url("/about"))}${page === "about" ? attr("aria-current", "page") : false}>About Novamira HQ</a></div></div></aside>`;
 }
 
@@ -152,9 +152,9 @@ export function renderNav(page: DashboardPage, showActive = true): Html {
     : undefined;
   return html`<nav${idAttr("nav")} class="nav" aria-label="Dashboard sections">${[
     navLink(current, "sites", "/sites", "Sites"),
-    navLink(current, "providers", "/providers", "Hosting accounts"),
+    navLink(current, "providers", "/hosting-accounts", "Hosting accounts"),
     navLink(current, "pushes", "/push", "Push"),
-    navLink(current, "mcp", "/mcp", "Configure your AI"),
+    navLink(current, "mcp", "/configure-ai", "Configure your AI"),
     navLink(current, "diagnostics", "/diagnostics", "Diagnostics"),
     navLink(current, "settings", "/settings", "Settings"),
   ]}</nav>`;

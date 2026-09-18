@@ -24,8 +24,11 @@ test("account activity filters requests, attention and the copyable report", () 
   assert.match(markup, /Requests \(1\)/);
   assert.match(markup, /id="request-first"/);
   assert.doesNotMatch(markup, /id="request-second"|"profile": "second"/);
-  assert.match(markup, /href="\/history\?profile=first"/);
-  assert.match(markup, /href="\/history\?profile=first#request-first"/);
+  assert.match(markup, /href="\/hosting-activity\?profile=first"/);
+  assert.match(
+    markup,
+    /href="\/hosting-activity\?profile=first#request-first"/,
+  );
   assert.match(markup, /All accounts/);
   assert.match(markup, /value="empty"/);
   assert.match(

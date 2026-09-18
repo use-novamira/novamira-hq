@@ -200,12 +200,15 @@ async function page(server, path) {
 
 /** Every 6a page, including the two query-string variants Go's rule 5 used. */
 const CORPUS_PATHS = [
-  "/about",
+  "/providers",
   "/history",
   "/mcp",
+  "/about",
+  "/hosting-activity",
+  "/configure-ai",
   "/",
-  "/providers",
-  "/providers?new=host",
+  "/hosting-accounts",
+  "/hosting-accounts?new=host",
   "/sites",
   "/sites?new=site",
   "/how-to-use",
@@ -629,7 +632,10 @@ test("15b: hrefAttr is the only way a URL attribute is written", async () => {
     }
   }
   assert.deepEqual(offenders, [`${join(root, "html.ts")} href`]);
-  assert.equal(renderAttr(hrefAttr(url("/providers"))), ' href="/providers"');
+  assert.equal(
+    renderAttr(hrefAttr(url("/hosting-accounts"))),
+    ' href="/hosting-accounts"',
+  );
 });
 
 test("16: the template refuses every illegal interpolation context", () => {
@@ -1088,7 +1094,10 @@ test("29: every routed page carries main, nav and toast", async () => {
   // never the assertion.
   const pages = [
     { path: "/", ids: ["main", "nav", "toast"] },
-    { path: "/providers", ids: ["main", "nav", "toast", "provider-flash"] },
+    {
+      path: "/hosting-accounts",
+      ids: ["main", "nav", "toast", "provider-flash"],
+    },
     {
       path: "/sites",
       ids: ["main", "nav", "toast", "sites-status", "sites-result"],
@@ -1251,7 +1260,7 @@ function rootSignals(markup) {
   return JSON.parse(values[0]);
 }
 
-test("33: the root signal object carries exactly the nine keys, and no siteForm", async () => {
+test("33: the root signal object carries exactly the ten keys, and no siteForm", async () => {
   const signals = rootSignals(await page(await dashboard(), "/sites?new=site"));
   // `cliSites` is the site-profile panel's subtree — a site URL box and a
   // loading flag. It is *not* Go's `siteForm`, which held a WordPress
@@ -1259,6 +1268,7 @@ test("33: the root signal object carries exactly the nine keys, and no siteForm"
   assert.deepEqual(Object.keys(signals).sort(), [
     "cliSites",
     "diagnostics",
+    "hostingTools",
     "providerForm",
     "pushForm",
     "restoreForm",
@@ -1272,7 +1282,7 @@ test("33: the root signal object carries exactly the nine keys, and no siteForm"
 
 test("34: signals.token is the server's token", async () => {
   const server = await dashboard();
-  const signals = rootSignals(await page(server, "/providers"));
+  const signals = rootSignals(await page(server, "/hosting-accounts"));
   assert.equal(signals.token, server.token);
   assert.equal(signals.token, TOKEN);
 });
@@ -1280,12 +1290,12 @@ test("34: signals.token is the server's token", async () => {
 test("35: ?new=host opens the provider form; ?new=site opens nothing", async () => {
   const server = await dashboard();
   const hostSignals = rootSignals(
-    await page(server, "/providers?new=host"),
+    await page(server, "/hosting-accounts?new=host"),
   ).providerForm;
   assert.equal(hostSignals.open, true);
   assert.equal(hostSignals.detailsOpen, false);
   assert.equal(
-    rootSignals(await page(server, "/providers")).providerForm.open,
+    rootSignals(await page(server, "/hosting-accounts")).providerForm.open,
     false,
   );
   const siteVariant = rootSignals(await page(server, "/sites?new=site"));
@@ -1293,8 +1303,8 @@ test("35: ?new=host opens the provider form; ?new=site opens nothing", async () 
   assert.equal("siteForm" in siteVariant, false);
   // An unknown value is ignored in silence rather than turned into an error.
   assert.equal(
-    rootSignals(await page(server, "/providers?new=whatever")).providerForm
-      .open,
+    rootSignals(await page(server, "/hosting-accounts?new=whatever"))
+      .providerForm.open,
     false,
   );
 });
@@ -1371,7 +1381,7 @@ test("39: the rendered data-signals round-trips to defaultDashboardSignals", asy
     defaultDashboardSignals(server.token, { firstProviderKind: "kinsta" }),
   );
   assert.deepEqual(
-    rootSignals(await page(server, "/providers?new=host")),
+    rootSignals(await page(server, "/hosting-accounts?new=host")),
     defaultDashboardSignals(server.token, {
       openProviderForm: true,
       firstProviderKind: "kinsta",
@@ -1641,11 +1651,13 @@ test("no secret-shaped value can reach the markup, a URL or an SSE frame", async
   assert.ok(!body.includes(secret));
   // The only signal that ever holds a secret starts empty and is never rendered
   // back: the value travels in a request body, straight to the credential store.
-  const signals = rootSignals(await page(await dashboard(), "/providers"));
+  const signals = rootSignals(
+    await page(await dashboard(), "/hosting-accounts"),
+  );
   assert.equal(signals.providerForm.credentialValue, "");
   // A URL cannot carry one either: `url()` is the only constructor, and the
   // conventions above make a query value impossible to smuggle past encoding.
-  const target = url("/providers", { profile: secret });
+  const target = url("/hosting-accounts", { profile: secret });
   assert.ok(renderUrl(target).includes(encodeURIComponent(secret)));
   const frame = await sseBody((stream) => {
     stream.patchElements(renderToast({ level: "ok", message: "saved" }), {

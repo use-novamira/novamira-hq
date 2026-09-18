@@ -108,11 +108,31 @@ credential reference is one of:
 - `env` — the name of an environment variable, for example `KINSTA_API_KEY`;
 - `file` — the path of an owner-only file containing the secret;
 - `stored` — an opaque id for a secret held in the OS keychain (`ai.novamira.hq`)
-  with an owner-only file fallback.
+  with no automatic file fallback.
 
 `stored` never means a plaintext secret in `config.json`. No HQ command accepts a
 secret as a command-line option; secrets come from an environment variable, a
 file, or standard input.
+
+On macOS, app, CLI and MCP use the dedicated **Novamira HQ Credentials** native
+helper. Releases include its signed, notarized universal bundle in both the app
+and npm package. No Swift compiler or desktop installation is required for npm.
+Only the verified HQ executable signed by the helper's Developer ID team gets
+automatic caller authorization. Node/npm and development callers require an
+explicit **Allow once** confirmation for each helper operation; Node itself is
+never permanently trusted. Keychain may still ask to unlock or authorize a key.
+Windows uses Credential Manager; Linux uses Secret Service (`secret-tool`).
+An unavailable OS backend is an error, not permission to save secrets to files.
+Use an explicit `file` reference only when you deliberately want that storage.
+
+For local macOS development, run `bun run keychain:build` with Xcode command-line
+tools installed. This creates an unsigned development helper: no automatic
+caller authorization. Old test credentials are not migrated; re-enter them.
+For terminal use of the signed app without a window:
+
+```sh
+"/Applications/Novamira HQ.app/Contents/MacOS/novamira-hq-desktop" --cli doctor --offline
+```
 
 Storage locations, which are deliberately disjoint from the site CLI's:
 
@@ -197,8 +217,8 @@ What it does:
   first, then enter its account details. Configuration stays on the user's
   device and is never sent to Novamira servers; Novamira HQ uses the credential
   locally to contact the hosting provider directly. The credential is posted
-  once and handed to the OS credential store when available; the owner-only
-  local file fallback is not OS-encrypted and produces a warning. The page only
+  once and handed to the OS credential store. If it is unavailable, saving
+  fails explicitly; no local file fallback is selected. The page only
   ever shows the reference (`env:NAME`, `stored:ID`), never a value.
 - **Sites** — browse hosting sites and Novamira CLI profiles in one list. A CLI
   profile matched to a hosting environment appears only on that environment;

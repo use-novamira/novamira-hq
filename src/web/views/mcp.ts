@@ -53,7 +53,7 @@ function setupResult(
           : state.status === "sent"
             ? "The configuration was sent to VS Code. Review the server and approve it there."
             : `Open a new session in ${name} to use Novamira HQ.`;
-  return html`<section class="page mcp-page"><header class="page-head"><div><h1>${title}</h1></div></header><section class="mcp-setup-card" role="status" aria-live="polite"><span class="mcp-choice-mark large">${clientMark(client)}</span><h2>${name}</h2><p>${explanation}</p>${busy ? html`<p>Please wait. No site operations are being performed.</p>` : html`<div class="mcp-after"><strong>Try it in your AI client</strong><p>Ask: “Show me my sites in Novamira HQ.”</p><p>Novamira HQ responded locally. The connection from your AI client has not yet been verified.</p></div><a class="button primary"${hrefAttr(url("/mcp"))}>Back to AI clients</a>`}</section></section>`;
+  return html`<section class="page mcp-page"><header class="page-head"><div><h1>${title}</h1></div></header><section class="mcp-setup-card" role="status" aria-live="polite"><span class="mcp-choice-mark large">${clientMark(client)}</span><h2>${name}</h2><p>${explanation}</p>${busy ? html`<p>Please wait. No site operations are being performed.</p>` : html`<div class="mcp-after"><strong>Try it in your AI client</strong><p>Ask: “Show me my sites in Novamira HQ.”</p><p>Novamira HQ responded locally. The connection from your AI client has not yet been verified.</p></div><a class="button primary"${hrefAttr(url("/configure-ai"))}>Back to AI clients</a>`}</section></section>`;
 }
 const CLIENTS = {
   claude: { name: "Claude Desktop", method: "Install the desktop extension" },
@@ -90,7 +90,7 @@ function manualConfiguration(content: string, instructions: string): Html {
 }
 
 function clientChoice(): Html {
-  return html`<section class="mcp-choose"><div><span class="eyebrow">Step 1</span><h2>Which AI client do you use?</h2><p>Choose how you use your AI assistant.</p></div><div class="mcp-client-grid">${MCP_PAGE_CLIENTS.map((client) => html`<a class="mcp-choice"${hrefAttr(url("/mcp", { client }))}><span class="mcp-choice-mark">${clientMark(client)}</span><span><strong>${CLIENTS[client].name}</strong><small>${CLIENTS[client].method}</small></span><span class="mcp-choice-arrow">→</span></a>`)}</div></section>`;
+  return html`<section class="mcp-choose"><div><span class="eyebrow">Step 1</span><h2>Which AI client do you use?</h2><p>Choose how you use your AI assistant.</p></div><div class="mcp-client-grid">${MCP_PAGE_CLIENTS.map((client) => html`<a class="mcp-choice"${hrefAttr(url("/configure-ai", { client }))}><span class="mcp-choice-mark">${clientMark(client)}</span><span><strong>${CLIENTS[client].name}</strong><small>${CLIENTS[client].method}</small></span><span class="mcp-choice-arrow">→</span></a>`)}</div></section>`;
 }
 
 function connector(client: McpClient, label: string, hint: string): Html {
@@ -214,6 +214,6 @@ export function renderMcpPage(
   const content =
     client === undefined
       ? clientChoice()
-      : html`<div class="mcp-back"><a class="text-link"${hrefAttr(url("/mcp"))}>← Choose another AI client</a></div>${configuration ? setup(configuration, client) : html`<p class="notice warn">Launch configuration is unavailable in this Novamira HQ instance.</p>`}`;
+      : html`<div class="mcp-back"><a class="text-link"${hrefAttr(url("/configure-ai"))}>← Choose another AI client</a></div>${configuration ? setup(configuration, client) : html`<p class="notice warn">Launch configuration is unavailable in this Novamira HQ instance.</p>`}`;
   return html`<section class="page mcp-page"><header class="page-head"><div><h1>Configure your AI</h1><p>Manage your sites with Novamira HQ.</p></div></header>${state?.status === "failed" ? html`<section class="notice danger" role="alert"><h2>Configuration could not be completed</h2><p>${state.message}</p></section>` : ""}${content}</section>`;
 }

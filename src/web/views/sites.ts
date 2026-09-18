@@ -264,24 +264,24 @@ function renderCliOnly(
   view: SitesResultView,
 ): Html | false {
   if (profiles.length === 0) return false;
-  return html`<section class="provider-sites cli-sites"><div class="group-head"><div class="inventory-group-heading"><h2>Manually added sites</h2><p>Sites not linked to a hosting account.</p></div><span class="pill">${String(
+  return html`<section class="provider-sites cli-sites"><details class="inventory-group" open${attr("id", "inventory-manual")}><summary class="group-head"><div class="inventory-group-heading"><h2>Manually added sites</h2><p>Sites not linked to a hosting account.</p></div><span class="pill">${String(
     profiles.length,
-  )} ${profiles.length === 1 ? "site" : "sites"}</span></div><div class="site-grid cli-site-grid">${profiles.map(
+  )} ${profiles.length === 1 ? "site" : "sites"}</span></summary><div class="site-grid cli-site-grid">${profiles.map(
     (profile) =>
       renderSiteProfileRow(siteProfileRowView(profile), {
         profile: view.profile,
         includeEnvs: view.includeEnvs,
       }),
-  )}</div></section>`;
+  )}</div></details></section>`;
 }
 
 /** Go's `renderSiteGroup` (`views.go:927-953`). */
 function renderSiteGroup(group: SiteGroup, view: SitesResultView): Html {
-  const head = html`<div class="group-head"><div class="inventory-group-heading"><h2>${group.profile}</h2><p>Hosting account · ${providerLabel(
+  const head = html`<summary class="group-head"><div class="inventory-group-heading"><h2>${group.profile}</h2><p>Hosting account · ${providerLabel(
     group.provider,
   )}</p></div>`;
   if (group.stale) {
-    return html`<section class="provider-sites">${head}<span class="pill warn">API unavailable</span></div>${renderNotice(
+    return html`<section class="provider-sites"><details class="inventory-group" open${attr("id", `inventory-hosting-${encodeURIComponent(group.profile)}`)}>${head}<span class="pill warn">API unavailable</span></summary>${renderNotice(
       {
         level: "warn",
         message:
@@ -293,20 +293,20 @@ function renderSiteGroup(group: SiteGroup, view: SitesResultView): Html {
         : html`<div class="site-grid">${group.sites.map((site) =>
             renderSiteItem(group, site, view),
           )}</div>`
-    }</section>`;
+    }</details></section>`;
   }
   if (group.error !== undefined && group.error !== "") {
-    return html`<section class="provider-sites">${head}<span class="pill danger">error</span></div><div class="empty error">${group.error}</div></section>`;
+    return html`<section class="provider-sites"><details class="inventory-group" open${attr("id", `inventory-hosting-${encodeURIComponent(group.profile)}`)}>${head}<span class="pill danger">error</span></summary><div class="empty error">${group.error}</div></details></section>`;
   }
-  return html`<section class="provider-sites">${head}<span class="pill">${String(
+  return html`<section class="provider-sites"><details class="inventory-group" open${attr("id", `inventory-hosting-${encodeURIComponent(group.profile)}`)}>${head}<span class="pill">${String(
     group.sites.length,
-  )} ${group.sites.length === 1 ? "site" : "sites"}</span></div>${
+  )} ${group.sites.length === 1 ? "site" : "sites"}</span></summary>${
     group.sites.length === 0
       ? html`<div class="empty">No sites returned by this provider.</div>`
       : html`<div class="site-grid">${group.sites.map((site) =>
           renderSiteItem(group, site, view),
         )}</div>`
-  }</section>`;
+  }</details></section>`;
 }
 
 /** Go's `renderSiteItem` (`views.go:955-1004`). */
@@ -407,7 +407,11 @@ function hostingProfileMenu(
   ].includes(group.provider)
     ? html`<a class="profile-menu-action"${hrefAttr(url("/backup-create", { profile: group.profile, site: site.id, env: env.id }))}>Create backup…</a>`
     : false;
-  return html`${renderProfileLink(connection, view, group, env, label, "inline")}${createBackup}${restore}`;
+  const tools =
+    group.provider !== "hostinger"
+      ? html`<a class="profile-menu-action"${hrefAttr(url("/hosting-tools", { profile: group.profile, site: site.id, env: env.id }))}>Hosting tools &amp; backups…</a>`
+      : false;
+  return html`${renderProfileLink(connection, view, group, env, label, "inline")}${tools}${createBackup}${restore}`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -540,7 +544,9 @@ function renderProfileLink(
       (candidate) => candidate.name === name,
     );
     return profile === undefined
-      ? html`<span class="push-hint">${name}</span>`
+      ? connection.profiles.length > 1
+        ? html`<span class="push-hint">${name}</span>`
+        : false
       : renderSiteProfileActions(siteProfileRowView(profile), {
           menuMode,
           suppressReconnect: connection.state === "unavailable",
@@ -562,9 +568,7 @@ function renderProfileLink(
                 { include: [] },
               )
             : undefined,
-          hideName:
-            connection.profiles.length === 1 &&
-            profile.name === new URL(profile.siteUrl).hostname,
+          hideName: connection.profiles.length === 1,
         });
   })}`;
 }

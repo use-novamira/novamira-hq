@@ -21,8 +21,9 @@ Before creating a release tag:
    workflow variables. Normal releases authenticate only through GitHub OIDC.
 6. Create the GitHub `macos-signing` environment, restrict it to release tags,
    and give it the six Apple secrets below and no reviewers. It scopes the
-   signing certificate to one job; the human gate stays `npm-release`, which the
-   desktop jobs already run downstream of. Then dispatch **Verify macOS
+   signing certificate to one job; the human gate stays `npm-release` for
+   publication. Signing now precedes that gate so npm can include the signed
+   universal credential helper. Then dispatch **Verify macOS
    signing** once, and read its Gatekeeper verdict, before relying on a release
    to sign anything.
 
@@ -108,7 +109,7 @@ The `desktop-macos` job runs on both macOS architectures — arm64 on
 `macos-latest`, Intel on `macos-15-intel` — compiles the Deno shell natively on
 each, then runs `scripts/macos-sign.sh`, which signs it with a Developer ID
 Application certificate under the Hardened Runtime, notarizes it, staples the
-ticket to the bundle, and publishes two assets per architecture:
+ticket to the bundle, and prepares three assets per architecture:
 
 - `novamira-hq-desktop-macos-arm64` — the arm64 executable, signed and
   notarized.
@@ -118,6 +119,28 @@ ticket to the bundle, and publishes two assets per architecture:
   notarized.
 - `novamira-hq-desktop-macos-x86_64.app.zip` — `Novamira HQ.app` around it,
   signed, notarized and **stapled**.
+- `<executable>.keychain.zip` — universal **Novamira HQ Credentials.app**.
+  Extract beside a bare executable; desktop `.app` bundles already include it.
+
+The signing job runs after acceptance, before npm publication. The npm job
+downloads the arm64 job's universal helper artifact into `native/macos`, runs
+package acceptance with `NOVAMIRA_HQ_REQUIRE_SIGNED_HELPER=1`, and includes it in
+the tarball. The final GitHub release attaches the already-signed artifacts.
+The helper has no JIT or library-validation entitlements. Missing signing
+secrets or a missing helper stops publication; an unsigned release is not a
+fallback. The dispatcher-only signing workflow packages the same helper.
+
+Signatures and notarization tickets contain timestamps. Reuse the signed
+artifacts when retrying a failed publication; do not regenerate a different
+tarball for an already-published version. A full rebuild after publication must
+use a new version. The registry integrity guard deliberately rejects mismatch.
+
+Before shipping, manually verify both Mac architectures: fresh account save,
+read, replace and remove in the signed app; the signed executable's `--cli` and
+`--mcp` roles; repeat after an app update; deny/cancel and locked Keychain;
+the npm/Node caller's per-operation approval, and rejection without approval.
+Do not use real hosting secrets in CI. Automated native smoke tests use only
+`probe` and malformed requests, which never access the Keychain.
 
 The `.app` exists beside the bare executable because `xcrun stapler` accepts
 only a bundle, a disk image or an installer package. A bare executable can be
@@ -156,10 +179,7 @@ empty Deno cache; a missing library is an installation error, never a network
 fallback. Removing the remaining entitlement requires separating bare-executable
 and app entitlements and verifying both with Apple's signing workflow.
 
-If `APPLE_SIGNING_IDENTITY` is unset each job emits a warning annotation and
-uploads an unsigned executable rather than failing the release. Before
-announcing a release, check both `desktop / novamira-hq-desktop-macos-*` jobs
-for that warning.
+If `APPLE_SIGNING_IDENTITY` is unset, signing and therefore publication fail.
 
 ### Downloading test builds without a release
 
@@ -179,7 +199,7 @@ with the release removed. Dispatch it by hand: it compiles the shell, runs the
 same `scripts/macos-sign.sh` against the same `macos-signing` environment,
 notarizes for real, prints the signature, entitlements and Gatekeeper verdict,
 and attaches both artifacts to the run. It publishes nothing and holds no write
-permission, and unlike the release job it *fails* when a secret is missing,
+permission, and like the release job it *fails* when a secret is missing,
 because a green run that skipped signing would answer the only question it
 exists to answer with the wrong word.
 
@@ -215,5 +235,5 @@ to get the stapled bundle. The bare executable loses its mode the same way, so
   there is no Linux desktop installer, and no AppImage or distribution package.
 - The desktop icons are verified structurally — sizes, encodings and headers —
   never visually; nothing in CI looks at a taskbar.
-- A release whose `macos-signing` secrets are missing still publishes; the
-  unsigned macOS asset is flagged by a workflow warning, not by a failure.
+- npm publication depends on macOS signing even when the npm consumer runs on
+  Windows or Linux, because the tarball includes the universal Mac helper.

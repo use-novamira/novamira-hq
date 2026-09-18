@@ -6,6 +6,30 @@
   var status = "all"; // all | with | without
   var HIDDEN_KEY = "novamira-hq.hidden-hosting-sites.v1";
   var hiddenSites = new Set();
+  var COLLAPSED_KEY = "novamira-hq.collapsed-site-groups.v1";
+  var collapsedGroups = new Set();
+  try {
+    var storedCollapsed = JSON.parse(localStorage.getItem(COLLAPSED_KEY) || "[]");
+    if (Array.isArray(storedCollapsed)) collapsedGroups = new Set(storedCollapsed.filter(function (v) { return typeof v === "string"; }).slice(0, 10000));
+  } catch (_) { /* Keep native disclosure controls usable without storage. */ }
+
+  function restoreGroups() {
+    document.querySelectorAll("details.inventory-group[id]").forEach(function (group) {
+      group.open = !collapsedGroups.has(group.id);
+    });
+  }
+
+  document.addEventListener("click", function (event) {
+    var summary = event.target && event.target.closest ? event.target.closest("details.inventory-group > summary") : null;
+    if (!summary) return;
+    var group = summary.parentElement;
+    if (!group || !group.id) return;
+    event.preventDefault();
+    if (group.open) collapsedGroups.add(group.id); else collapsedGroups.delete(group.id);
+    group.open = !collapsedGroups.has(group.id);
+    try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify(Array.from(collapsedGroups).slice(-10000))); }
+    catch (_) { /* The preference still survives patches in this page. */ }
+  });
   try {
     var storedHidden = JSON.parse(localStorage.getItem(HIDDEN_KEY) || "[]");
     if (Array.isArray(storedHidden)) hiddenSites = new Set(storedHidden.filter(function (v) { return typeof v === "string"; }).slice(0, 10000));
@@ -35,7 +59,7 @@
       fn();
     } finally {
       if (observer && obsTarget) {
-        observer.observe(obsTarget, { childList: true, subtree: true });
+        observer.observe(obsTarget, { childList: true, subtree: true, attributes: true, attributeFilter: ["open"] });
       }
     }
   }
@@ -111,6 +135,7 @@
 
   function refilter() {
     pauseObserver(function () {
+      restoreGroups();
       updateCounts();
       applyFilters(currentQuery());
     });
@@ -156,7 +181,7 @@
   // Datastar patches #sites-result on load/refresh/filter — re-apply our state.
   obsTarget = document.body;
   observer = new MutationObserver(refilter);
-  observer.observe(obsTarget, { childList: true, subtree: true });
+  observer.observe(obsTarget, { childList: true, subtree: true, attributes: true, attributeFilter: ["open"] });
 
   function init() { refilter(); }
   if (document.readyState !== "loading") init();
