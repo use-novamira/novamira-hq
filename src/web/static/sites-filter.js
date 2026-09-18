@@ -141,6 +141,39 @@
     });
   }
 
+  function saveVisibility(key, hidden) {
+    var next = new Set(hiddenSites);
+    if (hidden) next.add(key); else next.delete(key);
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify(Array.from(next)));
+    hiddenSites = next;
+    refilter();
+  }
+
+  window.novamiraSites = Object.freeze({ hideSite: function (key, label, names, token) {
+    if (hiddenSites.has(key)) {
+      try { saveVisibility(key, false); }
+      catch (_) { window.novamiraUi.notice("Could not save the visibility preference."); }
+      return;
+    }
+    var message = 'Hide “' + label + '” and all its environments from this list? This does not delete the website. Use “Show hidden sites” to show it again.';
+    if (names.length) message += " Access is kept unless you select a connection below. Disconnecting removes this device’s authorization; you will need to authorize access again. Other saved connections to this site are affected too.";
+    window.novamiraUi.confirmAction(message, async function (selected) {
+      // Check storage before removing any authorization; never hide after a failed request.
+      localStorage.setItem(HIDDEN_KEY, JSON.stringify(Array.from(hiddenSites)));
+      for (var name of selected) {
+        var response = await fetch("/_dashboard/site-profiles/logout?response=json&name=" + encodeURIComponent(name), {
+          method: "POST", headers: { "X-Novamira-Dashboard-Token": token, "Content-Type": "application/json" }, body: "{}"
+        });
+        var result = await response.json();
+        if (!response.ok || !result.ok || !result.data || result.data.disconnected !== true) throw new Error("Disconnect not confirmed");
+      }
+      saveVisibility(key, true);
+      if (selected.length) window.location.reload();
+    }, "Hide site", names.map(function (name) {
+      return { value: name, label: names.length === 1 ? "Also disconnect this site (" + name + ")" : "Also disconnect: " + name };
+    }));
+  } });
+
   // User typing: delegated so it survives toolbar re-renders.
   document.addEventListener("input", function (e) {
     if (e.target && e.target.matches && e.target.matches('input[data-bind="sites.search"]')) {
@@ -150,21 +183,6 @@
 
   // Segmented status buttons: delegated click.
   document.addEventListener("click", function (e) {
-    var visibility = e.target && e.target.closest ? e.target.closest(".hosting-visibility") : null;
-    if (visibility) {
-      e.preventDefault();
-      e.stopPropagation();
-      var row = visibility.closest("[data-hosting-site-key]");
-      var key = row && row.getAttribute("data-hosting-site-key");
-      if (!key) return;
-      var next = new Set(hiddenSites);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(Array.from(next))); }
-      catch (_) { window.novamiraUi.notice("This browser could not save the visibility preference. The list has not changed."); return; }
-      hiddenSites = next;
-      refilter();
-      return;
-    }
     var btn = e.target && e.target.closest ? e.target.closest(".seg-btn[data-sf-status]") : null;
     if (!btn) return;
     status = btn.getAttribute("data-sf-status");

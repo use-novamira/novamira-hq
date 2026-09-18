@@ -22,6 +22,44 @@ const render = (capabilities, provider = "kinsta") =>
       capabilities,
     }),
   );
+
+test("success copy is concise and suppresses only the redundant success notice", () => {
+  const view = {
+    profile: "test",
+    provider: "instawp",
+    capabilities: [],
+    added: true,
+  };
+  const markup = renderHtml(
+    renderProviderActionsPage(view, {
+      level: "ok",
+      message: "account saved and access verified",
+    }),
+  );
+  assert.ok(markup.includes("Hosting account ready"));
+  assert.ok(
+    markup.includes("Here’s what you can do with this hosting account."),
+  );
+  assert.ok(
+    markup.includes("Select a site in Sites to see its available actions."),
+  );
+  assert.ok(
+    markup.includes(
+      "Some actions depend on your hosting plan and permissions.",
+    ),
+  );
+  assert.doesNotMatch(
+    markup,
+    /account saved and access verified|permanent hosting connection|Use Push|Requests run on demand/,
+  );
+  const warning = renderHtml(
+    renderProviderActionsPage(view, {
+      level: "warn",
+      message: "Old credential could not be removed.",
+    }),
+  );
+  assert.ok(warning.includes("Old credential could not be removed."));
+});
 test("displayed actions correspond to public capabilities and exposed AI tools", async () => {
   assert.deepEqual(
     Object.keys(ACTION_LABELS).sort(),
@@ -79,7 +117,9 @@ test("account actions show actual HQ support without raw adapter notes or compar
   );
   assert.doesNotMatch(markup, /POST \/technical|sites.delete|<table|GitHub/);
   assert.ok(
-    markup.includes("through your AI client rather than the dashboard"),
+    markup.includes(
+      "Connect your AI client, then ask it to perform these actions.",
+    ),
   );
   assert.doesNotMatch(markup, /\bCLI\b|terminal/);
 });

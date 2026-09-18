@@ -50,6 +50,7 @@
  */
 
 import { asRecord } from "../json.js";
+import { siteCliEnvironment } from "./environment.js";
 import { isSiteProfileName } from "../site-profiles.js";
 import type { SiteOperation } from "./operations.js";
 
@@ -219,7 +220,11 @@ export function sitesRenameArgs(
 export function siteCliChildEnv(
   environment: NodeJS.ProcessEnv,
 ): NodeJS.ProcessEnv {
-  return { ...environment, NOVAMIRA_UPDATE_CHECK: "0", NO_COLOR: "1" };
+  return {
+    ...siteCliEnvironment(environment),
+    NOVAMIRA_UPDATE_CHECK: "0",
+    NO_COLOR: "1",
+  };
 }
 
 /* -------------------------------------------------------------------------- */

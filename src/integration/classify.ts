@@ -55,6 +55,7 @@ const ENVELOPE_REASONS: Readonly<Record<string, UnavailableReason>> = {
   usage_error: "cli_incompatible",
   site_required: "cli_failed",
   server_unsupported: "site_incompatible",
+  network_error: "site_unreachable",
 };
 
 /** The site CLI's `error.code` meaning "that profile is not configured here". */

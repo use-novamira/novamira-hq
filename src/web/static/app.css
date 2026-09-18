@@ -869,7 +869,7 @@ select:focus {
   position: relative;
   display: inline-flex;
   align-items: center;
-  flex: 0 0 132px;
+  flex: 0 0 auto;
   min-height: 40px;
   margin-left: auto;
   color: var(--muted);
@@ -888,7 +888,10 @@ select:focus {
 .hosting-hidden-toggle input { width: 16px; min-height: 16px; }
 .hosting-visibility { flex-shrink: 0; }
 
-.last-updated,
+.last-updated { display: inline; font-size: 12px; font-weight: 600; }
+.confirmation-choice { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+.confirmation-choice input[type="checkbox"] { width: 18px; height: 18px; min-height: 18px; flex: 0 0 18px; }
+
 .hosting-tools-sections { display: grid; gap: 20px; }
 .hosting-tools .card { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
 .hosting-tools .card-header { padding: 20px; border-bottom: 1px solid var(--border); }

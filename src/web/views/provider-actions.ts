@@ -178,13 +178,9 @@ export function renderProviderActionsPage(
   notice: DashboardNotice = EMPTY_NOTICE,
 ): Html {
   const groups = providerActionGroups(view);
-  return html`<section class="page flow-page provider-actions-page"><header class="page-head"><div><h1>${view.added ? "Hosting account ready" : "Available actions"}</h1><p>${view.profile} · ${providerLabelFor(view.provider)}</p></div><a class="button secondary"${hrefAttr(url("/hosting-accounts"))}>Back to Hosting accounts</a></header>${renderNotice(notice)}<p>${
-    view.added
-      ? "Your hosting account has been saved and access verified. Here is what you can do next."
-      : "What you can do with this hosting account through Novamira HQ."
-  } Availability depends on your hosting plan, account permissions and the selected environment. Requests run on demand; there is no permanent hosting connection.</p>${
+  return html`<section class="page flow-page provider-actions-page"><header class="page-head"><div><h1>${view.added ? "Hosting account ready" : "Available actions"}</h1><p>${view.profile} · ${providerLabelFor(view.provider)}</p></div><a class="button secondary"${hrefAttr(url("/hosting-accounts"))}>Back to Hosting accounts</a></header>${view.added && notice.level === "ok" ? false : renderNotice(notice)}<p>Here’s what you can do with this hosting account.</p>${
     groups
-      ? html`${actionPanel("In the app", "Open Sites and use a site's action menu for hosting tools and backups. Use Push for supported environment transfers, and Hosting accounts to verify access.", groups.app)}${actionPanel("With your AI", "Connect your AI client in Configure your AI, then ask it to perform these hosting actions through Novamira HQ. Some actions are available through your AI client rather than the dashboard.", groups.ai)}`
+      ? html`${actionPanel("In the app", "Select a site in Sites to see its available actions.", groups.app)}${actionPanel("With your AI", "Connect your AI client, then ask it to perform these actions.", groups.ai)}<p class="field-help">Some actions depend on your hosting plan and permissions.</p>`
       : html`<section class="empty empty-block"><h2>Available actions could not be loaded</h2><p>The account remains saved. Open Available actions from this account's menu to try again.</p></section>`
   }<section class="panel"><div class="panel-head"><div><h2>Connect your sites separately</h2><p>Adding a hosting account does not authorize access to WordPress. In Sites, set up Novamira where supported and authorize each site in your browser. Your AI can use site tools only after that separate connection, and only for the abilities the site exposes.</p><p>Hosting credentials stay on this computer. Do not paste them into an AI conversation.</p></div></div></section><div class="button-row"><a class="button primary"${hrefAttr(url("/sites"))}>View sites</a><a class="button secondary"${hrefAttr(url("/configure-ai"))}>Configure your AI</a></div></section>`;
 }

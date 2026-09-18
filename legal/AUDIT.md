@@ -102,9 +102,9 @@ About's downloadable notices include this evidence with explicit scope warnings.
 ## Still required for desktop release clearance
 
 1. Establish the exact Deno version and target-specific embedded dependency graph
-   for each release. CI currently asks for `v2.x`; the locally inspected reference
-   was Deno 2.9.6, V8 15.0.245.2-rusty, TypeScript 6.0.3. Pin the toolchain together
-   with its finished notice inventory. The upstream Deno workspace Cargo.lock has
+   for each release. As of 2026-09-18, all CI workflows pin Deno `v2.9.6`, matching
+   the locally inspected reference (V8 15.0.245.2-rusty, TypeScript 6.0.3).
+   This pin does not complete the runtime notice or LGPL review. The upstream Deno workspace Cargo.lock has
    1,128 entries, including build/test dependencies; copying it is not a binary SBOM.
 2. Collect the applicable notices for the embedded Rust crates and V8's own
    third-party libraries. Deno's MIT license and V8's top-level BSD license are

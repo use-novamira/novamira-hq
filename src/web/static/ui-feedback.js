@@ -38,7 +38,7 @@
     target.textContent = message;
   }
 
-  function confirmAction(message, action, label) {
+  function confirmAction(message, action, label, choices) {
     if (active) return;
     var previous = document.activeElement;
     var overlay = document.createElement("div");
@@ -70,6 +70,18 @@
     approve.textContent = label || "Confirm";
     actions.append(cancel, approve);
     panel.append(heading, description, status, actions);
+    var inputs = [];
+    (choices || []).forEach(function (choice) {
+      var field = document.createElement("label");
+      field.className = "confirmation-choice";
+      var input = document.createElement("input");
+      input.type = "checkbox";
+      input.value = choice.value;
+      input.checked = false;
+      field.append(input, document.createTextNode(choice.label));
+      panel.insertBefore(field, status);
+      inputs.push(input);
+    });
     overlay.append(panel);
     var shell = document.querySelector(".shell");
     var wasInert = shell && shell.inert;
@@ -91,7 +103,11 @@
       if (event.key === "Escape") { event.preventDefault(); if (!busy) close(); }
       if (event.key === "Tab") {
         event.preventDefault();
-        if (!busy) (approve.isConnected && document.activeElement === cancel ? approve : cancel).focus();
+        if (!busy) {
+          var focusable = inputs.concat([cancel, approve]).filter(function (el) { return el.isConnected && !el.disabled; });
+          var index = focusable.indexOf(document.activeElement);
+          focusable[(index + (event.shiftKey ? -1 : 1) + focusable.length) % focusable.length].focus();
+        }
       }
     });
     approve.addEventListener("click", async function () {
@@ -99,9 +115,10 @@
       busy = true;
       cancel.disabled = true;
       approve.disabled = true;
+      inputs.forEach(function (input) { input.disabled = true; });
       approve.textContent = "Working…";
       status.textContent = "Please wait. Respond to any system permission request.";
-      try { await action(); close(); }
+      try { await action(inputs.filter(function (input) { return input.checked; }).map(function (input) { return input.value; })); close(); }
       catch (_) {
         status.textContent = "The result could not be confirmed. Check the current state before trying again.";
         // Do not offer an immediate retry: a failed response does not prove the operation failed.

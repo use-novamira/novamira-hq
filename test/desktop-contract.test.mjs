@@ -32,6 +32,23 @@ import {
 } from "../scripts/desktop-icons.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+test("CI desktop toolchains are pinned to the reviewed Deno version", async () => {
+  for (const [workflow, count] of [
+    ["package.yml", 1],
+    ["macos-signing.yml", 1],
+    ["release.yml", 2],
+  ]) {
+    const text = await readFile(
+      join(root, ".github", "workflows", workflow),
+      "utf8",
+    );
+    assert.deepEqual(
+      [...text.matchAll(/deno-version:\s*(\S+)/g)].map((match) => match[1]),
+      Array(count).fill("v2.9.6"),
+      workflow,
+    );
+  }
+});
 const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 const denoConfig = JSON.parse(
   await readFile(join(root, "desktop", "deno.json"), "utf8"),

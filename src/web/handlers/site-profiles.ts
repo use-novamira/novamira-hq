@@ -49,6 +49,7 @@
  */
 
 import { unavailableHint } from "../../connection-state.js";
+import { randomUUID } from "node:crypto";
 import { asCliError, CliError } from "../../errors.js";
 import { normalizeSiteUrl } from "../../provisioning/index.js";
 import { isSiteProfileName } from "../../site-profiles.js";
@@ -57,6 +58,7 @@ import { patchPage, patchToast } from "../patch.js";
 import { readSignals } from "../request.js";
 import type { DashboardRequest } from "../request.js";
 import type { DashboardResponse } from "../responses.js";
+import { jsonSuccess, jsonFailure } from "../responses.js";
 import type { RouteContext, RouteHandler } from "../routes.js";
 import { parseCliSites } from "../signals-input.js";
 import { parseSiteBrowser } from "../signals-input.js";
@@ -270,7 +272,7 @@ export function createSiteProfileConnectHandler(
 export function createSiteProfileLogoutHandler(
   context: RouteContext,
 ): RouteHandler {
-  return siteProfileRoute(
+  const streamHandler = siteProfileRoute(
     context,
     "/_dashboard/site-profiles/logout",
     async (request, stream) => {
@@ -290,6 +292,22 @@ export function createSiteProfileLogoutHandler(
       );
     },
   );
+  return async (request) => {
+    if (request.query.get("response") !== "json") return streamHandler(request);
+    try {
+      const name = requireName(request);
+      const outcome = await context.integration.logoutProfile(name);
+      if (outcome.kind !== "done" && outcome.kind !== "missing") {
+        throw new CliError(
+          "internal_error",
+          "Access could not be disconnected. Check the site's access before trying again.",
+        );
+      }
+      return jsonSuccess({ disconnected: true }, { requestId: randomUUID() });
+    } catch (error) {
+      return jsonFailure(asCliError(error));
+    }
+  };
 }
 
 /* -------------------------------------------------------------------------- */

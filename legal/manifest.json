@@ -8,7 +8,7 @@
     "remaining": [
       "Determine the actual runtime and target-specific dependencies in each compiled artifact; Deno Cargo.lock includes build/test dependencies too.",
       "Collect notices for all included Rust crates and V8 third-party libraries, plus any redistributed Windows WebView2 components.",
-      "Pin release toolchain versions once the corresponding runtime notices are complete.",
+      "Complete the runtime notice review for the pinned Deno 2.9.6 toolchain before desktop release clearance.",
       "Provide recipients of HQ binaries with the matching HQ Corresponding Source and build scripts; a private repository link alone is not sufficient for recipients without access."
     ]
   },
@@ -173,12 +173,12 @@
     {
       "id": "deno",
       "name": "Deno",
-      "version": "2.9.6 (audited reference, not a release-build pin)",
+      "version": "2.9.6 (pinned CI toolchain; runtime review incomplete)",
       "license": "MIT",
       "scope": "desktop runtime reference",
       "source": "https://github.com/denoland/deno/tree/v2.9.6",
       "licenseFiles": ["licenses/deno.txt"],
-      "notes": "This is Deno's own license, not a complete notice for its embedded Rust/C/C++ dependencies. Release workflows currently select v2.x; verify the actual compiler/runtime version for each release."
+      "notes": "This is Deno's own license, not a complete notice for its embedded Rust/C/C++ dependencies. CI workflows pin Deno 2.9.6; target-specific runtime inclusion and redistribution obligations still require review."
     },
     {
       "id": "rusty-v8",

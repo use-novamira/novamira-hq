@@ -57,6 +57,7 @@ import type { JsonValue } from "./expr.js";
 
 /** The "every configured provider profile" selection in the site browser. */
 export const ALL_PROFILES_SENTINEL = "__all__";
+export const MANUAL_PROFILES_SENTINEL = "__manual__";
 
 export interface ProviderFormSignals {
   readonly open: boolean;

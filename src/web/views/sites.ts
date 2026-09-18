@@ -82,7 +82,8 @@ import {
   type HostingSite,
 } from "../../hosting/types.js";
 import * as ds from "../datastar.js";
-import { get, post, signal } from "../expr.js";
+import { ALL_PROFILES_SENTINEL, MANUAL_PROFILES_SENTINEL } from "../signals.js";
+import { get, hideSite, post, signal } from "../expr.js";
 import {
   attr,
   classAttr,
@@ -103,6 +104,7 @@ import { renderNotice } from "./layout.js";
 import {
   renderConnectForm,
   renderSiteProfileActions,
+  renderCheckAccess,
   renderSiteProfileRow,
 } from "./site-profiles.js";
 import {
@@ -169,9 +171,9 @@ export function renderSitesPage(
     refresh,
   )}><label class="search"><input type="search"${ds.bind(
     "sites.search",
-  )} placeholder="Search by name or domain…"></label><label><span>Hosting account</span><select${ds.bind(
+  )} placeholder="Search by name or domain…"></label><label><span>Site source</span><select${ds.bind(
     "sites.profile",
-  )}><option value="__all__">All accounts</option>${view.profiles.map(
+  )}><option value="__all__">All sites</option><option value="__manual__">Manually added sites</option>${view.profiles.map(
     (profile) =>
       html`<option${attr("value", profile.name)}>${profile.name} (${providerLabelFor(
         profile.provider,
@@ -184,11 +186,11 @@ export function renderSitesPage(
     "all",
   )}>All</button><button type="button" class="seg-btn"${ds.sitesFilterStatus(
     "with",
-  )}>Connected <span class="seg-count"${ds.sitesFilterCount(
+  )}>Authorized <span class="seg-count"${ds.sitesFilterCount(
     "with",
   )}>0</span></button><button type="button" class="seg-btn"${ds.sitesFilterStatus(
     "without",
-  )}>Needs attention <span class="seg-count"${ds.sitesFilterCount(
+  )}>Not verified <span class="seg-count"${ds.sitesFilterCount(
     "without",
   )}>0</span></button></div><label class="hosting-hidden-toggle" title="Visibility preferences are saved in this browser"><input type="checkbox" class="show-hidden-sites"> Show hidden sites</label></div>${snapshot ? renderSitesResult({ ...snapshot, notice: { level: "neutral", message: "" } }) : html`<div${idAttr("sites-result")} class="results empty">Loading sites…</div>`}</section>`;
 }
@@ -241,14 +243,20 @@ export function renderSitesResult(view: SitesResultView): Html {
     )}</div>`;
   }
   const cliOnly = cliOnlyProfiles(view);
+  const groups = view.profile === MANUAL_PROFILES_SENTINEL ? [] : view.groups;
   return html`<div${idAttr("sites-result")} class="results">${renderCliOnly(cliOnly, view)}${
-    view.groups.length === 0 && cliOnly.length === 0
+    groups.length === 0 && cliOnly.length === 0
       ? html`<div class="empty">No sites found.</div>`
-      : view.groups.map((group) => renderSiteGroup(group, view))
+      : groups.map((group) => renderSiteGroup(group, view))
   }</div>`;
 }
 
 function cliOnlyProfiles(view: SitesResultView): readonly SiteProfileSummary[] {
+  if (
+    view.profile !== ALL_PROFILES_SENTINEL &&
+    view.profile !== MANUAL_PROFILES_SENTINEL
+  )
+    return [];
   if (view.siteProfiles == null || view.siteProfiles.reason !== undefined) {
     return [];
   }
@@ -319,7 +327,7 @@ function renderSiteItem(
   const domain = site.primaryDomain ?? "";
   const envs = site.environments ?? [];
   const state = novamiraRowState(group, site, view);
-  const visibility = html`<button class="button tiny quiet profile-menu-action hosting-visibility" type="button"${attr("aria-label", `Hide ${title} from this list`)}>Hide from list</button>`;
+  const visibility = renderVisibility(group, site, view);
 
   if (envs.length > 1) {
     return html`<details${classAttr(
@@ -375,7 +383,26 @@ function renderEnvironment(
     env,
     siteLabel,
     view,
-  )}<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${siteLabel}: ${name}`)}>⋯</summary><div class="profile-menu-popover">${hostingProfileMenu(group, site, env, siteLabel, view)}${pushFromHere}${environmentDetails}<button class="button tiny quiet profile-menu-action hosting-visibility" type="button" title="Hide this site and all its environments from this browser's list">Hide from list</button></div></details></span></div>`;
+  )}<details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", `More actions for ${siteLabel}: ${name}`)}>⋯</summary><div class="profile-menu-popover">${hostingProfileMenu(group, site, env, siteLabel, view)}${pushFromHere}${environmentDetails}${renderVisibility(group, site, view)}</div></details></span></div>`;
+}
+
+function renderVisibility(
+  group: SiteGroup,
+  site: HostingSite,
+  view: SitesResultView,
+): Html {
+  const names = [
+    ...new Set(
+      (site.environments ?? []).flatMap(
+        (env) =>
+          view.connections?.byKey.get(
+            connectionKey(group.profile, site.id, env.id),
+          )?.profiles ?? [],
+      ),
+    ),
+  ];
+  const label = `${displayLabel(site.displayName, site.name, site.id)} (${site.primaryDomain ?? site.id}) — ${group.profile}`;
+  return html`<button class="button tiny quiet profile-menu-action hosting-visibility" type="button"${ds.on("click", hideSite(JSON.stringify([group.profile, site.id]), label, names))}>Hide from list</button>`;
 }
 
 function hostingProfileMenu(
@@ -460,7 +487,7 @@ function renderStateCell(
 
   switch (connection.state) {
     case "connected":
-      return html`<span class="pill ok">Novamira authorized</span>${renderProfileLink(
+      return html`<span class="pill ok">Access authorized</span>${renderProfileLink(
         connection,
         view,
         group,
@@ -491,18 +518,7 @@ function renderStateCell(
     case "unavailable":
       return html`<span class="pill"${titleAttr(
         connection.hint,
-      )}>${connection.reason === "site_incompatible" ? "Novamira not ready" : "Unable to verify authorization"}</span>${renderProfileLink(connection, view, group, env, siteLabel)}${
-        connection.profiles.length === 0
-          ? renderConnectButton(
-              connection,
-              address,
-              view,
-              group,
-              env,
-              siteLabel,
-            )
-          : false
-      }`;
+      )}>${connection.reason === "site_incompatible" ? "Novamira not ready" : "Access not verified"}</span>${renderProfileLink(connection, view, group, env, siteLabel)}${renderCheckAccess()}`;
   }
 }
 
@@ -527,8 +543,9 @@ function titleAttr(text: string | undefined) {
  * and `reconnect_required`; `not_configured` has none by definition, and an
  * `unavailable` result usually has none either. More than one profile can match
  * one environment — two `novamira auth login`s against the same URL under
- * different names — and all of them are named, because hiding the second would
- * make "Connected" look like it came from the first.
+ * different names. The hosting row owns the display; choose one profile for
+ * its explicit, named actions, preferring a connected profile then sorting by
+ * name for stability. This does not change or remove any CLI profile.
  */
 function renderProfileLink(
   connection: ConnectionView,
@@ -539,38 +556,38 @@ function renderProfileLink(
   menuMode: "hidden" | "inline" = "hidden",
 ): Html | false {
   if (connection.profiles.length === 0) return false;
-  return html`${connection.profiles.map((name) => {
-    const profile = view.siteProfiles?.profiles.find(
-      (candidate) => candidate.name === name,
-    );
-    return profile === undefined
-      ? connection.profiles.length > 1
-        ? html`<span class="push-hint">${name}</span>`
-        : false
-      : renderSiteProfileActions(siteProfileRowView(profile), {
-          menuMode,
-          suppressReconnect: connection.state === "unavailable",
-          showProfileHeading: connection.profiles.length > 1,
-          profile: view.profile,
-          includeEnvs: view.includeEnvs,
-          reconnectAction: NOVAMIRA_SETUP_PROVIDERS.has(group.provider)
-            ? post(
-                url("/_dashboard/connect", {
-                  url: profile.siteUrl,
-                  name: profile.name,
-                  profile: view.profile,
-                  include_envs: view.includeEnvs,
-                  hosting_profile: group.profile,
-                  env: env.id,
-                  site: siteLabel,
-                  envname: env.displayName || env.name,
-                }),
-                { include: [] },
-              )
-            : undefined,
-          hideName: connection.profiles.length === 1,
-        });
-  })}`;
+  const profile = view.siteProfiles?.profiles
+    .filter((candidate) => connection.profiles.includes(candidate.name))
+    .sort((a, b) => {
+      const connected =
+        Number(b.state === "connected") - Number(a.state === "connected");
+      return connected || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    })[0];
+  return profile === undefined
+    ? false
+    : renderSiteProfileActions(siteProfileRowView(profile), {
+        menuMode,
+        suppressReconnect: connection.state === "unavailable",
+        showProfileHeading: false,
+        profile: view.profile,
+        includeEnvs: view.includeEnvs,
+        reconnectAction: NOVAMIRA_SETUP_PROVIDERS.has(group.provider)
+          ? post(
+              url("/_dashboard/connect", {
+                url: profile.siteUrl,
+                name: profile.name,
+                profile: view.profile,
+                include_envs: view.includeEnvs,
+                hosting_profile: group.profile,
+                env: env.id,
+                site: siteLabel,
+                envname: env.displayName || env.name,
+              }),
+              { include: [] },
+            )
+          : undefined,
+        hideName: true,
+      });
 }
 
 /**
@@ -592,7 +609,7 @@ function renderConnectButton(
   if (address === "") {
     return html`<button class="button tiny" type="button"${flagAttr(
       "disabled",
-    )}${attr("title", NO_DOMAIN_TITLE)}>Connect to Novamira</button>`;
+    )}${attr("title", NO_DOMAIN_TITLE)}>Set up access</button>`;
   }
   if (
     connection.state === "unavailable" &&
@@ -600,7 +617,7 @@ function renderConnectButton(
   ) {
     return html`<button class="button tiny" type="button"${flagAttr(
       "disabled",
-    )}${titleAttr(connection.hint)}>Connect to Novamira</button>`;
+    )}${titleAttr(connection.hint)}>Set up access</button>`;
   }
   const action = post(
     url("/_dashboard/connect", {
@@ -619,7 +636,7 @@ function renderConnectButton(
   return html`<button class="button tiny" type="button"${attr(
     "title",
     `Check Novamira, then authorize access in your browser. novamira auth login ${address}`,
-  )}${ds.indicator("cliSites.loading")}${ds.attrs({ disabled: signal("cliSites.loading") })}${ds.on("click", action)}>Connect to Novamira</button>`;
+  )}${ds.indicator("cliSites.loading")}${ds.attrs({ disabled: signal("cliSites.loading") })}${ds.on("click", action)}>Set up access</button>`;
 }
 
 /**

@@ -20,10 +20,24 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+
+test("last-updated text stays inline instead of inheriting hosting section grid layout", async () => {
+  const css = await readFile(
+    new URL("../src/web/static/app.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(css, /\.last-updated\s*\{[^}]*display:\s*inline;/);
+  assert.doesNotMatch(css, /\.last-updated\s*,/);
+  assert.match(css, /\.sites-status\s*\{[^}]*flex:\s*0 0 auto;/);
+  assert.match(
+    css,
+    /\.sites-status \.last-updated\s*\{[^}]*white-space:\s*nowrap;/,
+  );
+});
 
 import { defaultFileSecurity } from "../dist/config/file-security.js";
 import { atomicWriteFile } from "../dist/config/atomic-write.js";
@@ -282,7 +296,7 @@ async function fixture(options = {}) {
         connectCalls.push(name === undefined ? siteUrl : `${siteUrl} ${name}`);
         return options.connect ?? { kind: "connected" };
       },
-      logoutProfile: async () => ({ kind: "done" }),
+      logoutProfile: options.logoutProfile ?? (async () => ({ kind: "done" })),
       renameProfile: async (name, newName) => {
         renameCalls.push([name, newName]);
         return options.rename ?? { kind: "done" };
@@ -397,7 +411,8 @@ test("1: the toolbar refreshes in background on mount and offers one Refresh act
     ">Refresh</button>",
     "Last updated: never",
     'class="spinner"',
-    '<option value="__all__">All accounts</option>',
+    '<option value="__all__">All sites</option>',
+    '<option value="__manual__">Manually added sites</option>',
     ">prod (Kinsta)<",
   ])
     assert.ok(markup.includes(want), want);
@@ -426,8 +441,8 @@ test("2: the segmented control carries the five frozen data-sf-* values", async 
     'data-sf-status="without"',
     'data-sf-count="with"',
     'data-sf-count="without"',
-    "Connected ",
-    "Needs attention ",
+    "Authorized ",
+    "Not verified ",
     'class="seg-btn on"',
   ])
     assert.ok(markup.includes(want), want);
@@ -807,15 +822,13 @@ test("8: the four connection states render their documented pill and actions", a
       "env-p1": "unavailable",
     },
   });
-  assert.ok(
-    markup.includes('<span class="pill ok">Novamira authorized</span>'),
-  );
+  assert.ok(markup.includes('<span class="pill ok">Access authorized</span>'));
   assert.ok(
     markup.includes('<span class="pill warn">Authorization required</span>'),
   );
   assert.ok(!markup.includes('<span class="pill">Not connected</span>'));
-  assert.ok(markup.includes(">Connect to Novamira</button>"));
-  assert.ok(markup.includes(">Unable to verify authorization</span>"));
+  assert.ok(markup.includes(">Set up access</button>"));
+  assert.ok(markup.includes(">Access not verified</span>"));
   assert.ok(markup.includes("novamira auth login https://env-c.example.com"));
   assert.ok(markup.includes("/_dashboard/connect?url="));
   // `connected` offers nothing; the Setup CTA belongs to the two unconnected
@@ -828,21 +841,14 @@ test("8: the four connection states render their documented pill and actions", a
     cliAvailable: false,
     states: { "env-a": "connected" },
   });
-  assert.ok(!absent.markup.includes('class="pill ok">Novamira authorized'));
+  assert.ok(!absent.markup.includes('class="pill ok">Access authorized'));
   assert.equal(
-    absent.markup.split(">Unable to verify authorization</span>").length - 1,
+    absent.markup.split(">Access not verified</span>").length - 1,
     5,
     "one per environment",
   );
   assert.ok(absent.markup.includes(SITE_CLI_INSTALL_HINT));
-  assert.equal(
-    absent.markup.split(">Connect to Novamira</button>").length - 1,
-    5,
-  );
-  assert.ok(
-    absent.markup.includes("hosting_profile=prod"),
-    "provider inspection and setup remain usable without the optional CLI",
-  );
+  assert.equal(absent.markup.split(">Check access</button>").length - 1, 5);
 });
 
 test("9: Push from here appears on each environment of a push-capable multi-env site", async () => {
@@ -868,7 +874,7 @@ test("10: supported hosting rows have one connect action with inspection context
     ...markup.matchAll(/class="button link setup-cta" href="([^"]*)"/g),
   ].map((match) => match[1]);
   assert.equal(links.length, 0);
-  assert.equal(markup.split(">Connect to Novamira</button>").length - 1, 5);
+  assert.equal(markup.split(">Set up access</button>").length - 1, 5);
   assert.equal(markup.split("hosting_profile=prod").length - 1, 3);
   assert.ok(!markup.includes("hosting_profile=plain"));
   assert.ok(!markup.includes("Install / check Novamira"));
@@ -1021,11 +1027,9 @@ test("16: matched CLI profiles stay in the hosting row and CLI-only sites are se
   assert.ok(
     !markup.includes('<span class="cli-profile-actions"><strong>prod</strong>'),
   );
-  // Every matching profile is named. Two `auth login`s against one URL under
-  // different names both match, and hiding the second would make "Connected"
-  // look like it came from the first.
-  assert.ok(markup.includes("<strong>staging</strong>"));
-  assert.ok(markup.includes("<strong>staging-2</strong>"));
+  // Hosting owns the display; duplicate CLI profiles do not duplicate actions.
+  assert.ok(!markup.includes("<strong>staging</strong>"));
+  assert.ok(!markup.includes("name=staging-2"));
   assert.ok(
     markup.includes("/_dashboard/connect?url=https%3A%2F%2Fenv-c.example.com"),
   );
@@ -1061,6 +1065,119 @@ test("16: matched CLI profiles stay in the hosting row and CLI-only sites are se
       .length,
     "matched profiles share the hosting menu instead of adding another ellipsis",
   );
+});
+
+test("hosting actions prefer an authorized duplicate and explicitly target its name", async () => {
+  for (const names of [
+    ["a-expired", "z-authorized"],
+    ["z-authorized", "a-expired"],
+  ]) {
+    const { server } = await fixture({
+      states: { "env-a": "connected" },
+      profiles: { "env-a": names },
+      siteProfiles: {
+        profiles: names.map((name) => ({
+          name,
+          siteUrl: "https://env-a.example.com",
+          origin: "https://env-a.example.com",
+          state: name === "z-authorized" ? "connected" : "reconnect_required",
+        })),
+        checkedAt: NOW,
+        cliAvailable: true,
+      },
+    });
+    const recorder = fakeSseStream();
+    const response = await server.dispatch(
+      authorized("/_dashboard/sites?include_envs=true"),
+    );
+    await response.run(recorder.stream);
+    const markup = recorder.find("sites-result").markup;
+    assert.ok(!markup.includes("name=a-expired"));
+    assert.ok(markup.includes("z-authorized"));
+    assert.ok(!markup.includes("Manually added sites"));
+  }
+});
+
+test("site source filter hides manual sites for hosting and excludes matched sites in manual-only mode", async () => {
+  const { server } = await fixture({
+    states: { "env-a": "connected" },
+    profiles: { "env-a": ["matched"] },
+    siteProfiles: {
+      profiles: [
+        {
+          name: "matched",
+          siteUrl: "https://env-a.example.com",
+          origin: "https://env-a.example.com",
+          state: "connected",
+        },
+        {
+          name: "manual-only",
+          siteUrl: "https://manual-only.example.com",
+          origin: "https://manual-only.example.com",
+          state: "connected",
+        },
+      ],
+      checkedAt: NOW,
+      cliAvailable: true,
+    },
+  });
+  for (const profile of ["prod", "__manual__", "__all__"]) {
+    const recorder = fakeSseStream();
+    const response = await server.dispatch(
+      authorized(`/_dashboard/sites?include_envs=true&profile=${profile}`),
+    );
+    await response.run(recorder.stream);
+    const markup = recorder.find("sites-result").markup;
+    assert.equal(
+      markup.includes("manual-only.example.com"),
+      profile !== "prod",
+    );
+    assert.equal(
+      markup.includes("env-a.example.com"),
+      profile !== "__manual__",
+    );
+    assert.equal(
+      markup.includes("Hosting account ·"),
+      profile !== "__manual__",
+    );
+  }
+});
+
+test("hide confirmation disconnect returns JSON only after success and requires the mutation token", async () => {
+  const calls = [];
+  const { server } = await fixture({
+    logoutProfile: async (name) => {
+      calls.push(name);
+      return name === "failed"
+        ? { kind: "failed", reason: "cli_timeout" }
+        : { kind: "done" };
+    },
+  });
+  const path = "/_dashboard/site-profiles/logout?response=json&name=chosen";
+  assert.equal(
+    (await server.dispatch(request(path, { method: "POST", body: "{}" })))
+      .status,
+    403,
+  );
+  assert.deepEqual(calls, []);
+  const success = await server.dispatch(
+    authorized(path, { method: "POST", body: "{}" }),
+  );
+  assert.equal(success.kind, "json");
+  assert.deepEqual(success.envelope.data, { disconnected: true });
+  assert.deepEqual(calls, ["chosen"]);
+  const failed = await server.dispatch(
+    authorized(path.replace("chosen", "failed"), {
+      method: "POST",
+      body: "{}",
+    }),
+  );
+  assert.equal(failed.envelope.ok, false);
+  const invalid = await server.dispatch(
+    authorized(path.replace("chosen", "--bad"), { method: "POST", body: "{}" }),
+  );
+  assert.equal(invalid.envelope.ok, false);
+  assert.deepEqual(calls, ["chosen", "failed"]);
 });
 
 test("18: the unified list renders unmatched CLI profiles as an inventory group", async () => {
@@ -1172,9 +1289,8 @@ test("a CLI profile on a site without a compatible Novamira setup is explicit", 
   const { markup } = await resultMarkup({ siteProfiles });
   assert.ok(markup.includes("Novamira not ready"));
   assert.ok(markup.includes("plugin may be missing"));
-  assert.ok(markup.includes(">Reconnect</span>"));
-  assert.ok(markup.includes(">Reconnecting…</span>"));
-  assert.ok(markup.includes('data-indicator="reconnecting'));
+  assert.ok(markup.includes(">Check access</button>"));
+  assert.ok(!markup.includes(">Authorize again</span>"));
   assert.ok(!markup.includes('class="status-action'));
   assert.ok(!markup.includes(">Unknown</span>"));
 });

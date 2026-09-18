@@ -52,6 +52,7 @@
  */
 
 import { stat } from "node:fs/promises";
+import { siteCliEnvironment } from "./environment.js";
 import { posix as posixPath, win32 as win32Path } from "node:path";
 
 import { SITE_CLI_OVERRIDE_ENV } from "../connection-state.js";
@@ -181,7 +182,9 @@ export function createSiteCliResolver(
     const extensions = windows
       ? ["", ...pathExtensions(options.environment)]
       : [""];
-    for (const rawEntry of pathVariable(options.environment).split(separator)) {
+    for (const rawEntry of pathVariable(
+      siteCliEnvironment(options.environment, options.platform),
+    ).split(separator)) {
       const directory = cleanEntry(rawEntry);
       if (directory === "") continue;
       for (const extension of extensions) {

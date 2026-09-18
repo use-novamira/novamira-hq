@@ -1355,6 +1355,33 @@ makes no request to a configured site.
   enters a URL. A name conflict or an installed CLI without rename support is a
   fixed failure notice; child output never reaches the page.
 
+The Sites source selector offers all sites, manually added sites, and individual
+hosting accounts. Named hosting filters exclude manual profiles. The manual-only
+filter (`__manual__`) matches against all hosting inventory before hiding hosting
+groups, so hosting-linked profiles do not reappear as manual duplicates.
+
+Sites distinguish authorization from reachability: “Set up access” starts initial
+setup, “Access authorized” reports verified authorization, and “Authorize again”
+is reserved for known missing/invalid authorization. Unverified access offers a
+read-only “Check access”, not an automatic OAuth restart.
+
+Hiding a hosting site is a browser-local preference confirmed with its name,
+domain and hosting account. The confirmation offers unchecked, explicitly named
+connections to disconnect; it never removes saved profiles. The existing
+token-protected `POST /_dashboard/site-profiles/logout` supports `response=json`
+for this flow, returning `{disconnected: true}` only on done/already-missing.
+Each selected connection is processed sequentially; an unconfirmed outcome stops
+the flow and leaves the site visible. Earlier successful disconnects are not
+rolled back. “Show hidden sites” restores visibility, not authorization.
+
+Site CLI resolution and child execution append standard macOS installation
+directories to the inherited PATH, including `/usr/local/bin` and
+`/opt/homebrew/bin`, without modifying installed scripts. Children default to
+`NODE_USE_SYSTEM_CA=1` (Node 22.19+/24.6+), preserving explicit overrides and TLS
+verification. Local HTTPS certificates must still be trusted by the operating
+system. A CLI `network_error` is classified as site unreachable, not a failure
+to start the CLI.
+
 Rename, logout, remove and row-level Reconnect re-run the site-CLI listing and
 connected-state match against the warm hosting inventory, then patch
 `#sites-status` (inner), `#sites-result` (outer) and `#toast` (outer). A

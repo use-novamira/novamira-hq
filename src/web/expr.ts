@@ -294,6 +294,17 @@ export function confirmThen(message: string, action: Expr): Expr {
   );
 }
 
+/** Browser-local hiding with optional, explicitly named authorization removal. */
+export function hideSite(
+  key: string,
+  label: string,
+  names: readonly string[],
+): Expr {
+  return makeExpr(
+    `window.novamiraSites.hideSite(${renderExpr(jsString(key))}, ${renderExpr(jsString(label))}, ${JSON.stringify(names)}, $token)`,
+  );
+}
+
 export interface PostOptions {
   /**
    * Signal subtrees the request may carry. `"token"` is added to a `@post`'s

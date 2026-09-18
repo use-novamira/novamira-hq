@@ -1163,11 +1163,13 @@ test("siteCliChildEnv is what the seam is handed", () => {
     NOVAMIRA_HOME: "/home/operator/.novamira",
     NOVAMIRA_SITE: "operator-choice",
   };
-  assert.deepEqual(siteCliChildEnv(environment), {
-    ...environment,
-    NOVAMIRA_UPDATE_CHECK: "0",
-    NO_COLOR: "1",
-  });
+  const child = siteCliChildEnv(environment);
+  assert.equal(child.NOVAMIRA_UPDATE_CHECK, "0");
+  assert.equal(child.NO_COLOR, "1");
+  assert.equal(child.NODE_USE_SYSTEM_CA, "1");
+  assert.ok(child.PATH.startsWith(environment.PATH));
+  assert.equal(child.NOVAMIRA_HOME, environment.NOVAMIRA_HOME);
+  assert.equal(child.NOVAMIRA_SITE, environment.NOVAMIRA_SITE);
 });
 
 /* -------------------------------------------------------------------------- */

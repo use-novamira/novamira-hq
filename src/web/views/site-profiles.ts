@@ -35,7 +35,7 @@
  */
 
 import * as ds from "../datastar.js";
-import { confirmThen, post, signal, type Expr } from "../expr.js";
+import { confirmThen, get, post, signal, type Expr } from "../expr.js";
 import {
   attr,
   classAttr,
@@ -115,10 +115,10 @@ const PILLS: Readonly<
     { readonly text: string; readonly modifier: string | false }
   >
 > = {
-  connected: { text: "Connected", modifier: "ok" },
-  reconnect_required: { text: "Reconnect", modifier: "warn" },
-  unreachable: { text: "Unreachable", modifier: "warn" },
-  unknown: { text: "Unknown", modifier: false },
+  connected: { text: "Access authorized", modifier: "ok" },
+  reconnect_required: { text: "Authorization required", modifier: "warn" },
+  unreachable: { text: "Access not verified", modifier: false },
+  unknown: { text: "Access not verified", modifier: false },
 };
 
 /** `title="…"` when there is a sentence, and no attribute when there is not. */
@@ -129,7 +129,15 @@ function titleAttr(text: string | undefined) {
 /** Reconnect-required is rendered as one action, not as a pill plus an action. */
 function reconnectButton(row: SiteProfileRowView, action: Expr): Html {
   const busy = dynamicSignalPath("reconnecting", row.name);
-  return html`<button class="button tiny" type="button"${ds.indicator(busy)}${ds.attrs({ disabled: signal(busy) })}${ds.on("click", action)}><span${ds.classes({ hidden: signal(busy) })}>Reconnect</span><span class="loading-inline ds-toggle"${ds.classes({ open: signal(busy) })}>Reconnecting…</span></button>`;
+  return html`<button class="button tiny" type="button"${ds.indicator(busy)}${ds.attrs({ disabled: signal(busy) })}${ds.on("click", action)}><span${ds.classes({ hidden: signal(busy) })}>Authorize again</span><span class="loading-inline ds-toggle"${ds.classes({ open: signal(busy) })}>Authorizing…</span></button>`;
+}
+
+export function renderCheckAccess(): Html {
+  const action = get(
+    url("/_dashboard/sites", { connections_only: true, include_envs: true }),
+    { include: ["sites"] },
+  );
+  return html`<button class="button tiny" type="button"${ds.indicator("sites.loading")}${ds.attrs({ disabled: signal("sites.loading") })}${ds.on("click", action)}>Check access</button>`;
 }
 
 function renderConnectionControl(row: SiteProfileRowView, connect: Expr): Html {
@@ -144,7 +152,7 @@ function renderConnectionControl(row: SiteProfileRowView, connect: Expr): Html {
     row.hint,
   )}>${pill.text}</span>`;
   if (row.state === "connected") return status;
-  return html`${status}${reconnectButton(row, connect)}`;
+  return html`${status}${renderCheckAccess()}`;
 }
 
 /**
@@ -254,7 +262,9 @@ export function renderSiteProfileActions(
   return html`<span class="cli-profile-actions">${listContext.hideName ? false : html`<strong>${row.name}</strong>`}${
     row.state === "connected" || listContext.suppressReconnect
       ? false
-      : reconnectButton(row, reconnect)
+      : row.state === "reconnect_required"
+        ? reconnectButton(row, reconnect)
+        : renderCheckAccess()
   }${listContext.menuMode === "hidden" ? false : renderProfileMenu(row.name, routeContext, logout, null)}</span>`;
 }
 

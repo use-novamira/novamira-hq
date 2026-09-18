@@ -27,7 +27,7 @@ test("inventory rows share column geometry and reserve pills for passive states"
   assert.ok(!css.includes(".status-action"));
 });
 
-function browser(storage, blocked = false) {
+function browser(storage, blocked = false, failDisconnect = false) {
   const classes = () => {
     const values = new Set();
     return {
@@ -81,6 +81,17 @@ function browser(storage, blocked = false) {
           ? rows
           : [],
   };
+  let confirmation;
+  const calls = [];
+  const window = {
+    location: { reload() {} },
+    novamiraUi: {
+      notice: (message) => alerts.push(message),
+      confirmAction: (message, action, label, choices) => {
+        confirmation = { message, action, label, choices };
+      },
+    },
+  };
   runInNewContext(source, {
     document,
     MutationObserver: class {
@@ -94,18 +105,32 @@ function browser(storage, blocked = false) {
         storage.set(key, value);
       },
     },
-    window: { novamiraUi: { notice: (message) => alerts.push(message) } },
+    window,
+    fetch: async (url, options) => {
+      calls.push({ url, options });
+      return {
+        ok: !failDisconnect,
+        json: async () => ({
+          ok: !failDisconnect,
+          data: { disconnected: true },
+        }),
+      };
+    },
   });
   return {
     rows,
     alerts,
     counters,
-    click: () =>
-      events.click({
-        target: { closest: () => rows[0].button },
-        preventDefault() {},
-        stopPropagation() {},
-      }),
+    calls,
+    confirmation: () => confirmation,
+    approve: (selected = []) => confirmation.action(selected),
+    click: (names = []) =>
+      window.novamiraSites.hideSite(
+        '["account","site"]',
+        "Site — account",
+        names,
+        "test-token",
+      ),
     show: () => {
       toggle.checked = true;
       events.change({ target: toggle });
@@ -113,10 +138,12 @@ function browser(storage, blocked = false) {
   };
 }
 
-test("hosting visibility survives reload, excludes hidden rows from counts, and can be restored", () => {
+test("hosting visibility survives reload, excludes hidden rows from counts, and can be restored", async () => {
   const storage = new Map();
   const first = browser(storage);
   first.click();
+  assert.ok(!first.rows[0].classList.contains("sf-hidden"));
+  await first.approve();
   assert.ok(first.rows[0].classList.contains("sf-hidden"));
   assert.ok(!first.rows[1].classList.contains("sf-hidden"));
   assert.equal(first.counters.with.textContent, "1");
@@ -129,9 +156,33 @@ test("hosting visibility survives reload, excludes hidden rows from counts, and 
   assert.ok(!browser(storage).rows[0].classList.contains("sf-hidden"));
 });
 
-test("blocked visibility storage never silently hides a site", () => {
+test("blocked visibility storage never silently hides a site", async () => {
   const page = browser(new Map(), true);
   page.click();
+  await assert.rejects(page.approve());
   assert.ok(!page.rows[0].classList.contains("sf-hidden"));
-  assert.equal(page.alerts.length, 1);
+  assert.equal(page.calls.length, 0);
+});
+
+test("disconnect is opt-in, explicitly scoped, and failure leaves the site visible", async () => {
+  const hideOnly = browser(new Map());
+  hideOnly.click(["first", "second"]);
+  await hideOnly.approve();
+  assert.equal(hideOnly.calls.length, 0);
+  const page = browser(new Map());
+  page.click(["first", "second"]);
+  assert.equal(page.confirmation().choices.length, 2);
+  assert.equal(page.calls.length, 0);
+  await page.approve(["second"]);
+  assert.equal(page.calls.length, 1);
+  assert.ok(page.calls[0].url.endsWith("name=second"));
+  assert.equal(
+    page.calls[0].options.headers["X-Novamira-Dashboard-Token"],
+    "test-token",
+  );
+  assert.ok(page.rows[0].classList.contains("sf-hidden"));
+  const failed = browser(new Map(), false, true);
+  failed.click(["first"]);
+  await assert.rejects(failed.approve(["first"]));
+  assert.ok(!failed.rows[0].classList.contains("sf-hidden"));
 });

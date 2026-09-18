@@ -69,7 +69,7 @@ import type {
   SiteInventorySnapshot,
   SiteProfileListing,
 } from "../../site-profiles.js";
-import { ALL_PROFILES_SENTINEL } from "../signals.js";
+import { ALL_PROFILES_SENTINEL, MANUAL_PROFILES_SENTINEL } from "../signals.js";
 
 /** Five minutes — Go's `sitesCacheTTL` (`server.go:49`), unchanged. */
 export const SITES_CACHE_TTL_MS = 300_000;
@@ -286,7 +286,10 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
     readonly groups: readonly SiteGroup[];
     readonly usedSnapshot: boolean;
   }> => {
-    if (profile === ALL_PROFILES_SENTINEL) {
+    if (
+      profile === ALL_PROFILES_SENTINEL ||
+      profile === MANUAL_PROFILES_SENTINEL
+    ) {
       // Sequential, as Go's loop was: a dashboard that fans out across twelve
       // provider APIs at once is how an operator finds their rate limit.
       const groups: SiteGroup[] = [];

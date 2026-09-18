@@ -556,9 +556,7 @@ test("6: a posted credential reaches the store and nothing else, ever", async ()
   assert.equal(recorder.signals[0].providerForm.provider, "kinsta");
   assert.equal(recorder.signals[0].providerForm.detailsOpen, false);
   assert.equal(recorder.signals[0].providerForm.detailsOpen, false);
-  assert.ok(
-    recorder.find("main").markup.includes("account saved and access verified."),
-  );
+  assert.ok(recorder.find("main").markup.includes("Hosting account ready"));
   assert.ok(
     !recorder
       .find("toast")
@@ -621,7 +619,7 @@ test("capability loading failure preserves successful account verification", asy
   assert.ok(await store.getHostingProfile("prod"));
   const markup = recorder.find("main").markup;
   assert.ok(markup.includes("Hosting account ready"));
-  assert.ok(markup.includes("account saved and access verified"));
+  assert.ok(!markup.includes("account saved and access verified"));
   assert.ok(markup.includes("Available actions could not be loaded"));
   assert.ok(!recorder.body.includes(SECRET));
 });
