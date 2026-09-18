@@ -20,7 +20,7 @@ test("About displays the running version, attribution, license and fixed links",
     'class="details-list about-details"',
     '<footer class="button-row about-actions">',
     'href="/assets/third-party-notices.txt"',
-    'href="/settings?tab=updates"',
+    'href="/updates"',
     'href="https://novamira.ai"',
     'href="https://github.com/use-novamira/novamira-hq"',
   ])
@@ -32,12 +32,14 @@ test("About displays the running version, attribution, license and fixed links",
   );
 });
 
-test("sidebar footer contains only the About link instead of version and legal text", () => {
+test("sidebar footer contains App updates and About instead of version and legal text", () => {
   const markup = renderHtml(renderSidebar({ version: "9.8.7-test" }, "about"));
   assert.ok(
     markup.includes('class="sidebar-about" href="/about" aria-current="page"'),
   );
   assert.ok(!markup.includes("9.8.7-test"));
+  const footer = markup.match(/<div class="sidebar-foot">(.*?)<\/div>/s)?.[0];
+  assert.ok(footer.includes('href="/updates"'));
   assert.ok(!markup.includes("AGPL-3.0-or-later"));
   assert.ok(!markup.includes("© 2026"));
 });

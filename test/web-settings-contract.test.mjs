@@ -104,6 +104,7 @@ async function fixture(options = {}) {
       throw new Error("the settings suite runs no doctor report");
     },
     updates: {
+      available: options.available ?? true,
       check: async () => {
         calls.push("check");
         if (options.checkThrows !== undefined) throw options.checkThrows;
@@ -198,7 +199,7 @@ async function page(server, path) {
 /* 1-3: the page and its wiring                                               */
 /* -------------------------------------------------------------------------- */
 
-test("Settings tabs isolate updates and uninstall instructions", async () => {
+test("Settings isolates configuration from updates and uninstall instructions", async () => {
   const { server } = await fixture();
   for (const path of [
     "/settings",
@@ -217,20 +218,49 @@ test("Settings tabs isolate updates and uninstall instructions", async () => {
   assert.ok(!uninstall.includes("Configuration file"));
 });
 
-test("Settings navigation uses compact CSP-compatible tabs with one active section", async () => {
+test("Updates is a dedicated navigation item, including old bookmarked URLs", async () => {
   const { server } = await fixture();
-  for (const tab of ["general", "updates"]) {
-    const markup = await page(server, `/settings?tab=${tab}`);
-    const nav = markup.match(
-      /<nav class="settings-tabs" aria-label="Settings sections">(.*?)<\/nav>/s,
-    )?.[0];
+  for (const path of ["/updates", "/settings?tab=updates"]) {
+    const markup = await page(server, path);
+    const nav = markup.match(/<nav id="nav"[^>]*>(.*?)<\/nav>/s)?.[0];
     assert.ok(nav);
     assert.ok(!nav.includes("style="));
-    assert.ok(!nav.includes('class="button'));
-    assert.equal((nav.match(/aria-current="page"/g) ?? []).length, 1);
-    assert.ok(nav.includes(`href="/settings?tab=${tab}" aria-current="page"`));
-    assert.equal((nav.match(/class="settings-tab"/g) ?? []).length, 2);
+    assert.equal((nav.match(/aria-current="page"/g) ?? []).length, 0);
+    assert.ok(!nav.includes('href="/updates"'));
+    const footer = markup.match(/<div class="sidebar-foot">(.*?)<\/div>/s)?.[0];
+    assert.ok(footer.includes('href="/updates" aria-current="page"'));
+    assert.ok(footer.includes(">App updates</a>"));
+    assert.ok(footer.includes('href="/about"'));
+    const mobile = markup.match(
+      /<footer class="mobile-about-footer">(.*?)<\/footer>/s,
+    )?.[0];
+    assert.ok(mobile.includes('href="/updates" aria-current="page"'));
+    assert.ok(mobile.includes('href="/about"'));
+    assert.ok(markup.includes("<h1>Novamira HQ updates</h1>"));
+    assert.ok(!markup.includes('class="settings-tabs"'));
+    assert.ok(!markup.includes('href="/settings?tab=updates"'));
   }
+});
+
+test("desktop Updates never checks an unavailable backend or claims to be current", async () => {
+  const { server, calls } = await fixture({ available: false });
+  for (const path of ["/updates", "/settings?tab=updates"]) {
+    const markup = await page(server, path);
+    assert.ok(markup.includes("Manual updates"));
+    assert.ok(!markup.includes("/_dashboard/updates/check"));
+    assert.ok(!markup.includes("Install update"));
+    assert.ok(!markup.includes(">up to date<"));
+    assert.ok(!markup.includes("check failed"));
+    assert.ok(markup.includes("Site connection component"));
+  }
+  for (const [method, path] of [
+    ["GET", "/_dashboard/updates/check"],
+    ["POST", "/_dashboard/updates/install"],
+  ]) {
+    const { recorder } = await sse(server, authorized(path, { method }));
+    assert.ok(recorder.find("updates-card").markup.includes("Manual updates"));
+  }
+  assert.deepEqual(calls, []);
 });
 
 test("1: the page renders the catalogued card and its self-check", async () => {

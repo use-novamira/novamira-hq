@@ -331,7 +331,8 @@ export interface ProvidersPageModel {
 }
 
 export function renderProvidersPage(model: ProvidersPageModel): Html {
-  if (model.actions) return renderProviderActionsPage(model.actions);
+  if (model.actions)
+    return renderProviderActionsPage(model.actions, model.notice);
   if (model.onboarding) {
     return renderOnboarding(model);
   }

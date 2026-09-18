@@ -210,6 +210,8 @@ export type DashboardDoctor = () => Promise<unknown>;
  * the update card's buttons wired to nothing.
  */
 export interface DashboardUpdates {
+  /** False until this distribution has a configured update backend. */
+  readonly available?: boolean;
   check(): Promise<{
     readonly current: string;
     readonly latest: string;

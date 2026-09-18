@@ -207,12 +207,13 @@ export {
   patchDiagnosticsOutput,
 } from "./handlers/diagnostics.js";
 
+export { renderSettingsPage } from "./views/settings.js";
 export {
   initialUpdateCardView,
-  renderSettingsPage,
   renderUpdateCard,
+  renderUpdatesPage,
   type UpdateCardView,
-} from "./views/settings.js";
+} from "./views/updates.js";
 
 export {
   createUpdateCheckHandler,

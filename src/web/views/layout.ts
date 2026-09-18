@@ -131,7 +131,7 @@ export function renderSidebar(
     url("/sites", { new: "cli" }),
   )}><strong>Manually</strong><span>Connect an existing Novamira site by URL</span></a><a${hrefAttr(
     url("/hosting-accounts", { new: "host" }),
-  )}><strong>From a hosting account</strong><span>Connect an account and discover its sites</span></a></div></div>${renderNav(page, activeNav)}<div class="sidebar-foot"><a class="sidebar-about"${hrefAttr(url("/about"))}${page === "about" ? attr("aria-current", "page") : false}>About Novamira HQ</a></div></div></aside>`;
+  )}><strong>From a hosting account</strong><span>Connect an account and discover its sites</span></a></div></div>${renderNav(page, activeNav)}<div class="sidebar-foot"><a class="sidebar-about"${hrefAttr(url("/updates"))}${activeNav && page === "updates" ? attr("aria-current", "page") : false}>App updates</a><a class="sidebar-about"${hrefAttr(url("/about"))}${page === "about" ? attr("aria-current", "page") : false}>About Novamira HQ</a></div></div></aside>`;
 }
 
 /**
@@ -172,7 +172,7 @@ function navLink(
     (current === "push-new" && page === "pushes");
   return html`<a${classAttr("nav-link", active && "active")}${hrefAttr(
     url(href),
-  )}>${label}</a>`;
+  )}${active ? attr("aria-current", "page") : false}>${label}</a>`;
 }
 
 /**
@@ -184,7 +184,7 @@ export function renderMain(page: DashboardPage, body: Html): Html {
   // frozen — and that is fine: it is a hook, and it makes an outer `#main` patch
   // self-describing, so a test can tell "the providers page was patched here"
   // from "some page was patched here" without parsing the body.
-  return html`<main${idAttr("main")}${classAttr("main", `main-${page}`)}>${body}<footer class="mobile-about-footer"><a${hrefAttr(url("/about"))}>About Novamira HQ</a></footer></main>`;
+  return html`<main${idAttr("main")}${classAttr("main", `main-${page}`)}>${body}<footer class="mobile-about-footer"><a${hrefAttr(url("/updates"))}${page === "updates" ? attr("aria-current", "page") : false}>App updates</a><a${hrefAttr(url("/about"))}>About Novamira HQ</a></footer></main>`;
 }
 
 /**

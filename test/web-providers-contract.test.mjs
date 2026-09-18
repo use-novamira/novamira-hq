@@ -118,7 +118,10 @@ async function fixture(options = {}) {
     // An injected registry: the only provider constructor in this suite is a
     // fake, so a real endpoint cannot be reached even by mistake.
     registry: {
-      kinsta: () => fakeProviderClient(options.client ?? {}),
+      kinsta: () => {
+        options.onClient?.();
+        return fakeProviderClient(options.client ?? {});
+      },
     },
     env: environment,
     // The same wiring `src/main.ts` gives the real factory, so a `stored:`
@@ -567,6 +570,83 @@ test("6: a posted credential reaches the store and nothing else, ever", async ()
   assert.ok(!(await page(server, "/hosting-accounts")).includes(SECRET));
 });
 
+test("a verified new account shows app and AI actions using the same validated client", async () => {
+  let clients = 0;
+  const reads = [];
+  const { server } = await fixture({
+    onClient: () => clients++,
+    client: {
+      read: async (request) => {
+        reads.push(request);
+        return [
+          { name: "sites.list", supported: true },
+          { name: "sites.get", supported: true },
+          { name: "sites.delete", supported: true },
+        ];
+      },
+    },
+  });
+  const { recorder } = await save(server, {
+    profile: "prod",
+    provider: "kinsta",
+    credentialValue: SECRET,
+  });
+  const markup = recorder.find("main").markup;
+  assert.ok(markup.includes("Hosting account ready"));
+  assert.ok(markup.includes("In the app"));
+  assert.ok(markup.includes("With your AI"));
+  assert.ok(markup.includes("List sites"));
+  assert.ok(markup.includes('href="/sites">View sites'));
+  assert.ok(markup.includes('href="/configure-ai">Configure your AI'));
+  assert.ok(markup.includes("does not authorize access to WordPress"));
+  assert.ok(!markup.includes("sites.delete"));
+  assert.ok(!recorder.body.includes(SECRET));
+  assert.equal(clients, 1);
+  assert.deepEqual(reads, [{ kind: "capabilities" }]);
+});
+
+test("capability loading failure preserves successful account verification", async () => {
+  const { server, store } = await fixture({
+    client: {
+      read: async () => {
+        throw new Error(SECRET);
+      },
+    },
+  });
+  const { recorder } = await save(server, {
+    profile: "prod",
+    provider: "kinsta",
+    credentialValue: SECRET,
+  });
+  assert.ok(await store.getHostingProfile("prod"));
+  const markup = recorder.find("main").markup;
+  assert.ok(markup.includes("Hosting account ready"));
+  assert.ok(markup.includes("account saved and access verified"));
+  assert.ok(markup.includes("Available actions could not be loaded"));
+  assert.ok(!recorder.body.includes(SECRET));
+});
+
+test("editing an account keeps the existing confirmation instead of replaying onboarding", async () => {
+  let reads = 0;
+  const { server } = await fixture({
+    config: PROFILE_CONFIG,
+    client: {
+      read: async () => {
+        reads++;
+        return [];
+      },
+    },
+  });
+  const { recorder } = await save(server, {
+    profile: "prod",
+    provider: "kinsta",
+    credentialValue: SECRET,
+    force: true,
+  });
+  assert.ok(!recorder.find("main").markup.includes("Hosting account ready"));
+  assert.equal(reads, 0);
+});
+
 test("7: saving onto an existing name without force is Go's Edit notice", async () => {
   const { server } = await fixture({ config: PROFILE_CONFIG });
   const { recorder } = await save(server, {
@@ -601,6 +681,7 @@ test("saving checks the connection immediately and reports an unverified saved a
     /saved, but access could not be verified/,
   );
   assert.doesNotMatch(recorder.body, /data-checked-at/);
+  assert.ok(!recorder.find("main").markup.includes("Hosting account ready"));
   assert.ok(!recorder.body.includes(SECRET));
 });
 

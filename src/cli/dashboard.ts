@@ -230,7 +230,7 @@ export function createDashboardUpdates(
         ),
       );
     };
-    return { check: unavailable, install: unavailable };
+    return { available: false, check: unavailable, install: unavailable };
   }
   if (overrides.updates !== undefined) return overrides.updates;
   return {

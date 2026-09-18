@@ -10,6 +10,7 @@ import { renderHtml } from "../dist/web/html.js";
 import {
   ACTION_LABELS,
   ACTION_TOOLS,
+  providerActionGroups,
   renderProviderActionsPage,
 } from "../dist/web/views/provider-actions.js";
 
@@ -76,14 +77,63 @@ test("account actions show actual HQ support without raw adapter notes or compar
     markup,
     /Clear the site cache|Push content between environments|Not available|deletion|SSH/,
   );
-  assert.doesNotMatch(
-    markup,
-    /POST \/technical|sites.delete|<table|credential|GitHub/,
-  );
+  assert.doesNotMatch(markup, /POST \/technical|sites.delete|<table|GitHub/);
   assert.ok(
     markup.includes("through your AI client rather than the dashboard"),
   );
   assert.doesNotMatch(markup, /\bCLI\b|terminal/);
+});
+
+test("app and AI action groups reflect different exposed surfaces", () => {
+  const groups = providerActionGroups({
+    profile: "prod",
+    provider: "kinsta",
+    capabilities: [
+      { name: "sites.list", supported: true },
+      { name: "sites.get", supported: true },
+      { name: "ops.get", supported: true },
+      { name: "cache.clear", supported: true },
+      { name: "sites.delete", supported: true },
+    ],
+  });
+  assert.deepEqual(groups.app, ["Clear cache", "List sites"]);
+  assert.deepEqual(groups.ai, [
+    "Clear cache",
+    "List sites",
+    "View site details",
+    "Check an operation’s progress",
+  ]);
+});
+
+test("provider-specific wording and typed inspection limits remain accurate", () => {
+  const cloudways = render(
+    [
+      { name: "activity.list", supported: true },
+      { name: "logs.get", supported: true },
+    ],
+    "cloudways",
+  );
+  assert.ok(cloudways.includes("Read staging deployment activity"));
+  assert.ok(!cloudways.includes("Read site logs"));
+  const instawp = render(
+    [
+      { name: "backups.list", supported: true },
+      { name: "backups.create", supported: true },
+      { name: "backups.restore", supported: true },
+    ],
+    "instawp",
+  );
+  assert.ok(instawp.includes("Create a backup (InstaWP Site Versions)"));
+  assert.ok(instawp.includes("Restore a backup (InstaWP Site Versions)"));
+  const hostinger = render(
+    [
+      { name: "novamira.setup", supported: true },
+      { name: "cache.clear", supported: true },
+    ],
+    "hostinger",
+  );
+  assert.ok(hostinger.includes("Install and set up Novamira"));
+  assert.ok(!hostinger.includes("Clear cache"));
 });
 
 test("setup, push and restore honor HQ workflow requirements", () => {

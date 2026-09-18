@@ -60,7 +60,7 @@ import { patchToast } from "../patch.js";
 import type { DashboardResponse } from "../responses.js";
 import type { RouteContext, RouteHandler } from "../routes.js";
 import type { SseStream } from "../sse.js";
-import { renderUpdateCard, type UpdateCardView } from "../views/settings.js";
+import { renderUpdateCard, type UpdateCardView } from "../views/updates.js";
 import { EMPTY_NOTICE, type DashboardNotice } from "../views/types.js";
 
 /** How much of a `CliError` message the card will render. Go rendered all of it. */
@@ -101,6 +101,20 @@ export function createUpdateCheckHandler(context: RouteContext): RouteHandler {
   return (request): DashboardResponse => ({
     kind: "sse",
     run: async (stream) => {
+      if (context.updates.available === false) {
+        patchUpdateCard(
+          stream,
+          {
+            checked: false,
+            current: context.version,
+            updateAvailable: false,
+            unavailable: true,
+          },
+          EMPTY_NOTICE,
+        );
+        stream.close();
+        return;
+      }
       const silent = isSilent(request.query.get("silent"));
       try {
         const status = await context.updates.check();
@@ -157,6 +171,20 @@ export function createUpdateInstallHandler(
   return (): DashboardResponse => ({
     kind: "sse",
     run: async (stream) => {
+      if (context.updates.available === false) {
+        patchUpdateCard(
+          stream,
+          {
+            checked: false,
+            current: context.version,
+            updateAvailable: false,
+            unavailable: true,
+          },
+          EMPTY_NOTICE,
+        );
+        stream.close();
+        return;
+      }
       try {
         const result = await context.updates.install();
         // `updated: false` means the checker found nothing newer; the install

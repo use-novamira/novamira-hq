@@ -1060,6 +1060,7 @@ const SHIPPED_ROUTES = [
   "GET /novamira-setup",
   "GET /providers",
   "GET /settings",
+  "GET /updates",
   "GET /sites",
   "HEAD /assets/",
   "GET /_dashboard/mcp/verify",

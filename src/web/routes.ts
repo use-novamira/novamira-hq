@@ -281,6 +281,7 @@ const PAGE_PATHS: Readonly<Record<string, DashboardPage>> = {
   "/novamira-setup": "novamira-setup",
   "/diagnostics": "diagnostics",
   "/settings": "settings",
+  "/updates": "updates",
   "/history": "history",
   "/hosting-activity": "history",
   "/mcp": "mcp",
@@ -362,8 +363,11 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
     if (page === "settings") {
       const tab = request.query.get("tab");
       return {
-        settingsTab: tab === "updates" || tab === "uninstall" ? tab : "general",
+        settingsTab: tab === "uninstall" ? tab : "general",
       };
+    }
+    if (page === "updates") {
+      return { updatesAvailable: context.updates.available !== false };
     }
     if (page === "pushes") {
       const warm = context.sites.warm(ALL_PROFILES_SENTINEL, true);
@@ -491,6 +495,10 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
         );
       }
       let renderedPage = page;
+      // Existing bookmarks still reach the dedicated page, with Updates active.
+      if (page === "settings" && request.query.get("tab") === "updates") {
+        renderedPage = "updates";
+      }
       let providerOnboarding = false;
       if (request.path === "/") {
         if (view.profiles.length === 0) {

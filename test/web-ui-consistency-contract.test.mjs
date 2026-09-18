@@ -10,6 +10,26 @@ import { fragmentUrl, url, renderUrl, renderHtml } from "../dist/web/html.js";
 import { renderNav, renderSidebar } from "../dist/web/views/layout.js";
 import { renderProviderForm } from "../dist/web/views/providers.js";
 import { renderAiLogo } from "../dist/web/views/ai-logos.js";
+import { renderSitesPage } from "../dist/web/views/sites.js";
+
+test("Sites header opens manual site entry directly without another menu", () => {
+  const markup = renderHtml(renderSitesPage({ profiles: [], pushes: [] }));
+  const header = markup.match(
+    /<header class="page-head">(.*?)<\/header>/s,
+  )?.[0];
+  assert.ok(
+    header.includes(
+      'class="button primary" href="/sites?new=cli">Add site manually</a>',
+    ),
+  );
+  assert.ok(!header.includes("<details"));
+  assert.ok(!header.includes("data-on"));
+  const sidebar = renderHtml(renderSidebar({}, "sites"));
+  assert.ok(sidebar.includes(">Add site</button>"));
+  assert.ok(
+    sidebar.indexOf(">Manually<") < sidebar.indexOf(">From a hosting account<"),
+  );
+});
 
 test("all AI client logos inherit the monochrome text color", () => {
   for (const client of ["vscode", "cursor", "opencode", "openai", "claude"]) {

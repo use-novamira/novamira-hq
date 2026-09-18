@@ -23,7 +23,7 @@ import { html, renderHtml } from "../dist/web/html.js";
 import { connCellId, SSE_PATCH_FRAGMENTS } from "../dist/web/patches.js";
 import { streamSse } from "../dist/web/sse.js";
 import { renderDiagnosticsOutput } from "../dist/web/views/diagnostics.js";
-import { renderUpdateCard } from "../dist/web/views/settings.js";
+import { renderUpdateCard } from "../dist/web/views/updates.js";
 import { renderProviderFlash } from "../dist/web/views/providers.js";
 import {
   renderSetupWork,

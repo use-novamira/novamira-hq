@@ -90,7 +90,7 @@ import {
   renderToast,
 } from "../dist/web/views/layout.js";
 import { renderDiagnosticsOutput } from "../dist/web/views/diagnostics.js";
-import { renderUpdateCard } from "../dist/web/views/settings.js";
+import { renderUpdateCard } from "../dist/web/views/updates.js";
 import { renderProviderFlash } from "../dist/web/views/providers.js";
 import {
   renderSetupWork,
@@ -216,6 +216,7 @@ const CORPUS_PATHS = [
   "/push/new",
   "/novamira-setup?profile=dev&env=env-1",
   "/diagnostics",
+  "/updates",
   "/settings",
   "/settings?tab=updates",
   "/settings?tab=uninstall",
@@ -1053,7 +1054,7 @@ test("27: the catalog is non-empty and every selector id is a legal target", () 
   }
   // A row lands with its renderer. 6b-3 closed the Phase-6 catalog with
   // `setup-work` in both modes and `diagnostics-output/outer`; 7-2 added the
-  // last row, `updates-card`, with `views/settings.ts`'s card and its two
+  // last row, `updates-card`, with `views/updates.ts`'s card and its two
   // routes. The catalog is now closed: no phase is holding a row back.
   assert.deepEqual(SSE_PATCH_FRAGMENTS.map(fragmentKey), [
     "main/outer",
@@ -1112,6 +1113,7 @@ test("29: every routed page carries main, nav and toast", async () => {
       path: "/diagnostics",
       ids: ["main", "nav", "toast", "diagnostics-output"],
     },
+    { path: "/updates", ids: ["main", "nav", "toast", "updates-card"] },
     { path: "/settings", ids: ["main", "nav", "toast"] },
     {
       path: "/settings?tab=updates",

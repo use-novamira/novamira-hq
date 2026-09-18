@@ -62,6 +62,7 @@ import { renderHistoryPage, type HistoryView } from "./history.js";
 import { renderHowToUsePage } from "./how-to-use.js";
 import { renderProvidersPage } from "./providers.js";
 import { renderSettingsPage, type SettingsTab } from "./settings.js";
+import { renderUpdatesPage } from "./updates.js";
 import { renderSetupPage, type SetupView } from "./setup.js";
 import type { SitesResult } from "../services/sites.js";
 import { renderSitesPage } from "./sites.js";
@@ -72,6 +73,7 @@ import {
 import type { ConfigView, DashboardNotice, DashboardPage } from "./types.js";
 
 export interface PageModel {
+  readonly updatesAvailable?: boolean;
   readonly hostingTools?: HostingToolsView;
   readonly restore?: RestoreView;
   readonly providerActions?: ProviderActionsView;
@@ -172,7 +174,9 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
     case "diagnostics":
       return renderDiagnosticsPage();
     case "settings":
-      return renderSettingsPage(model.view, undefined, model.settingsTab);
+      return renderSettingsPage(model.view, model.settingsTab);
+    case "updates":
+      return renderUpdatesPage(model.view.version, model.updatesAvailable);
     default: {
       const unexpected: never = page;
       throw new CliError(

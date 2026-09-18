@@ -255,9 +255,11 @@ What it does:
   (bound to `--offline`, and never `--fix`), or read one provider's capability
   document. Neither action repaints the page, so the provider you picked stays
   picked.
-- **Settings** — the update card, which checks the npm registry when the page
-  opens and can install a newer release with your package manager, and the
-  configuration file's location, read-only.
+- **App updates** — a footer link next to About and dedicated `/updates` page. For npm/Bun
+  installations it checks the registry when opened and can install a newer
+  release with your package manager. Desktop builds show manual-update guidance
+  until their update service is connected; they do not perform a failing check.
+- **Settings** — the configuration file's location, read-only.
 
 Stop it with Ctrl-C. `--open` launches your default browser and is never fatal
 if it cannot.

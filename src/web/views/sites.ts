@@ -159,7 +159,7 @@ export function renderSitesPage(
     url("/_dashboard/sites", { include_envs: true, refresh: true }),
     { include: ["sites"] },
   );
-  return html`<section class="page"><header class="page-head"><div><h1>Sites</h1><p>Hosting environments and their Novamira connections.</p></div></header>${renderConnectForm(
+  return html`<section class="page"><header class="page-head"><div><h1>Sites</h1><p>Hosting environments and their Novamira connections.</p></div><a class="button primary"${hrefAttr(url("/sites", { new: "cli" }))}>Add site manually</a></header>${renderConnectForm(
     true,
     true,
     false,

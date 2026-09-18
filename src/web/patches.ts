@@ -113,7 +113,7 @@ export const SSE_PATCH_FRAGMENTS: readonly PatchFragment[] = Object.freeze([
   // outside `#toast` that both diagnostics routes touch, and neither of them
   // patches `#main`: repainting would reset the provider `<select>`.
   { selectorId: "diagnostics-output", mode: "outer" },
-  // The last row, and the one that closes the catalog. `views/settings.ts`
+  // The last row, and the one that closes the catalog. `views/updates.ts`
   // renders the element and `handlers/updates.ts`'s two routes replace it whole
   // — outer, because the card's `data-init` self-check attribute lives on the
   // root and an inner patch would leave the pre-check version of it in place,

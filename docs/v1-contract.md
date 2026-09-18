@@ -147,10 +147,10 @@ authentication is dropped from the preflight rather than fetched.
 
 ## Global options
 
-Settings uses three URL-addressable tabs on the existing `/settings` route:
-`tab=general` (the default and fallback), `tab=updates`, and `tab=uninstall`.
-Only the Updates tab renders the update card and its automatic check. General
-shows local configuration information; Uninstalling shows instructions only.
+Settings shows local configuration information. Updates has its own public
+`GET /updates` page and footer link next to About. The old
+`/settings?tab=updates` bookmark renders the Updates page with Updates active.
+`/settings?tab=uninstall` continues to show instructions only.
 
 Global options are `--profile <name>`, `--json`, `--quiet`, `--verbose`,
 `--no-color`, `--yes`, `--timeout <ms>`, `--version`, and `--help`. `NO_COLOR`
@@ -1250,6 +1250,7 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 | `/_dashboard/pushes/status` | GET | yes |
 | `/_dashboard/pushes/apply` | POST | yes |
 | `/settings` | GET | no |
+| `/updates` | GET | no |
 | `/_dashboard/providers/save` | POST | yes |
 | `/_dashboard/providers/remove` | POST | yes |
 | `/_dashboard/providers/validate` | POST | yes |
@@ -1285,7 +1286,15 @@ on its way to the credential store. It is written to `config.json` as a
 `stored:<id>` reference, never as a value, and the success response explicitly
 resets that signal to the empty string.
 After saving, the dashboard immediately validates the saved account against its
-provider. Success records the connection check and shows Connected. A failed
+provider. Success records the access verification. For a newly added account,
+the dashboard renders **Hosting account ready**, with separate **In the app**
+and **With your AI** action lists derived from the provider capabilities and
+the exposed surface allowlists. The same validated client reads the capability
+catalog without resolving the credential again. Failure to read that catalog
+keeps the verified account saved and shows an unavailable-list explanation.
+Edits retain the ordinary save confirmation. The success page links to Sites
+and Configure your AI and explains that WordPress authorization is separate.
+A failed
 check leaves the saved account intact, clears its previous success stamp and
 explicitly reports that it was saved but could not be verified. It never labels
 an unverified account as connected or leaks the provider's response in a notice.
@@ -1529,8 +1538,10 @@ form to itself and no page reloads.
   Hosting history and account-specific available actions belong to Hosting
   accounts. The existing capabilities endpoint remains supported, but its raw
   output is not offered as a Diagnostics action.
-- **Settings** (`/settings`) — the update card and the configuration file's
-  path, read-only. The card checks the npm registry silently on first render,
+- **Settings** (`/settings`) — the configuration file's path, read-only.
+- **App updates** (`/updates`) — a dedicated page titled **Novamira HQ updates**
+  and footer link next to About; it does not update WordPress plugins or themes.
+  For npm/Bun installations the card checks the npm registry on first render,
   shows the current and published versions, the registry consulted and the
   command that ran, and offers Install only when something newer exists. It
   renders no external link — the CSP is `default-src 'self'` — and no installer
@@ -1538,7 +1549,10 @@ form to itself and no page reloads.
   Uninstall instructions are linked from About, with separate desktop, package,
   AI-connector and local-data guidance. The existing `?tab=uninstall` URL remains
   supported, but it is no longer a Settings tab. Updates never install silently;
-  desktop release checks/automatic notifications are not implemented.
+  desktop release checks/automatic notifications are not implemented. Desktop
+  renders a neutral manual-update explanation, not a failing self-check or an
+  up-to-date claim, and offers no inactive check/install controls. Even direct
+  authorized update requests do not invoke an unavailable backend.
 
 Below 1000px the sidebar becomes a compact brand/Menu header. Menu expands the
 connection action, navigation and About together, with `aria-expanded` reflecting
@@ -1771,18 +1785,22 @@ work its caller did not ask for.
 ## Configure your AI and app acknowledgement
 
 Each hosting account has an **Available actions** link to
-`/providers?actions=<profile>`. This read-only view uses the existing provider
+`/hosting-accounts?actions=<profile>`. This read-only view uses the existing provider
 capabilities service and public HQ allowlist, displaying only actions actually
 exposed through the dashboard or typed AI tools for that account. Internal-only
 operations and unsupported actions are omitted. It does not compare providers,
 validate credentials, or execute hosting actions. Provider permissions and plan
-limits still apply; the view distinguishes HQ support from dashboard controls.
+limits still apply. Separate **In the app** and **With your AI** lists distinguish
+dashboard entry points from typed MCP tools. Inspection actions also pass the
+typed inspection allowlist; setup, push and restore retain their workflow gates.
+InstaWP backups are labeled Site Versions; Cloudways activity is staging
+deployment activity, not a claim of general log access.
 Capability-loading failures show an unavailable state, not a fabricated list.
 
 The sidebar footer links to `/about` (About Novamira HQ), which shows the running
 version, Ovation S.r.l. attribution, copyright, AGPL-3.0-or-later license and fixed
 product/source/license links. Version and legal information live on that page,
-not repeated in the sidebar. The page links to the existing Updates settings tab.
+not repeated in the sidebar. The page links to the dedicated Updates page.
 
 `/mcp` first asks for the AI client, then renders only that client's setup.
 Automatic registration first verifies local MCP startup with `initialize` and
