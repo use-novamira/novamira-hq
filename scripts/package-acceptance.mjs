@@ -126,6 +126,7 @@ try {
     "dist",
     "skills",
     "legal",
+    "license-docs",
     "native/macos/Novamira HQ Credentials.app",
     "README.md",
     "LICENSE",
@@ -142,6 +143,7 @@ try {
     "package.json",
     "skills",
     "legal",
+    "license-docs",
     "native",
   ]);
   for (const file of manifest.files)
@@ -150,6 +152,7 @@ try {
       `unexpected package file: ${file.path}`,
     );
   const required = [
+    "license-docs/build-from-source.md",
     "legal/manifest.json",
     "legal/AUDIT.md",
     "legal/licenses/datastar.txt",

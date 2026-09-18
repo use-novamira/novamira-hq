@@ -94,5 +94,9 @@ jobs:
             dist-desktop/${{ matrix.asset }}
             dist-desktop/${{ matrix.asset }}.app.zip
             dist-desktop/${{ matrix.asset }}.keychain.zip
+            dist-desktop/${{ matrix.asset }}.SOURCE-OFFER.txt
+            dist-desktop/${{ matrix.asset }}.build-from-source.md
+            dist-desktop/${{ matrix.asset }}.LGPL-2.1.txt
+            dist-desktop/${{ matrix.asset }}.THIRD-PARTY-NOTICES.txt
           retention-days: 7
           if-no-files-found: error

@@ -266,6 +266,7 @@ test("10: the installers are not shipped inside the package they install", () =>
     "dist",
     "skills",
     "legal",
+    "license-docs",
     "native/macos/Novamira HQ Credentials.app",
     "README.md",
     "LICENSE",

@@ -117,6 +117,29 @@ About's downloadable notices include this evidence with explicit scope warnings.
 
 ## Maintenance
 
+### Distribution notices and source offer (2026-09-18)
+
+About prominently identifies the glibc-derived V8 code as LGPL-2.1-or-later
+alongside HQ's copyright, including the FSF copyright from the inspected
+`s_sin.c` header and a link to the complete notices. The full LGPL 2.1 text is
+preserved verbatim in `licenses/lgpl-2.1.txt`.
+
+`SOURCE-OFFER.txt` is included in the generated notices, npm legal directory,
+macOS app Resources/Legal and signing artifacts, Linux archive, and desktop
+release assets. It offers the source and section 6(a) build/relinking materials
+for at least three years after Ovation's last distribution of the covered
+version, with free electronic delivery. The current contact is dev@novamira.ai.
+Have counsel confirm the wording and the operator confirm the monitored contact
+before publishing new binaries with this offer.
+
+This is a real fulfillment commitment, not release clearance: retain each
+distributed version's matching sources, changes, build scripts and required
+relinking materials for the entire offer period. Track the last distribution
+date for each covered version. The third-party source inventory and artifact
+verification remain incomplete; do not mark them complete just because the
+notice and offer are now included. Previously distributed artifacts are not
+modified by these source changes.
+
 `legal/manifest.json` records versions, scope, sources and license text files.
 The build runs `scripts/legal-notices.mjs` offline, checks dependency versions and
 asset digests, and embeds a single readable text at

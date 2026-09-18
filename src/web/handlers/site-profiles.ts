@@ -223,7 +223,7 @@ export function createSiteProfileConnectHandler(
       patchToast(stream, {
         level: "neutral",
         message:
-          "Starting authorization… Complete the authorization in your browser when it opens. This may take a few minutes; do not click Reconnect again.",
+          "Checking existing access… If authorization is needed, your browser will open. Otherwise, no new authorization is required.",
       });
       const outcome = await context.integration.connect(
         site.siteUrl,

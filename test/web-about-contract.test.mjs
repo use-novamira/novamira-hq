@@ -2,19 +2,36 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { renderHtml } from "../dist/web/html.js";
 import { renderAboutPage } from "../dist/web/views/about.js";
 import { renderSidebar } from "../dist/web/views/layout.js";
+
+test("About text links inherit text color and stay underlined", () => {
+  const css = readFileSync(
+    new URL("../dist/web/static/app.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    css,
+    /\.about-page \.text-link\s*\{[^}]*color: inherit;[^}]*text-decoration: underline;/,
+  );
+});
 
 test("About displays the running version, attribution, license and fixed links", () => {
   const markup = renderHtml(renderAboutPage({ version: "9.8.7-test" }));
   for (const text of [
     "About Novamira HQ",
     "9.8.7-test",
+    "<dt>Developed by</dt><dd>Dynamic.ooo</dd>",
     "Ovation S.r.l.",
     "© 2026",
     "AGPL-3.0-or-later",
+    "GNU LGPL-2.1-or-later",
+    "Copyright (C) 2001-2022 Free Software Foundation, Inc.",
+    "LGPL license, third-party notices and source offer",
+    "at least three years after our last distribution",
     "Legal notices",
     'class="page flow-page about-page"',
     'class="details-list about-details"',

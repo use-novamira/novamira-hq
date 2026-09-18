@@ -91,6 +91,22 @@ async function packageLinux() {
   await rm(stage, { recursive: true, force: true });
   await mkdir(tree, { recursive: true });
   await cp(join(outDir, binary), join(tree, binary));
+  await cp(join(root, "LICENSE"), join(tree, "LICENSE"));
+  await cp(join(root, "license-docs"), join(tree, "license-docs"), {
+    recursive: true,
+  });
+  await cp(
+    join(root, "legal/SOURCE-OFFER.txt"),
+    join(tree, "SOURCE-OFFER.txt"),
+  );
+  await cp(
+    join(root, "legal/licenses/lgpl-2.1.txt"),
+    join(tree, "LGPL-2.1.txt"),
+  );
+  await cp(
+    join(root, "dist/web/static/third-party-notices.txt"),
+    join(tree, "THIRD-PARTY-NOTICES.txt"),
+  );
   await cp(join(root, "desktop", entry), join(tree, entry));
   await cp(join(iconDir, "hicolor"), join(tree, "icons", "hicolor"), {
     recursive: true,

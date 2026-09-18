@@ -328,7 +328,7 @@ test("1: the empty page exposes the next useful action for every state", async (
   });
   assert.ok(
     (await line(incapable.server)).includes(
-      "None of your connected hosts support environment push: plain (Pantheon).",
+      "Push is not currently available in Novamira HQ for these hosting accounts: plain (Pantheon).",
     ),
   );
 
@@ -388,7 +388,7 @@ test("2: saved pushes render as reviewable direction cards", async () => {
     ">Review and run</button>",
     ">Set up a push</a>",
     'title="Review the target and scope before pushing"',
-    'title="This provider does not support environment push"',
+    'title="Push is not available in Novamira HQ for this hosting account"',
     "/_dashboard/pushes/remove?push=stage-to-live",
     "Remove push stage-to-live?",
   ])

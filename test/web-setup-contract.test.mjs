@@ -531,8 +531,8 @@ test("2: the page carries none of the deleted site-profile surface", async () =>
     assert.ok(!forbidden.test(markup), String(forbidden));
   // The action panel says what the run actually does, and says the connect
   // step is a separate one run with the site CLI.
-  assert.ok(markup.includes("After setup, choose Connect this site"));
-  assert.ok(markup.includes("authorize access in your browser"));
+  assert.ok(markup.includes("After setup, choose Authorize access"));
+  assert.ok(markup.includes("Authorize access to finish adding this site"));
 });
 
 /* -------------------------------------------------------------------------- */
@@ -928,7 +928,7 @@ test("9: a finished job renders the handoff and no site credential", async () =>
 
   const markup = await page(server, "/novamira-setup?profile=dev&env=env-1");
   for (const want of [
-    "<h2>Novamira installed</h2>",
+    "<h2>Novamira is ready</h2>",
     "https://example.com",
     "<dt>Plugin</dt>",
     "novamira 1.11.1 · Activated: yes",
@@ -936,7 +936,7 @@ test("9: a finished job renders the handoff and no site credential", async () =>
     "enabled · locked to example.com",
     "supported · WordPress 6.9 · Novamira 1.11.1 · REST v1",
     "<dt>Ready</dt><dd>yes</dd>",
-    "Connect this site",
+    "Authorize access",
     "/_dashboard/site-profiles/connect",
     ">done</span>",
   ])
@@ -952,6 +952,23 @@ test("9: a finished job renders the handoff and no site credential", async () =>
   ])
     assert.ok(!markup.includes(forbidden), forbidden);
   assert.ok(!markup.includes("Setup in progress"));
+  assert.ok(
+    markup.indexOf("Authorize access</button>") <
+      markup.indexOf("<h2>Target</h2>"),
+  );
+  assert.ok(
+    markup.indexOf("Authorize access</button>") <
+      markup.indexOf("<h2>Progress</h2>"),
+  );
+  assert.ok(
+    markup.includes(
+      '<details class="setup-detail"><summary>Technical details</summary>',
+    ),
+  );
+  assert.match(
+    markup,
+    /<p class="field-help" hidden[^>]*data-attr[^>]*>Waiting for authorization/,
+  );
 });
 
 test("9b: an unknown ?job= is a danger notice, not a fabricated job", async () => {

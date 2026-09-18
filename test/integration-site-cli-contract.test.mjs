@@ -1467,15 +1467,63 @@ test("connect accepts an optional custom profile name", async () => {
     "custom-name",
   ]);
 
-  const { integration, calls } = harness(() => exited(success({})));
+  const { integration, calls } = harness((invocation) =>
+    exited(isAuthStatus(invocation) ? failure("site_not_found") : success({})),
+  );
   assert.deepEqual(
     await integration.connect("https://example.com", "custom-name"),
     { kind: "connected" },
   );
   assert.deepEqual(
-    calls[0].args,
+    calls.at(-1).args,
     authLoginArgs("https://example.com", "custom-name"),
   );
+});
+
+test("reauthorization checks current access and skips login when already authorized", async () => {
+  const { integration, calls } = harness(() => exited(success(AUTH_OK)));
+  assert.deepEqual(await integration.connect(PROFILE.siteUrl, "prod"), {
+    kind: "connected",
+  });
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].args, authStatusArgs(10_000, "prod"));
+});
+
+test("reauthorization does not open login for unreachable or malformed status", async () => {
+  for (const response of [
+    failure("network_error"),
+    success({}),
+    success({ ...AUTH_OK, restReachable: false, restError: "network_error" }),
+  ]) {
+    const { integration, calls } = harness(() => exited(response));
+    assert.equal(
+      (await integration.connect(PROFILE.siteUrl, "prod")).kind,
+      "failed",
+    );
+    assert.equal(calls.length, 1);
+  }
+});
+
+test("reauthorization proceeds for an expired authorization", async () => {
+  const { integration, calls } = harness((invocation) =>
+    exited(
+      success(
+        isAuthStatus(invocation)
+          ? {
+              ...AUTH_OK,
+              credentialState: "expired",
+              restReachable: false,
+              restError: "auth_expired",
+            }
+          : {},
+      ),
+    ),
+  );
+  assert.deepEqual(await integration.connect(PROFILE.siteUrl, "prod"), {
+    kind: "connected",
+  });
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1].args, authLoginArgs(PROFILE.siteUrl, "prod"));
 });
 
 test("siteInventory lists once and derives matched and CLI-only profiles together", async () => {

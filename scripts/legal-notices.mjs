@@ -63,6 +63,10 @@ for (const key of Object.keys(lock.npm)) {
 
 const sections = [
   `NOVAMIRA HQ ${pkg.version} — LEGAL AND THIRD-PARTY NOTICES`,
+  "THIS APPLICATION INCLUDES LGPL-COVERED SOFTWARE\nThe desktop Deno/V8 runtime includes glibc-derived mathematical code under LGPL-2.1-or-later.\nCopyright (C) 2001-2022 Free Software Foundation, Inc.\nThe complete LGPL 2.1 text and written source offer follow. Third-party copyright notices are retained below.",
+  await read("legal/SOURCE-OFFER.txt"),
+  await read("license-docs/build-from-source.md"),
+  await read("legal/licenses/lgpl-2.1.txt"),
   `Inventory reviewed: ${manifest.reviewedAt}\n\n${manifest.coverage}`,
   "NOVAMIRA HQ\nCopyright © 2026 Ovation S.r.l.\nSPDX-License-Identifier: AGPL-3.0-or-later\nSource: https://github.com/use-novamira/novamira-hq\nRecipients of a binary must receive access to the matching Corresponding Source, including build scripts. Contact the distributor if the repository is private or the matching revision is unavailable.\n\n" +
     (await read("LICENSE")),

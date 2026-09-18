@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { Readable } from "node:stream";
 import test from "node:test";
 import { runMcpServer } from "../dist/mcp/index.js";
+import { CliError } from "../dist/errors.js";
 
 function request(id, method, params) {
   return JSON.stringify({
@@ -24,6 +25,20 @@ function actionResult(action) {
     raw: null,
   };
 }
+
+const savedRoute = {
+  name: "Publish",
+  hostingProfile: "production",
+  siteId: "site-1",
+  siteLabel: "Site",
+  sourceEnvId: "env-source",
+  sourceEnvName: "Source",
+  targetEnvId: "env-target",
+  targetEnvName: "Target",
+  pushDb: true,
+  pushFiles: true,
+  searchReplace: true,
+};
 
 async function session(lines, overrides = {}) {
   const output = [];
@@ -103,6 +118,14 @@ async function session(lines, overrides = {}) {
       version: "1.2.3",
       ...(overrides.onboarding ? { onboarding: overrides.onboarding } : {}),
       store: {
+        listPushes: async () => [savedRoute],
+        requireSavedPush: async (name) => {
+          assert.equal(name, savedRoute.name);
+          return savedRoute;
+        },
+        getSavedPush: async () => savedRoute,
+        withSavedPushLock: async (_name, operation) => operation(),
+        ...overrides.store,
         listHostingProfiles: async () => [
           {
             name: "production",
@@ -456,6 +479,7 @@ test("MCP negotiates lifecycle and exposes the complete typed surface", async ()
       "hosting_inspection_options",
       "hosting_backup_create",
       "hosting_novamira_setup",
+      "hosting_push_routes_list",
       "hosting_environment_push_plan",
       "hosting_environment_push_apply",
       "hosting_backup_restore_plan",
@@ -644,13 +668,7 @@ test("push uses a one-use plan and invokes only the provider-native push", async
       request(2, "tools/call", {
         name: "hosting_environment_push_plan",
         arguments: {
-          profile: "production",
-          siteId: "site-1",
-          sourceEnvironmentId: "env-source",
-          targetEnvironmentId: "env-target",
-          database: true,
-          files: ["wp-content/uploads/a.jpg"],
-          searchReplace: true,
+          route: "Publish",
         },
       }),
       request(3, "tools/call", {
@@ -687,9 +705,8 @@ test("push uses a one-use plan and invokes only the provider-native push", async
         target_env_id: "env-target",
         push_db: true,
         push_files: true,
+        push_files_option: "ALL_FILES",
         run_search_and_replace: true,
-        push_files_option: "SPECIFIC_FILES",
-        file_list: ["wp-content/uploads/a.jpg"],
       },
     },
   ]);
@@ -717,7 +734,100 @@ test("push rejects an empty implicit scope before any mutation", async () => {
     JSON.parse(messages[1].result.content[0].text).code,
     "usage_error",
   );
-  assert.deepEqual(calls, ["production"]);
+  assert.deepEqual(calls, []);
+});
+
+test("push lists saved routes without provider access", async () => {
+  const { messages, calls } = await session([
+    initialize,
+    initialized,
+    request(2, "tools/call", {
+      name: "hosting_push_routes_list",
+      arguments: {},
+    }),
+  ]);
+  assert.deepEqual(JSON.parse(messages[1].result.content[0].text), [
+    savedRoute,
+  ]);
+  assert.deepEqual(calls, []);
+});
+
+test("push refuses changed or removed routes and consumes their confirmations", async () => {
+  for (const current of [
+    undefined,
+    { ...savedRoute, pushDb: false },
+    { ...savedRoute, targetEnvId: "other" },
+  ]) {
+    const { messages, calls } = await session(
+      [
+        initialize,
+        initialized,
+        request(2, "tools/call", {
+          name: "hosting_environment_push_plan",
+          arguments: { route: "Publish" },
+        }),
+        request(3, "tools/call", {
+          name: "hosting_environment_push_apply",
+          arguments: { confirmationId: "fixed" },
+        }),
+        request(4, "tools/call", {
+          name: "hosting_environment_push_apply",
+          arguments: { confirmationId: "fixed" },
+        }),
+      ],
+      {
+        createPushConfirmationId: () => "fixed",
+        store: { getSavedPush: async () => current },
+      },
+    );
+    assert.equal(
+      JSON.parse(messages[2].result.content[0].text).code,
+      "conflict",
+    );
+    assert.equal(
+      JSON.parse(messages[3].result.content[0].text).code,
+      "not_found",
+    );
+    assert.ok(!calls.some((call) => call.kind === "push-environment"));
+  }
+});
+
+test("push cannot override a saved route", async () => {
+  const { messages, calls } = await session([
+    initialize,
+    initialized,
+    request(2, "tools/call", {
+      name: "hosting_environment_push_plan",
+      arguments: { route: "Publish", database: false },
+    }),
+  ]);
+  assert.equal(messages[1].result.isError, true);
+  assert.deepEqual(calls, []);
+});
+
+test("push rejects a missing saved route without contacting hosting", async () => {
+  const { messages, calls } = await session(
+    [
+      initialize,
+      initialized,
+      request(2, "tools/call", {
+        name: "hosting_environment_push_plan",
+        arguments: { route: "Missing" },
+      }),
+    ],
+    {
+      store: {
+        requireSavedPush: async () => {
+          throw new CliError("not_found", "Missing route");
+        },
+      },
+    },
+  );
+  assert.equal(
+    JSON.parse(messages[1].result.content[0].text).code,
+    "not_found",
+  );
+  assert.deepEqual(calls, []);
 });
 
 test("generic and unknown tools are not callable even by name", async () => {

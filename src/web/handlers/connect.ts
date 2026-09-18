@@ -126,7 +126,7 @@ export function createConnectHandler(context: RouteContext): RouteHandler {
           patchToast(stream, {
             level: "neutral",
             message:
-              "Novamira is ready. Opening authorization in your browser… Approve access there, then return here. This page will update when authorization completes.",
+              "Novamira is ready. Checking existing access… Your browser will open only if authorization is needed.",
           });
         const outcome = await context.integration.connect(
           site.siteUrl,

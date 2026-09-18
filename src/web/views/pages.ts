@@ -1,5 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import {
+  renderProviderRemoval,
+  type ProviderRemovalView,
+} from "./provider-removal.js";
 
 /**
  * The page-body dispatcher: one `DashboardPage` in, one `#main` body out.
@@ -77,6 +81,7 @@ export interface PageModel {
   readonly hostingTools?: HostingToolsView;
   readonly restore?: RestoreView;
   readonly providerActions?: ProviderActionsView;
+  readonly providerRemoval?: ProviderRemovalView;
   readonly settingsTab?: SettingsTab;
   readonly sitesSnapshot?: SitesResult;
   readonly siteConnectSuccess?: SiteConnectSuccessView;
@@ -137,6 +142,8 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
         model.view.profiles.map((profile) => profile.name),
       );
     case "providers":
+      if (model.providerRemoval)
+        return renderProviderRemoval(model.providerRemoval);
       return renderProvidersPage({
         ...(model.providerActions ? { actions: model.providerActions } : {}),
         view: model.view,

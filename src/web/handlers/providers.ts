@@ -37,7 +37,9 @@
  */
 
 import { PROVIDER_KINDS } from "../../config/schema.js";
-import { asCliError } from "../../errors.js";
+import { asCliError, CliError } from "../../errors.js";
+import { randomUUID } from "node:crypto";
+import type { ProviderRemovalView } from "../views/provider-removal.js";
 import type { JsonValue } from "../expr.js";
 import { patchPage, patchToast } from "../patch.js";
 import { readSignals, type DashboardRequest } from "../request.js";
@@ -185,6 +187,7 @@ export function createProviderSaveHandler(context: RouteContext): RouteHandler {
 export function createProviderRemoveHandler(
   context: RouteContext,
 ): RouteHandler {
+  const plans = new Map<string, ProviderRemovalView & { expiresAt: number }>();
   return (request): DashboardResponse => ({
     kind: "sse",
     run: async (stream) => {
@@ -194,6 +197,108 @@ export function createProviderRemoveHandler(
         // the dashboard's own page is still a client error — and uses nothing
         // from it.
         await readSignals(request);
+        const profile = profileParameter(request);
+        const confirmation = request.query.get("confirmation");
+        if (!confirmation) {
+          for (const [id, plan] of plans)
+            if (plan.expiresAt <= Date.now()) plans.delete(id);
+          if (plans.size >= 64)
+            throw new CliError(
+              "conflict",
+              "Too many pending removal requests. Try again later.",
+            );
+          let verified = false;
+          let sites: ProviderRemovalView["sites"] = [];
+          try {
+            const inventory = await context.sites.list({
+              profile,
+              includeEnvs: true,
+              refresh: true,
+            });
+            verified =
+              inventory.siteProfiles.cliAvailable &&
+              !inventory.siteProfiles.reason &&
+              inventory.groups.some((group) => group.profile === profile) &&
+              inventory.groups.every((group) => !group.error && !group.stale) &&
+              inventory.connections?.cliAvailable === true;
+            if (verified && inventory.connections) {
+              const names = new Set(
+                [...inventory.connections.byKey.values()].flatMap(
+                  (connection) => connection.profiles,
+                ),
+              );
+              sites = inventory.siteProfiles.profiles
+                .filter((site) => names.has(site.name))
+                .map(({ name, siteUrl }) => ({ name, siteUrl }));
+            }
+          } catch {
+            /* Never infer an empty list from a failed inventory. */
+          }
+          const plan = {
+            profile,
+            confirmation: randomUUID(),
+            sites,
+            verified,
+            expiresAt: Date.now() + 300_000,
+          };
+          plans.set(plan.confirmation, plan);
+          patchPage(stream, {
+            page: "providers",
+            notice: { level: "neutral", message: "" },
+            model: {
+              view: await context.loadConfigView(),
+              notice: { level: "neutral", message: "" },
+              signals: defaultDashboardSignals(context.token),
+              providerRemoval: plan,
+            },
+          });
+          stream.close();
+          return;
+        }
+        const plan = plans.get(confirmation);
+        plans.delete(confirmation);
+        if (plan?.profile !== profile || plan.expiresAt <= Date.now())
+          throw new CliError(
+            "conflict",
+            "This removal confirmation expired or was already used. Review the account again.",
+          );
+        const removeSites = request.query.get("remove_sites");
+        if (removeSites !== "true" && removeSites !== "false")
+          throw new CliError(
+            "usage_error",
+            "Choose whether to keep the linked sites.",
+          );
+        if (removeSites === "true") {
+          if (!plan.verified)
+            throw new CliError(
+              "conflict",
+              "Linked sites could not be verified.",
+            );
+          const current = await context.integration.listProfiles();
+          if (
+            !current.cliAvailable ||
+            current.reason ||
+            plan.sites.some(
+              (site) =>
+                !current.profiles.some(
+                  (entry) =>
+                    entry.name === site.name && entry.siteUrl === site.siteUrl,
+                ),
+            )
+          )
+            throw new CliError(
+              "conflict",
+              "Saved site connections changed. Review the account again before removing them.",
+            );
+          for (const site of plan.sites) {
+            const outcome = await context.integration.removeProfile(site.name);
+            if (outcome.kind !== "done" && outcome.kind !== "missing")
+              throw new CliError(
+                "integration_unavailable",
+                "Some site connections could not be removed. The hosting account was kept. Check Sites before trying again; earlier removals may have completed.",
+              );
+          }
+        }
         const removed = await context.providers.remove(
           profileParameter(request),
         );

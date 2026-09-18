@@ -22,9 +22,9 @@
  * **The rules, all load-bearing.**
  *
  * - `shell: false` and an argv array — inherited from {@link SpawnChild}, which
- *   has no other mode. The **non-secret site URL is the only argument**; there
- *   is deliberately no `--name`, because profile naming belongs to the site CLI
- *   and inventing one here would be HQ holding site state.
+ *   has no other mode. Only the public URL and an optional validated profile
+ *   name are passed. Named profiles are checked before starting a new login;
+ *   an already authorized profile needs no interactive authorization.
  * - Its own timeout and its own `AbortSignal`. {@link AUTH_LOGIN_TIMEOUT_MS} is
  *   five minutes rather than the ten seconds a query gets: this is an
  *   interactive OAuth flow with a human in it, and killing it at ten seconds
@@ -48,7 +48,9 @@ import type { ConnectOutcome, UnavailableReason } from "../connection-state.js";
 import { CliError } from "../errors.js";
 import { isSiteProfileName } from "../site-profiles.js";
 import { interpretChildOutcome } from "./classify.js";
-import { siteCliChildEnv } from "./site-cli.js";
+import { authStatusArgs, siteCliChildEnv } from "./site-cli.js";
+import { verdictFor } from "./verdict.js";
+import { originOf } from "./origin.js";
 import {
   DEFAULT_MAX_STDERR_BYTES,
   DEFAULT_MAX_STDOUT_BYTES,
@@ -130,6 +132,36 @@ export function createConnectAction(
       return failed("cli_failed");
     }
     if (resolution === undefined) return failed("cli_absent");
+
+    // A stale dashboard row must not reauthorize an already usable profile.
+    // Query only the explicitly selected profile; never use the CLI default.
+    if (name !== undefined) {
+      const checkTimeoutMs = Math.min(timeoutMs, 10_000);
+      const check = await options.spawn({
+        command: resolution.command,
+        args: [
+          ...resolution.prefixArgs,
+          ...authStatusArgs(checkTimeoutMs, name),
+        ],
+        env: siteCliChildEnv(options.environment),
+        timeoutMs: checkTimeoutMs,
+        maxStdoutBytes,
+        maxStderrBytes,
+        signal: AbortSignal.timeout(checkTimeoutMs + 1_000),
+      });
+      const { verdict, status } = verdictFor(interpretChildOutcome(check));
+      if (
+        status?.siteUrl !== undefined &&
+        originOf(status.siteUrl) !== originOf(siteUrl)
+      )
+        return failed("malformed_output");
+      if (status?.restError === "network_error")
+        return failed("site_unreachable");
+      if (verdict.kind === "connected") return CONNECTED;
+      if (verdict.kind === "unavailable") return failed(verdict.reason);
+      // Missing profiles (including a new custom name) or confirmed auth
+      // failures may continue to the existing interactive login flow.
+    }
 
     // One login, one deadline. `AbortSignal.timeout` is the same mechanism the
     // refresh uses; the child timer is the belt to its braces.

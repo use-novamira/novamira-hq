@@ -301,6 +301,9 @@ from the checkout after `bun run build`.
 
 ### Release assets
 
+See [Building HQ and its embedded runtime from source](license-docs/build-from-source.md)
+for source references, rebuild instructions and their verification status.
+
 Every release attaches a compiled executable per platform and architecture.
 Each one carries the same application icon, derived at build time from the one
 committed 1024x1024 master — `deno compile --icon` embeds it on Windows,
@@ -459,10 +462,13 @@ creation and guarded restoration, Novamira setup, and environment push. There is
 no arbitrary argv tool, no configuration mutation, no self-update, no provider
 WP-CLI passthrough, no domain or DNS mutation, and no SSH/SFTP tool.
 
-Environment push is two-step: `hosting_environment_push_plan` requires an
-explicit database, all-files, or file-list scope and returns a five-minute,
+MCP can push only routes already saved in the app. `hosting_push_routes_list`
+lists them; `hosting_environment_push_plan` accepts only the saved `route` name,
+with no source, target or scope overrides, and returns a five-minute,
 session-local, one-use confirmation ID; `hosting_environment_push_apply` consumes
-it and invokes only the provider's native push operation. Novamira HQ does not
+it and invokes only the provider's native push operation. Changed or removed
+routes invalidate the confirmation. Create or edit routes in the app.
+Novamira HQ does not
 combine a separate backup and push into a workflow; any automatic backup is part
 of the provider's own behavior.
 Tool inputs never accept provider credential values; credentials continue to

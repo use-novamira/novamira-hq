@@ -1,0 +1,38 @@
+NOVAMIRA HQ — WRITTEN OFFER FOR CORRESPONDING SOURCE
+
+Ovation S.r.l. offers each recipient of a Novamira HQ binary distributed by
+Ovation S.r.l. the complete machine-readable corresponding source and materials
+required by the applicable GNU licenses for that binary, including the
+LGPL-covered glibc-derived mathematical code incorporated into its Deno/V8
+runtime and any modifications to that code.
+
+For the LGPL-covered component, this offer includes the materials specified in
+section 6(a) of the GNU Lesser General Public License, version 2.1: the complete
+corresponding library source, and the work using the library in object-code
+and/or source-code form, with the applicable build scripts and instructions,
+sufficient to modify the library and relink a modified executable. This is not
+limited to Novamira HQ's TypeScript source or to upstream repository links.
+
+This offer is valid for at least three years after Ovation S.r.l.'s last
+distribution of the covered version of Novamira HQ. It remains available if a
+download link or repository is subsequently changed or removed.
+
+To request these materials, email dev@novamira.ai with the subject
+"Novamira HQ corresponding source request". Please identify the application
+version and, if known, its build/commit and platform (macOS Intel, macOS Apple
+Silicon, Windows or Linux). No purchase, subscription or support contract is
+required. Electronic delivery is available without charge.
+
+HQ source and build scripts are also available at:
+https://github.com/use-novamira/novamira-hq
+
+Build instructions and verification status accompany this distribution in
+license-docs/build-from-source.md (also included in the third-party notices):
+https://github.com/use-novamira/novamira-hq/blob/main/license-docs/build-from-source.md
+Use the copy matching your distributed version, rather than the moving branch.
+
+Novamira HQ's own code is licensed under AGPL-3.0-or-later. Third-party code
+retains its applicable copyright notices and license terms. See the accompanying
+LICENSE, LGPL-2.1.txt and THIRD-PARTY-NOTICES.txt, or the Legal notices section
+of the application's About page. This offer does not limit rights granted by
+those licenses.

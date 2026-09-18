@@ -29,6 +29,9 @@ test("bundled notices include license texts, versions, source and honest desktop
     "DESKTOP RUNTIME SOURCE AUDIT — NOT RELEASE CLEARANCE",
     "third_party/glibc/LICENSE",
     "GNU LESSER GENERAL PUBLIC LICENSE",
+    "THIS APPLICATION INCLUDES LGPL-COVERED SOFTWARE",
+    "WRITTEN OFFER FOR CORRESPONDING SOURCE",
+    "dev@novamira.ai",
   ])
     assert.ok(notice.includes(text), text);
   for (const file of new Set(
@@ -47,6 +50,52 @@ test("bundled notices include license texts, versions, source and honest desktop
   );
   assert.equal(result.status, 1);
   assert.match(result.stderr, /No release clearance/);
+});
+
+test("LGPL text is verbatim and the distributed offer covers relinking and retention", async () => {
+  const read = (path) =>
+    readFile(new URL(`../${path}`, import.meta.url), "utf8");
+  const native = JSON.parse(await read("legal/v8-source-notices.json"));
+  assert.equal(
+    (await read("legal/licenses/lgpl-2.1.txt")).trimEnd(),
+    native.notices
+      .find((item) => item.path === "third_party/glibc/LICENSE")
+      .text.trimEnd(),
+  );
+  const offer = await read("legal/SOURCE-OFFER.txt");
+  assert.match(offer, /at least three years after Ovation/);
+  assert.match(offer, /last\n+distribution/);
+  assert.match(offer, /section 6\(a\)/);
+  assert.match(offer, /relink a modified executable/);
+  const notices = await read("dist/web/static/third-party-notices.txt");
+  assert.ok(notices.includes(offer));
+  const guide = await read("license-docs/build-from-source.md");
+  assert.ok(notices.includes(guide));
+  assert.match(guide, /DENORT_BIN/);
+  assert.match(guide, /V8_FROM_SOURCE=1/);
+  assert.match(guide, /not yet been executed/);
+  assert.ok(
+    JSON.parse(await read("package.json")).files.includes("license-docs"),
+  );
+  const mac = await read("scripts/macos-sign.sh");
+  assert.ok(mac.includes("Resources/Legal/SOURCE-OFFER.txt"));
+  assert.ok(mac.includes("Resources/Legal/LGPL-2.1.txt"));
+  assert.ok(mac.includes("Resources/Legal/license-docs"));
+  assert.ok(
+    mac.indexOf("Resources/Legal/SOURCE-OFFER.txt") <
+      mac.indexOf("xcrun stapler staple"),
+  );
+  const linux = await read("scripts/desktop-build.mjs");
+  assert.ok(linux.includes('join(tree, "SOURCE-OFFER.txt")'));
+  assert.ok(linux.includes('join(tree, "LGPL-2.1.txt")'));
+  assert.ok(linux.includes('join(tree, "license-docs")'));
+  for (const workflow of ["macos-signing.yml", "release.yml"]) {
+    const source = await read(`.github/workflows/${workflow}`);
+    assert.ok(source.includes(".SOURCE-OFFER.txt"));
+    assert.ok(source.includes(".build-from-source.md"));
+    assert.ok(source.includes(".LGPL-2.1.txt"));
+    assert.ok(source.includes(".THIRD-PARTY-NOTICES.txt"));
+  }
 });
 
 test("runtime source audit preserves every referenced original text and missing-text status", async () => {
@@ -89,6 +138,7 @@ test("offline notice generation rejects asset drift and missing license text", a
   const paths = [
     "scripts/legal-notices.mjs",
     "legal",
+    "license-docs",
     "LICENSE",
     "package.json",
     "bun.lock",

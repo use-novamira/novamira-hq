@@ -747,11 +747,23 @@ test("10: remove deletes the profile, its secret and its check stamp", async () 
     !(await page(server, "/hosting-accounts")).includes("data-checked-at"),
   );
 
-  const { recorder } = await sse(
+  const review = await sse(
     server,
     authorized("/_dashboard/providers/remove?profile=prod", {
       body: JSON.stringify({ token: TOKEN }),
     }),
+  );
+  assert.equal(Object.keys((await store.load()).hostingProfiles).length, 1);
+  const confirmation = review.recorder
+    .find("main")
+    .markup.match(/confirmation=([a-f0-9-]+)/)?.[1];
+  assert.ok(confirmation);
+  const { recorder } = await sse(
+    server,
+    authorized(
+      `/_dashboard/providers/remove?profile=prod&confirmation=${confirmation}&remove_sites=false`,
+      { body: JSON.stringify({ token: TOKEN }) },
+    ),
   );
   assert.equal(Object.keys((await store.load()).hostingProfiles).length, 0);
   assert.ok(recorder.find("main").markup.includes("prod removed."));

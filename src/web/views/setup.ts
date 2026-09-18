@@ -172,11 +172,14 @@ export function renderSetupWorkBody(view: SetupView, now = Date.now()): Html {
   const job = view.job;
   const status = job?.status ?? "ready";
   const result = job?.result ?? null;
-  return html`<div class="setup-grid">${renderTargetPanel(view, status)}${
-    view.jobId === "" ? renderActionPanel(view) : renderSetupEvents(view, now)
-  }${result === null ? false : renderSetupResult(result)}${
-    job?.status === "error" ? renderSetupFailure(job.error) : false
-  }</div>`;
+  const progress = renderSetupEvents(view, now);
+  return html`<div class="setup-grid">${result === null ? false : renderSetupResult(result)}${renderTargetPanel(view, status)}${
+    view.jobId === ""
+      ? renderActionPanel(view)
+      : status === "done"
+        ? html`<details class="setup-detail"><summary>Technical details</summary>${progress}</details>`
+        : progress
+  }${job?.status === "error" ? renderSetupFailure(job.error) : false}</div>`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -229,7 +232,7 @@ function renderTargetPanel(view: SetupView, status: SetupDisplayStatus): Html {
  * command that connects the agent.
  */
 const SETUP_DESCRIPTION =
-  "This checks compatibility before changing the plugin. An outdated installation requires an explicit update. On Cloudways, you may need to enable AI Abilities in WordPress after installation. After setup, choose Connect this site to authorize access in your browser.";
+  "This checks compatibility before changing the plugin. An outdated installation requires an explicit update. On Cloudways, you may need to enable AI Abilities in WordPress after installation. After setup, choose Authorize access to finish adding this site.";
 
 const AI_ABILITIES_WARNING =
   "When enabled, AI agents can execute PHP code and perform filesystem operations on this site. Use AI Abilities only on development or staging sites with a current backup.";
@@ -335,9 +338,9 @@ function renderSetupResult(result: NovamiraSetupResult): Html {
             : ` · REST v${String(result.compatibility.restApiVersion)}`
         }`
       : "skipped";
-  return html`<section class="panel"><div class="panel-head"><div><h2>Novamira installed</h2><p>${
+  return html`<section class="panel"><div class="panel-head"><div><h2>${result.ready === true ? "Novamira is ready" : "Novamira installed"}</h2><p>${
     result.siteUrl
-  }</p></div><span class="pill ok">done</span></div><dl class="details-list">${dlField(
+  }</p></div><span class="pill ok">done</span></div><details class="setup-detail"><summary>Installation details</summary><dl class="details-list">${dlField(
     "Plugin",
     `${result.plugin.slug} ${result.plugin.version ?? "—"} · Activated: ${yesNo(
       result.plugin.activated,
@@ -355,9 +358,9 @@ function renderSetupResult(result: NovamiraSetupResult): Html {
       : result.compatibility.status === "supported"
         ? "AI Abilities are not enabled for this domain"
         : "not checked",
-  )}</dl>${result.warnings.map(
+  )}</dl></details>${result.warnings.map(
     (warning) => html`<div class="notice warn">${warning.message}</div>`,
-  )}<div class="setup-connect"><h3>Connect this site to Novamira HQ</h3><p>Authorize access in your browser to finish connecting this site.</p><button class="button primary" type="button"${ds.on("click", seq(set("cliSites.url", jsString(result.siteUrl)), set("cliSites.name", jsString("")), post(url("/_dashboard/site-profiles/connect", { unified: true }), { include: ["cliSites"] })))}${ds.indicator("cliSites.loading")}${ds.attrs({ disabled: signal("cliSites.loading") })}>Connect this site</button><p class="field-help ds-toggle"${ds.classes({ open: signal("cliSites.loading") })}>Waiting for authorization in your browser…</p></div></section>`;
+  )}<div class="setup-connect"><h3>Finish adding this site</h3><p>Authorize access to finish adding this site.</p><button class="button primary" type="button"${ds.on("click", seq(set("cliSites.url", jsString(result.siteUrl)), set("cliSites.name", jsString("")), post(url("/_dashboard/site-profiles/connect", { unified: true }), { include: ["cliSites"] })))}${ds.indicator("cliSites.loading")}${ds.attrs({ disabled: signal("cliSites.loading") })}>Authorize access</button><p class="field-help" hidden${ds.attrs({ hidden: not(signal("cliSites.loading")) })}>Waiting for authorization in your browser…</p></div></section>`;
 }
 
 /** `prefix + value`, or nothing when the value is absent. */

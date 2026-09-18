@@ -289,7 +289,7 @@ jobs:
           assets="dist-desktop/${{ matrix.asset }}"
           if [ -n "$ARCHIVE" ]; then assets="$assets dist-desktop/$ARCHIVE"; fi
           # shellcheck disable=SC2086
-          gh release upload "$RELEASE_TAG" $assets --clobber
+          gh release upload "$RELEASE_TAG" $assets legal/SOURCE-OFFER.txt legal/licenses/lgpl-2.1.txt LICENSE dist/web/static/third-party-notices.txt license-docs/build-from-source.md --clobber
 
   # The same compile, plus Apple's three steps: Developer ID signature,
   # notarization, stapled ticket. Each architecture publishes two assets — the
@@ -385,5 +385,9 @@ jobs:
             dist-desktop/${{ matrix.asset }}
             dist-desktop/${{ matrix.asset }}.app.zip
             dist-desktop/${{ matrix.asset }}.keychain.zip
+            dist-desktop/${{ matrix.asset }}.SOURCE-OFFER.txt
+            dist-desktop/${{ matrix.asset }}.build-from-source.md
+            dist-desktop/${{ matrix.asset }}.LGPL-2.1.txt
+            dist-desktop/${{ matrix.asset }}.THIRD-PARTY-NOTICES.txt
           retention-days: 30
           if-no-files-found: error

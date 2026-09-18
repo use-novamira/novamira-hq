@@ -124,7 +124,7 @@ export function pushesStatusLine(
     .filter((profile) => environmentPushSupported(profile.provider))
     .map(named);
   if (capable.length === 0) {
-    return `None of your connected hosts support environment push: ${profiles
+    return `Push is not currently available in Novamira HQ for these hosting accounts: ${profiles
       .map(named)
       .join(", ")}.`;
   }
@@ -228,7 +228,7 @@ function renderAvailableDirections(
     message = pushesStatusLine(view.profiles, warm);
     action = html`<a class="button primary"${hrefAttr(url("/hosting-accounts"))}>Connect a hosting provider</a>`;
   } else if (!capable.length) {
-    title = "Environment push is not supported";
+    title = "Push is not available";
     message = pushesStatusLine(view.profiles, warm);
     action = html`<a class="button secondary"${hrefAttr(url("/hosting-accounts"))}>Review hosting accounts</a>`;
   } else if (!warm.cacheWarm || incomplete) {
@@ -260,7 +260,7 @@ export function pushScopeSummary(push: PushView): string {
 }
 
 const PUSH_UNSUPPORTED_TITLE =
-  "This provider does not support environment push";
+  "Push is not available in Novamira HQ for this hosting account";
 
 function endpoint(
   name: string,

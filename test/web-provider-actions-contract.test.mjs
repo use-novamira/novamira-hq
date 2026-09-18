@@ -40,14 +40,11 @@ test("success copy is concise and suppresses only the redundant success notice",
   assert.ok(
     markup.includes("Here’s what you can do with this hosting account."),
   );
-  assert.ok(
-    markup.includes("Select a site in Sites to see its available actions."),
-  );
-  assert.ok(
-    markup.includes(
-      "Some actions depend on your hosting plan and permissions.",
-    ),
-  );
+  assert.ok(markup.includes('<th scope="col">In the app</th>'));
+  assert.ok(markup.includes('<th scope="col">With your AI</th>'));
+  assert.ok(markup.includes("Not available"));
+  assert.equal((markup.match(/<table /g) ?? []).length, 1);
+  assert.ok(!markup.includes("hosting plan and permissions"));
   assert.doesNotMatch(
     markup,
     /account saved and access verified|permanent hosting connection|Use Push|Requests run on demand/,
@@ -103,7 +100,16 @@ test("displayed actions correspond to public capabilities and exposed AI tools",
     assert.ok(names.has(name), name);
 });
 
-test("account actions show actual HQ support without raw adapter notes or comparisons", () => {
+function assertUnavailable(markup, label) {
+  const row = markup
+    .split("<tr>")
+    .find((entry) => entry.startsWith(`<th scope="row">${label}</th>`))
+    ?.split("</tr>")[0];
+  assert.ok(row, label);
+  assert.equal((row.match(/Not available/g) ?? []).length, 2, label);
+}
+
+test("account actions compare app and AI without raw adapter notes", () => {
   const markup = render([
     { name: "cache.clear", supported: true, notes: "POST /technical-endpoint" },
     { name: "sites.list", supported: true },
@@ -111,14 +117,12 @@ test("account actions show actual HQ support without raw adapter notes or compar
     { name: "sites.delete", supported: true },
   ]);
   assert.ok(markup.includes("List sites"));
-  assert.doesNotMatch(
-    markup,
-    /Clear the site cache|Push content between environments|Not available|deletion|SSH/,
-  );
-  assert.doesNotMatch(markup, /POST \/technical|sites.delete|<table|GitHub/);
+  assert.doesNotMatch(markup, /Clear the site cache|deletion|SSH/);
+  assert.doesNotMatch(markup, /POST \/technical|sites.delete|GitHub/);
+  assertUnavailable(markup, "Push content between environments");
   assert.ok(
     markup.includes(
-      "Connect your AI client, then ask it to perform these actions.",
+      "configure your AI client to use the available AI actions.",
     ),
   );
   assert.doesNotMatch(markup, /\bCLI\b|terminal/);
@@ -154,7 +158,7 @@ test("provider-specific wording and typed inspection limits remain accurate", ()
     "cloudways",
   );
   assert.ok(cloudways.includes("Read staging deployment activity"));
-  assert.ok(!cloudways.includes("Read site logs"));
+  assertUnavailable(cloudways, "Read site logs");
   const instawp = render(
     [
       { name: "backups.list", supported: true },
@@ -173,7 +177,7 @@ test("provider-specific wording and typed inspection limits remain accurate", ()
     "hostinger",
   );
   assert.ok(hostinger.includes("Install and set up Novamira"));
-  assert.ok(!hostinger.includes("Clear cache"));
+  assertUnavailable(hostinger, "Clear cache");
 });
 
 test("setup, push and restore honor HQ workflow requirements", () => {
@@ -185,12 +189,14 @@ test("setup, push and restore honor HQ workflow requirements", () => {
   const kinsta = render(capabilities);
   assert.ok(kinsta.includes("Install and set up Novamira"));
   assert.ok(kinsta.includes("Push content between environments"));
-  assert.ok(!kinsta.includes("Restore a backup"));
+  assertUnavailable(kinsta, "Restore a backup");
   const pressable = render(capabilities, "pressable");
-  assert.doesNotMatch(
-    pressable,
-    /Install and set up Novamira|Push content between environments|Restore a backup/,
-  );
+  for (const label of [
+    "Install and set up Novamira",
+    "Push content between environments",
+    "Restore a backup",
+  ])
+    assertUnavailable(pressable, label);
   assert.ok(
     render([
       ...capabilities,

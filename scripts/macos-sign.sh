@@ -136,6 +136,16 @@ version=$(node -e 'const fs=require("node:fs");process.stdout.write(JSON.parse(f
 app=$(dirname "$binary")/Novamira\ HQ.app
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Helpers"
+mkdir -p "$app/Contents/Resources/Legal"
+cp "$root/LICENSE" "$app/Contents/Resources/Legal/LICENSE"
+cp -R "$root/license-docs" "$app/Contents/Resources/Legal/license-docs"
+cp "$root/license-docs/build-from-source.md" "$binary.build-from-source.md"
+cp "$root/legal/SOURCE-OFFER.txt" "$app/Contents/Resources/Legal/SOURCE-OFFER.txt"
+cp "$root/legal/licenses/lgpl-2.1.txt" "$app/Contents/Resources/Legal/LGPL-2.1.txt"
+cp "$root/dist/web/static/third-party-notices.txt" "$app/Contents/Resources/Legal/THIRD-PARTY-NOTICES.txt"
+cp "$root/legal/SOURCE-OFFER.txt" "$binary.SOURCE-OFFER.txt"
+cp "$root/legal/licenses/lgpl-2.1.txt" "$binary.LGPL-2.1.txt"
+cp "$root/dist/web/static/third-party-notices.txt" "$binary.THIRD-PARTY-NOTICES.txt"
 ditto "$helper" "$app/Contents/Helpers/Novamira HQ Credentials.app"
 
 # The icon is one 1024x1024 master; `iconutil` wants every representation the

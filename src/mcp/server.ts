@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+import type { SavedPush } from "../config/schema.js";
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
 import type { HostingProfileEntry } from "../config/profiles.js";
@@ -23,7 +25,6 @@ import {
   executeEnvironmentPush,
   prepareEnvironmentPush,
   type EnvironmentPushPlan,
-  type EnvironmentPushSelection,
 } from "../hosting/environment-push.js";
 import type { HostingClientFactory } from "../hosting/factory.js";
 import type { ProviderClient } from "../hosting/client.js";
@@ -67,6 +68,7 @@ interface McpTool {
 }
 
 interface StoredPushPlan {
+  readonly route: SavedPush;
   readonly client: ProviderClient;
   readonly plan: EnvironmentPushPlan;
   readonly expiresAt: number;
@@ -139,35 +141,6 @@ function nonEmptyString(
 ): Readonly<Record<string, unknown>> {
   return { type: "string", minLength: 1, description };
 }
-
-const PUSH_PROPERTIES = {
-  profile: PROFILE_PROPERTY,
-  siteId: nonEmptyString("Hosting site ID containing both environments."),
-  sourceEnvironmentId: nonEmptyString("Source environment ID."),
-  targetEnvironmentId: nonEmptyString("Target environment ID."),
-  database: {
-    type: "boolean",
-    default: false,
-    description: "Push the database. Never enabled implicitly.",
-  },
-  allFiles: {
-    type: "boolean",
-    default: false,
-    description: "Push every file. Mutually exclusive with files.",
-  },
-  files: {
-    type: "array",
-    default: [],
-    uniqueItems: true,
-    items: { type: "string", minLength: 1 },
-    description: "Explicit file paths to push instead of every file.",
-  },
-  searchReplace: {
-    type: "boolean",
-    default: false,
-    description: "Run URL search/replace; requires database=true.",
-  },
-} as const;
 
 const RESTORE_PROPERTIES = {
   profile: PROFILE_PROPERTY,
@@ -487,15 +460,24 @@ const TOOL_DEFINITIONS: readonly (McpTool & {})[] = [
     annotations: annotations(false, false),
   },
   {
+    name: "hosting_push_routes_list",
+    description:
+      "List push routes saved in the app. Only these routes may be pushed through MCP. Create or edit routes in the app.",
+    inputSchema: objectSchema({}, []),
+    annotations: annotations(true, false),
+  },
+  {
     name: "hosting_environment_push_plan",
     description:
-      "Validate an explicit environment-push scope and issue a short-lived one-use confirmation ID. No mutation is performed.",
-    inputSchema: objectSchema(PUSH_PROPERTIES, [
-      "profile",
-      "siteId",
-      "sourceEnvironmentId",
-      "targetEnvironmentId",
-    ]),
+      "Review a saved app push route and issue a short-lived one-use confirmation ID. The saved source, target and scope cannot be overridden. No mutation is performed.",
+    inputSchema: objectSchema(
+      {
+        route: nonEmptyString(
+          "Saved push route name from hosting_push_routes_list.",
+        ),
+      },
+      ["route"],
+    ),
     annotations: annotations(true, false),
   },
   {
@@ -571,6 +553,7 @@ const TOOL_TITLES: Readonly<Record<string, string>> = {
   hosting_backup_create: "Create an environment backup",
   hosting_novamira_setup: "Set up Novamira on a site",
   hosting_environment_push_plan: "Review an environment push",
+  hosting_push_routes_list: "List saved push routes",
   hosting_environment_push_apply: "Confirm and run an environment push",
   hosting_backup_restore_plan: "Review a backup restore",
   hosting_backup_restore_apply: "Confirm and restore a backup",
@@ -657,34 +640,6 @@ function optionalBoolean(
       `Tool argument ${name} must be a boolean.`,
     );
   return value;
-}
-
-function optionalStringArray(
-  argumentsValue: Record<string, unknown>,
-  name: string,
-): readonly string[] {
-  const value = argumentsValue[name];
-  if (value === undefined) return [];
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string"))
-    throw new CliError(
-      "usage_error",
-      `Tool argument ${name} must be an array of strings.`,
-    );
-  return value;
-}
-
-function pushSelection(
-  argumentsValue: Record<string, unknown>,
-): EnvironmentPushSelection {
-  return {
-    siteId: requiredString(argumentsValue, "siteId"),
-    sourceEnvironmentId: requiredString(argumentsValue, "sourceEnvironmentId"),
-    targetEnvironmentId: requiredString(argumentsValue, "targetEnvironmentId"),
-    database: optionalBoolean(argumentsValue, "database", false),
-    allFiles: optionalBoolean(argumentsValue, "allFiles", false),
-    files: optionalStringArray(argumentsValue, "files"),
-    searchReplace: optionalBoolean(argumentsValue, "searchReplace", false),
-  };
 }
 
 function restoreSelection(
@@ -885,7 +840,64 @@ async function callTool(
     if (name === "hosting_novamira_setup")
       return await setupNovamira(dependencies, argumentsValue);
 
+    if (name === "hosting_push_routes_list")
+      return toolResult(await dependencies.store.listPushes());
+
+    if (name === "hosting_environment_push_plan") {
+      if (Object.keys(argumentsValue).some((key) => key !== "route"))
+        throw new CliError(
+          "usage_error",
+          "Choose a saved route; push parameters cannot be overridden.",
+        );
+      const route = await dependencies.store.requireSavedPush(
+        requiredString(argumentsValue, "route"),
+      );
+      const client = await dependencies.hosting.clientFromProfile(
+        route.hostingProfile,
+      );
+      const plan = await prepareEnvironmentPush(client, {
+        siteId: route.siteId,
+        sourceEnvironmentId: route.sourceEnvId,
+        targetEnvironmentId: route.targetEnvId,
+        database: route.pushDb,
+        allFiles: route.pushFiles,
+        files: [],
+        searchReplace: route.searchReplace,
+      });
+      const confirmationId =
+        dependencies.createPushConfirmationId?.() ?? randomUUID();
+      const now = dependencies.now?.() ?? Date.now();
+      const expiresAt = now + PUSH_PLAN_TTL_MS;
+      for (const [id, stored] of state.pushPlans)
+        if (stored.expiresAt <= now) state.pushPlans.delete(id);
+      if (
+        state.pushPlans.size >= MAX_PUSH_PLANS ||
+        state.pushPlans.has(confirmationId)
+      )
+        throw new CliError(
+          "conflict",
+          "Cannot allocate another push confirmation; retry after pending plans expire.",
+        );
+      state.pushPlans.set(confirmationId, {
+        client,
+        plan,
+        expiresAt,
+        route: structuredClone(route),
+      });
+      return toolResult({
+        confirmationId,
+        expiresAt: new Date(expiresAt).toISOString(),
+        route: route.name,
+        plan,
+      });
+    }
+
     if (name === "hosting_environment_push_apply") {
+      if (Object.keys(argumentsValue).some((key) => key !== "confirmationId"))
+        throw new CliError(
+          "usage_error",
+          "Apply accepts only the reviewed confirmation ID.",
+        );
       const confirmationId = requiredString(argumentsValue, "confirmationId");
       const stored = state.pushPlans.get(confirmationId);
       state.pushPlans.delete(confirmationId);
@@ -897,8 +909,26 @@ async function callTool(
           "not_found",
           "The environment push plan is missing, expired, or already used.",
         );
-      return toolResult(
-        await executeEnvironmentPush(stored.client, stored.plan),
+      return await dependencies.store.withSavedPushLock(
+        stored.route.name,
+        async () => {
+          if (stored.expiresAt <= (dependencies.now?.() ?? Date.now()))
+            throw new CliError(
+              "not_found",
+              "The environment push plan expired while waiting. Review a new plan.",
+            );
+          const current = await dependencies.store.getSavedPush(
+            stored.route.name,
+          );
+          if (!isDeepStrictEqual(current, stored.route))
+            throw new CliError(
+              "conflict",
+              "The saved push route changed or was removed. Review a new plan before pushing.",
+            );
+          return toolResult(
+            await executeEnvironmentPush(stored.client, stored.plan),
+          );
+        },
       );
     }
 
@@ -1019,34 +1049,6 @@ async function callTool(
                 : { tag: requiredString(argumentsValue, "tag") },
           }),
         );
-      }
-      case "hosting_environment_push_plan": {
-        const plan = await prepareEnvironmentPush(
-          client,
-          pushSelection(argumentsValue),
-        );
-        const confirmationId =
-          dependencies.createPushConfirmationId?.() ?? randomUUID();
-        const now = dependencies.now?.() ?? Date.now();
-        const expiresAt = now + PUSH_PLAN_TTL_MS;
-        for (const [id, stored] of state.pushPlans)
-          if (stored.expiresAt <= now) state.pushPlans.delete(id);
-        if (state.pushPlans.size >= MAX_PUSH_PLANS)
-          throw new CliError(
-            "conflict",
-            "Too many pending environment push plans; apply one or wait for expiry.",
-          );
-        if (state.pushPlans.has(confirmationId))
-          throw new CliError(
-            "conflict",
-            "Could not allocate a unique environment push confirmation ID.",
-          );
-        state.pushPlans.set(confirmationId, { client, plan, expiresAt });
-        return toolResult({
-          confirmationId,
-          expiresAt: new Date(expiresAt).toISOString(),
-          plan,
-        });
       }
       case "hosting_backup_restore_plan": {
         const plan = await prepareBackupRestore(

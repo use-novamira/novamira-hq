@@ -61,7 +61,6 @@ import { PROVIDER_KINDS, type ProviderKind } from "../../config/schema.js";
 import { providerLabel } from "../../hosting/types.js";
 import * as ds from "../datastar.js";
 import {
-  confirmThen,
   focusElementById,
   jsBoolean,
   jsString,
@@ -503,10 +502,7 @@ export function renderProviderRow(profile: HostingProfileView): Html {
     profile.name,
   )}<hr><button class="button tiny quiet profile-menu-action danger" type="button"${ds.on(
     "click",
-    confirmThen(
-      `Remove hosting account ${profile.name} from Novamira HQ?`,
-      providerAction("/_dashboard/providers/remove", profile.name),
-    ),
+    providerAction("/_dashboard/providers/remove", profile.name),
   )}>Remove</button></div></details></td></tr><tr class="details-row ds-toggle"${ds.classes(
     {
       open: signal(details),

@@ -545,7 +545,7 @@ validated public URL and never starts authorization or provisioning on GET.
 The hosting typed read tools are `hosting_profiles_list`, `hosting_provider_validate`,
 `hosting_capabilities_get`, `hosting_sites_list`, `hosting_site_get`,
 `hosting_environments_list`, `hosting_operation_get`, `hosting_backups_list`, and `hosting_history_list`. The typed mutations
-are `hosting_backup_create` and `hosting_novamira_setup`. The push tools are `hosting_environment_push_plan` and
+are `hosting_backup_create` and `hosting_novamira_setup`. The push tools are `hosting_push_routes_list`, `hosting_environment_push_plan` and
 `hosting_environment_push_apply`; backup recovery uses
 `hosting_backup_restore_plan` and `hosting_backup_restore_apply`. Every tool
 carries MCP read-only and destructive annotations.
@@ -584,7 +584,15 @@ confirmation always resolves current environment URLs from the provider.
 MCP tools publish readable titles (including canonical WordPress capitalization)
 without changing their technical identifiers or permission annotations.
 
-Environment push is a two-call confirmation flow. The plan call requires different
+MCP environment push accepts only routes already saved in the app. The read-only
+`hosting_push_routes_list` lists these without provider calls. The plan tool accepts
+only `route` (the saved name), never arbitrary source, target or scope overrides.
+Missing routes must be created in the app, not through MCP. Apply compares the
+saved route with the reviewed snapshot while holding the saved-route lock through
+execution; changed or removed routes invalidate the one-use confirmation.
+This restriction does not change the explicit CLI `hosting envs push` command.
+
+Environment push is a two-call confirmation flow. The saved selection requires different
 source and target environments plus at least one positive scope: database, all
 files, or a non-empty explicit file list. All-files and explicit files are
 mutually exclusive, and search/replace requires database. It verifies the
@@ -1276,6 +1284,17 @@ unknown path is `404` with a `not_found`
 failure envelope; a known path with the wrong method is `405` with an `Allow`
 header and a `usage_error` envelope; a request body over 256 KiB is `413`.
 
+Dashboard hosting removal is a review/confirm flow on the existing
+`/_dashboard/providers/remove` endpoint. Review reads the selected account's
+inventory and lists matching saved site connections (including manually added
+ones). Confirmation offers account-only removal or removal of the listed saved
+connections too; remote websites and plugins are never deleted. A five-minute,
+session-local, single-use confirmation binds the account and reviewed names/URLs.
+Unknown inventory permits account-only removal. Bulk removal rechecks names and
+URLs, removes connections through the site CLI, then removes the hosting account.
+If a connection removal fails, the account is kept and partial completion is
+reported; no automatic retry or rollback occurs. CLI config removal is unchanged.
+
 Every `/_dashboard/*` route answers an SSE patch stream, never JSON: a handler
 that fails turns its error into a `danger` notice and patches it onto the page,
 so a browser waiting for patches is never left with a bare failure envelope. The
@@ -1341,6 +1360,11 @@ makes no request to a configured site.
   `/_dashboard/connect` follows. A custom name must match the site CLI profile
   grammar before it may become an argv element; an empty name lets the CLI use
   its domain-derived default.
+  When a name is provided (including an existing row's Authorize again action),
+  integration first queries that exact profile's current `auth status`, bounded
+  to ten seconds. Already-authorized access skips login; unreachable or malformed
+  status stops without login. A missing profile or confirmed authorization failure
+  proceeds to login. A returned site URL must match the requested origin.
 - `POST /_dashboard/site-profiles/logout` and
   `POST /_dashboard/site-profiles/remove` take `?name=` and spawn
   `novamira auth logout --site <name>` and `novamira sites remove <name>`. The

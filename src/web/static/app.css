@@ -53,6 +53,7 @@
 }
 
 [hidden],
+.ds-toggle:not(.open),
 .hidden {
   display: none !important;
 }
@@ -330,6 +331,14 @@ select {
 .about-details dd { overflow-wrap: anywhere; }
 .about-panel > .about-actions { margin: 0; padding: 16px 20px; }
 .about-legal-link { display: inline-block; margin-top: 12px; }
+.provider-actions-table-wrap { overflow-x: auto; }
+.provider-actions-table { width: 100%; border-collapse: collapse; }
+.provider-actions-table caption { text-align: left; padding: 16px 20px; font-weight: 700; }
+.provider-actions-table th, .provider-actions-table td { padding: 12px 20px; border-top: 1px solid var(--border); text-align: left; }
+.provider-actions-table tbody th { font-weight: 500; }
+.provider-actions-table td { white-space: nowrap; }
+.provider-actions-table .action-available { font-weight: 600; }
+.about-page .text-link { color: inherit; text-decoration: underline; text-underline-offset: 0.15em; }
 @media (max-width: 680px) {
   .about-details > div { grid-template-columns: 1fr; gap: 4px; }
   .about-actions > a { max-width: 100%; white-space: normal; }

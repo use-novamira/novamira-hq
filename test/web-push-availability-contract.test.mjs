@@ -72,7 +72,7 @@ test("cold, failed and incomplete inventory never claim all directions are confi
 test("unsupported providers and insufficient environments have different explanations", () => {
   assert.ok(
     render([], [], true, [{ name: "plain", provider: "pantheon" }]).includes(
-      "Environment push is not supported",
+      "Push is not available",
     ),
   );
   assert.ok(
