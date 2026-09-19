@@ -193,7 +193,7 @@ test("restore form uses explicit boolean acknowledgement and escaped labels", as
   const markup = renderHtml(renderRestore({ target, catalog }));
   assert.match(markup, /Kinsta user ID/);
   assert.match(markup, /restoreForm.allContent/);
-  assert.match(markup, /Review restore/);
+  assert.match(markup, /Continue/);
   const review = await f.service.plan(target, "42", true, "user");
   assert.match(
     renderHtml(renderRestore({ target, review })),

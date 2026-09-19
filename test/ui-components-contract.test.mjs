@@ -54,5 +54,42 @@ test("backup pages auto-load read-only preparation, never auto-apply or retry er
     const failed = renderHtml(render({ target, error: "Unavailable" }));
     assert.ok(!failed.includes("data-init"));
     assert.match(failed, /Try again/);
+    assert.ok(!failed.includes("Loading available backups"));
+    assert.ok(!failed.includes("Loading site details"));
+    assert.match(failed, /ui-panel-body/);
+  }
+});
+
+test("backup and restore outcomes use shared panels without misleading refresh actions", () => {
+  const target = { profile: "host", site: "site", env: "env" };
+  for (const operation of ["create", "restore"]) {
+    const review = {
+      ...target,
+      id: "confirmation",
+      operation,
+      provider: "instawp",
+      targetUrl: "https://example.com",
+      backupId: "backup-123",
+      expiresAt: Date.now() + 60000,
+    };
+    for (const status of ["running", "completed", "needs_verification"]) {
+      const markup = renderHtml(
+        renderRestore({ target, job: { review, status } }),
+      );
+      assert.match(markup, /ui-panel-body/);
+      assert.match(markup, /<strong>example.com<\/strong>/);
+      assert.match(markup, /Technical details/);
+      assert.ok(!markup.includes("Refresh status"));
+      assert.equal(markup.includes("data-init"), status === "running");
+      assert.ok(!markup.includes("/_dashboard/backups/apply"));
+      if (status === "needs_verification")
+        assert.match(markup, /could not confirm whether/);
+    }
+    const confirmation = renderHtml(renderRestore({ target, review }));
+    assert.ok(!confirmation.includes("data-init"));
+    assert.match(confirmation, /data-indicator/);
+    assert.match(confirmation, /\/_dashboard\/backups\/apply/);
+    if (operation === "restore")
+      assert.match(confirmation, /All files and the database.*overwritten/);
   }
 });
