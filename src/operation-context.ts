@@ -16,6 +16,22 @@ export interface OperationContext {
   >;
 }
 const context = new AsyncLocalStorage<OperationContext>();
+/** Non-secret display metadata, persisted with the provider request before dispatch. */
+export interface PushHistoryContext {
+  readonly pushJobId: string;
+  readonly pushName: string;
+  readonly sourceUrl: string;
+  readonly targetUrl: string;
+}
+const pushContext = new AsyncLocalStorage<PushHistoryContext>();
+export const currentPushHistoryContext = (): PushHistoryContext | undefined =>
+  pushContext.getStore();
+export function withPushHistory<T>(
+  metadata: PushHistoryContext,
+  run: () => Promise<T>,
+): Promise<T> {
+  return pushContext.run(metadata, run);
+}
 export const currentOperationContext = (): OperationContext | undefined =>
   context.getStore();
 

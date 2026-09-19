@@ -6,20 +6,53 @@ import * as ds from "../datastar.js";
 import { getStream } from "../expr.js";
 import { html, hrefAttr, url, type Html } from "../html.js";
 
+import {
+  pageHeader,
+  panel,
+  endpoint,
+  operationStatus,
+  technicalDetails,
+  actionBar,
+  actionButton,
+} from "./components.js";
+
 const LABELS: Record<PushJob["status"], string> = {
   running: "Push in progress",
   completed: "Push completed",
-  failed: "Push did not start",
-  needs_verification: "Push outcome needs verification",
+  failed: "Push failed",
+  needs_verification: "Check previous push",
 };
+
+function elapsed(job: PushJob): Html {
+  if (job.status === "needs_verification")
+    return html`<span>Started <span${ds.checkedAt(job.startedAt)}>${new Date(job.startedAt).toLocaleDateString("en-GB")}</span> · outcome unconfirmed</span>`;
+  const label =
+    job.status === "running"
+      ? "In progress for"
+      : job.finishedAt === null
+        ? "Started"
+        : "Observed duration";
+  const seconds = Math.max(
+    0,
+    Math.floor(((job.finishedAt ?? Date.now()) - job.startedAt) / 1000),
+  );
+  return html`<span>${label} <span${ds.jobStartedAt(job.startedAt)}${ds.jobFinishedAt(job.finishedAt)}>${Math.floor(seconds / 60)} min ${seconds % 60} s</span>${job.finishedAt === null && job.status !== "running" ? " ago · status to verify" : false}</span>`;
+}
 
 export function renderPushJob(job: PushJob): Html {
   const plan = job.confirmation;
   const running = job.status === "running";
-  return html`<section class="page"${running ? ds.init(getStream(url("/_dashboard/pushes/status", { job: plan.id }), { include: [] })) : false}><header class="page-head"><div><h1>${LABELS[job.status]}</h1><p>${plan.name}</p></div><a class="button secondary"${hrefAttr(url("/push"))}>All pushes</a></header><section class="panel push-review flow-panel"><div role="status">${running ? html`<span class="spinner" aria-hidden="true"></span> ` : false}<strong>${job.message}</strong></div><div class="push-review-endpoint"><span class="eyebrow">Copy from</span><strong class="push-review-url">${plan.sourceUrl}</strong></div><div class="push-review-endpoint push-review-target"><span class="eyebrow">Destination</span><strong class="push-review-url">${plan.targetUrl}</strong></div><p>Content: ${plan.scope}</p><p class="field-help">Started: ${new Date(job.startedAt).toISOString()}${job.finishedAt === null ? false : html` · Finished: ${new Date(job.finishedAt).toISOString()}`}</p>${running ? html`<p>This page updates automatically when the provider finishes. You can return to this job from Push. Keep Novamira HQ running; closing this browser tab does not cancel the push.</p>` : job.status === "needs_verification" ? html`<p class="notice warn">Do not repeat the push until you have checked the provider and History. A lost response does not mean the operation failed.</p>` : false}<div class="button-row"><a class="button secondary"${hrefAttr(url("/push", { job: plan.id }))}>Refresh status</a><a class="button secondary"${hrefAttr(url("/hosting-activity"))}>View History</a></div></section></section>`;
+  const unresolved = running || job.status === "needs_verification";
+  const actions = actionBar(
+    html`${unresolved ? actionButton({ label: "Check result", action: getStream(url("/_dashboard/pushes/status", { job: plan.id, refresh: "1" }), { include: [] }), busy: "pushForm.submitting", pending: "Checking previous push…" }) : false}<a class="button secondary"${hrefAttr(url("/hosting-activity"))}>View history</a>`,
+  );
+  const body = panel(
+    html`${operationStatus(job.message, running)}<p>${elapsed(job)}</p>${endpoint("Copy from", plan.sourceUrl)}${endpoint("Destination", plan.targetUrl, true)}<p>Content: ${plan.scope}</p>${unresolved ? html`<p class="field-help">${running ? "You can close Novamira HQ. Monitoring resumes when you reopen it." : "Do not repeat this push until you have checked its outcome."}</p>` : false}${actions}${technicalDetails(html`<p>Source: ${plan.source}</p><p>Destination: ${plan.target}</p><p>Started: ${new Date(job.startedAt).toISOString()}</p>${job.operationId ? html`<p>Operation: ${job.operationId}</p>` : false}`)}`,
+  );
+  return html`<section class="page flow-page"${unresolved ? ds.init(getStream(url("/_dashboard/pushes/status", { job: plan.id }), { include: [] })) : false}>${pageHeader(LABELS[job.status], { description: plan.name, back: { label: "All pushes", href: url("/push") } })}${body}</section>`;
 }
 
 export function renderPushJobs(jobs: readonly PushJob[]): Html | false {
   if (jobs.length === 0) return false;
-  return html`<section class="panel push-review"><h2>Recent push jobs</h2><p class="field-help">Jobs from this dashboard session. Earlier provider requests remain in History.</p>${jobs.map((job) => html`<a class="push-job-link"${hrefAttr(url("/push", { job: job.confirmation.id }))}><strong>${LABELS[job.status]}</strong><span>${job.confirmation.targetUrl}</span><small>${job.confirmation.name} · ${new Date(job.startedAt).toISOString()}</small></a>`)}</section>`;
+  return html`<section class="panel push-review"><h2>Push history</h2><p class="field-help">Saved on this computer, including after restarting Novamira HQ. Open jobs appear first.</p>${jobs.map((job) => html`<a class="push-job-link"${hrefAttr(url("/push", { job: job.confirmation.id }))}><strong>${LABELS[job.status]}</strong><span>${job.confirmation.sourceUrl} → ${job.confirmation.targetUrl}</span><small>${job.confirmation.name} · ${elapsed(job)}</small></a>`)}</section>`;
 }

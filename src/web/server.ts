@@ -229,6 +229,7 @@ export interface DashboardUpdates {
 }
 
 export interface DashboardServerDependencies {
+  readonly pro?: import("../pro/service.js").ProService;
   readonly appAcknowledgement?: import("../config/app-acknowledgement.js").AppAcknowledgement;
   readonly mcpConnection?: import("../mcp-connection.js").McpConnectionService;
   readonly history: Pick<HistoryStore, "list">;
@@ -525,6 +526,20 @@ export function createDashboardServer(
   const pushExecution = createPushExecutionService(
     dependencies.store,
     dependencies.hosting,
+    dependencies.now,
+    dependencies.history,
+    (profile, envId, siteId) => {
+      const value = sites.envResolver()({
+        profile,
+        envId,
+        siteId,
+        storedName: "",
+      });
+      return (
+        value.domain ||
+        (value.name && value.name !== envId ? value.name : undefined)
+      );
+    },
   );
   const restore = createRestoreService(
     dependencies.store,
@@ -576,6 +591,7 @@ export function createDashboardServer(
   };
 
   const table = createRouteTable({
+    ...(dependencies.pro ? { pro: dependencies.pro } : {}),
     hostingTools: createHostingToolsService(dependencies.hosting),
     restore,
     history: dependencies.history,
@@ -944,6 +960,7 @@ export function createDashboardServer(
       server.once("listening", onListening);
       server.listen(address.port, address.hostname);
     });
+    pushExecution.startMonitoring();
 
     const bound = server.address();
     if (bound === null || typeof bound === "string") {

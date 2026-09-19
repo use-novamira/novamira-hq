@@ -38,6 +38,12 @@ import { asRecord } from "../json.js";
 import type { DashboardRequest } from "./request.js";
 import { siteProfileRenameSignal } from "./signals.js";
 
+export function parseProLicense(
+  signals: Readonly<Record<string, unknown>>,
+): string {
+  return rawString(subtree(signals, "proForm"), "license");
+}
+
 export function parseRestoreForm(signals: Readonly<Record<string, unknown>>) {
   const source = subtree(signals, "restoreForm");
   return {

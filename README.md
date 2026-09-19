@@ -311,15 +311,23 @@ committed 1024x1024 master — `deno compile --icon` embeds it on Windows,
 where an executable cannot hold an icon at all, gets a tarball that carries it
 beside the binary.
 
-| Asset                                      | What it is                                                       |
-| ------------------------------------------ | ---------------------------------------------------------------- |
-| `novamira-hq-desktop-macos-arm64.app.zip`  | `Novamira HQ.app` for Apple Silicon, signed, notarized, stapled. |
-| `novamira-hq-desktop-macos-arm64`          | the same executable, bare, for a script.                         |
-| `novamira-hq-desktop-macos-x86_64.app.zip` | `Novamira HQ.app` for Intel, signed, notarized and stapled.      |
-| `novamira-hq-desktop-macos-x86_64`         | the same executable, bare, for a script.                         |
-| `novamira-hq-desktop-windows-x86_64.exe`   | the window, with its icon. Unsigned, so SmartScreen asks once.   |
-| `novamira-hq-desktop-linux-x86_64.tar.gz`  | the executable, its freedesktop entry and its hicolor icons.     |
-| `novamira-hq-desktop-linux-x86_64`         | the same executable, bare, for a script.                         |
+| Asset                                      | What it is                                                             |
+| ------------------------------------------ | ---------------------------------------------------------------------- |
+| `novamira-hq-desktop-macos-arm64.dmg`      | Recommended Apple Silicon installer: drag Novamira HQ to Applications. |
+| `novamira-hq-desktop-macos-x86_64.dmg`     | Recommended Intel installer: drag Novamira HQ to Applications.         |
+| `novamira-hq-desktop-macos-arm64.app.zip`  | `Novamira HQ.app` for Apple Silicon, signed, notarized, stapled.       |
+| `novamira-hq-desktop-macos-arm64`          | the same executable, bare, for a script.                               |
+| `novamira-hq-desktop-macos-x86_64.app.zip` | `Novamira HQ.app` for Intel, signed, notarized and stapled.            |
+| `novamira-hq-desktop-macos-x86_64`         | the same executable, bare, for a script.                               |
+| `novamira-hq-desktop-windows-x86_64.exe`   | the window, with its icon. Unsigned, so SmartScreen asks once.         |
+| `novamira-hq-desktop-linux-x86_64.tar.gz`  | the executable, its freedesktop entry and its hicolor icons.           |
+| `novamira-hq-desktop-linux-x86_64`         | the same executable, bare, for a script.                               |
+
+On macOS, open the `.dmg`, drag **Novamira HQ** onto **Applications**, then
+eject the disk image and open the app from Applications. Both the app and disk
+image are Developer ID signed, notarized and stapled by GitHub Actions. The ZIP
+remains available as an alternative; neither format removes an existing app's
+saved settings. Quit the running app before replacing it with a newer version.
 
 On Linux, the tarball installs for the current user with three commands, and
 `INSTALL.txt` inside it repeats them:

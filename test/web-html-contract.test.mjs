@@ -1262,7 +1262,7 @@ function rootSignals(markup) {
   return JSON.parse(values[0]);
 }
 
-test("33: the root signal object carries exactly the ten keys, and no siteForm", async () => {
+test("33: the root signal object carries exactly the declared keys, and no siteForm", async () => {
   const signals = rootSignals(await page(await dashboard(), "/sites?new=site"));
   // `cliSites` is the site-profile panel's subtree — a site URL box and a
   // loading flag. It is *not* Go's `siteForm`, which held a WordPress
@@ -1271,6 +1271,7 @@ test("33: the root signal object carries exactly the ten keys, and no siteForm",
     "cliSites",
     "diagnostics",
     "hostingTools",
+    "proForm",
     "providerForm",
     "pushForm",
     "restoreForm",

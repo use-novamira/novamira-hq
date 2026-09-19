@@ -157,7 +157,7 @@ export function renderPushesPage(
   warm: WarmSitesView = COLD,
   jobs: readonly PushJob[] = [],
 ): Html {
-  return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Reusable push configurations between environments. Nothing runs until you review and confirm it.</p></div></header>${renderPushJobs(jobs)}${view.pushes.length ? html`<div class="push-card-list">${view.pushes.map((push) => renderPushCard(push))}</div>` : false}${renderAvailableDirections(view, warm)}</section>`;
+  return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Reusable push configurations between environments. Nothing runs until you review and confirm it.</p></div></header>${view.pushes.length ? html`<div class="push-card-list">${view.pushes.map((push) => renderPushCard(push))}</div>` : false}${renderAvailableDirections(view, warm)}${renderPushJobs(jobs)}</section>`;
 }
 
 function renderAvailableDirections(

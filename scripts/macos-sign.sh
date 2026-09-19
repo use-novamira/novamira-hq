@@ -10,10 +10,11 @@
 # The architecture does not matter to the script: it signs and notarizes the
 # executable it is given, whatever it was compiled for.
 #
-# Produces two release assets beside the input:
+# Produces release assets beside the input:
 #
 #   <binary>              the same executable, Developer ID signed and notarized
 #   <binary>.app.zip      "Novamira HQ.app" around it, signed, notarized, stapled
+#   <binary>.dmg          signed, notarized drag-to-Applications installer
 #
 # Both matter. `xcrun stapler` only accepts a bundle, a disk image or an
 # installer package, so a bare executable can be notarized but never carries its
@@ -251,7 +252,6 @@ if [ "$status" != "Accepted" ]; then
   notary log "$(field id "$submission")" >&2 || true
   fail "notarization returned $status"
 fi
-rm -f "$api_key"
 
 # Only the bundle can hold the ticket. The bare executable keeps the online
 # notarization record and nothing more, which is exactly why the bundle exists.
@@ -267,9 +267,24 @@ spctl --assess --type execute -vv "$app" ||
 
 ditto -c -k --sequesterRsrc --keepParent "$app" "$binary.app.zip"
 ditto -c -k --sequesterRsrc --keepParent "$helper" "$binary.keychain.zip"
+# The drag-to-Applications image is the primary human-facing installer.
+bash "$root/scripts/macos-dmg.sh" "$app" "$binary.dmg"
+codesign --timestamp --keychain "$keychain" --sign "$APPLE_SIGNING_IDENTITY" "$binary.dmg"
+codesign --verify --strict --verbose=2 "$binary.dmg"
+dmg_submission=$(notary submit "$binary.dmg" --wait --timeout 30m) ||
+  fail "DMG notarization could not be submitted"
+if [ "$(field status "$dmg_submission")" != "Accepted" ]; then
+  notary log "$(field id "$dmg_submission")" >&2 || true
+  fail "DMG notarization was not accepted"
+fi
+xcrun stapler staple "$binary.dmg"
+xcrun stapler validate "$binary.dmg"
+spctl --assess --type open --context context:primary-signature -vv "$binary.dmg"
+rm -f "$api_key"
 # The bare executable finds its helper beside itself. The app has its own copy.
 ditto "$helper" "$(dirname "$binary")/Novamira HQ Credentials.app"
 rm -rf "$app"
 
 printf 'Signed and notarized %s\n' "$binary"
 printf 'Signed, notarized and stapled %s\n' "$binary.app.zip"
+printf 'Drag-to-Applications installer: %s\n' "$binary.dmg"

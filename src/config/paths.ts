@@ -53,6 +53,12 @@ export function appAcknowledgementPath(
   return join(paths.stateDir, "app-acknowledgement.json");
 }
 
+export function proLicenseMetadataPath(
+  paths: Pick<PlatformPaths, "stateDir">,
+): string {
+  return join(paths.stateDir, "novamira-pro-license.json");
+}
+
 interface PathApi {
   join(...parts: string[]): string;
   dirname(path: string): string;

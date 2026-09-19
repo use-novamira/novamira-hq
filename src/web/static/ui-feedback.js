@@ -13,6 +13,12 @@
     if (menu && menu.matches && menu.matches("details.profile-menu") && menu.open) closeOtherMenus(menu);
   }, true);
   document.addEventListener("click", function (event) {
+    var dismiss = event.target && event.target.closest ? event.target.closest(".toast-dismiss") : null;
+    if (dismiss) {
+      var toast = dismiss.closest("#toast");
+      if (toast) toast.classList.remove("show");
+      return;
+    }
     var menu = event.target && event.target.closest ? event.target.closest("details.profile-menu") : null;
     closeOtherMenus(menu);
   });
@@ -36,6 +42,12 @@
     if (!target) return;
     target.className = "toast show warn";
     target.textContent = message;
+    var close = document.createElement("button");
+    close.className = "toast-dismiss";
+    close.type = "button";
+    close.setAttribute("aria-label", "Dismiss notification");
+    close.textContent = "×";
+    target.append(close);
   }
 
   function confirmAction(message, action, label, choices) {

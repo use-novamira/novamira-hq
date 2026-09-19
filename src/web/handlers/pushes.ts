@@ -111,6 +111,25 @@ export function createPushExecutionHandler(
             "Push execution is unavailable.",
           );
         if (action === "plan") {
+          const previous = await context.pushExecution.previousUnresolved(
+            pushParameter(request),
+          );
+          if (previous) {
+            await patchPushesPage(
+              context,
+              stream,
+              {
+                level: "neutral",
+                message:
+                  "Previous push checked. Review its outcome before starting another.",
+              },
+              { pushForm: { submitting: false } },
+              undefined,
+              previous,
+            );
+            stream.close();
+            return;
+          }
           const confirmation = await context.pushExecution.plan(
             pushParameter(request),
           );
@@ -161,7 +180,9 @@ export function createPushStatusHandler(context: RouteContext): RouteHandler {
             "not_found",
             "Push job not found. Check History and the provider before retrying.",
           );
-        await context.pushExecution.wait(id, request.signal);
+        if (request.query.get("refresh") === "1")
+          await context.pushExecution.refresh();
+        else await context.pushExecution.wait(id, request.signal);
         if (!request.signal.aborted) {
           const job = context.pushExecution.snapshot(id);
           if (!job)
@@ -172,8 +193,11 @@ export function createPushStatusHandler(context: RouteContext): RouteHandler {
           await patchPushesPage(
             context,
             stream,
-            { level: "neutral", message: "" },
-            undefined,
+            {
+              level: job.status === "needs_verification" ? "warn" : "ok",
+              message: request.query.get("refresh") === "1" ? job.message : "",
+            },
+            { pushForm: { submitting: false } },
             undefined,
             job,
           );

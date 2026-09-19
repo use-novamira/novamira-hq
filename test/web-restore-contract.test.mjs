@@ -97,7 +97,7 @@ test("dashboard backup creation needs only create capability and never restores"
   assert.deepEqual(f.calls, []);
   assert.match(
     renderHtml(renderRestore({ target, review })),
-    /Confirm and create backup/,
+    />Create backup<\/button>/,
   );
   const job = f.service.start(review.id);
   assert.equal(f.service.start(review.id), job);

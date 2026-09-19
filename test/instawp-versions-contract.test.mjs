@@ -257,6 +257,8 @@ test("dashboard explains restorable versions rather than reusable snapshots", ()
     }),
   );
   assert.match(markup, /Site Version/);
-  assert.match(markup, /restored onto the same site/);
+  assert.match(markup, /files and database/);
+  assert.doesNotMatch(markup, /25 characters/);
+  assert.match(markup, /<details><summary>Details<\/summary>/);
   assert.ok(!markup.includes("private snapshot"));
 });

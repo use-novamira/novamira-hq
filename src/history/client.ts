@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { asCliError, CliError } from "../errors.js";
-import { currentOperationContext } from "../operation-context.js";
+import {
+  currentOperationContext,
+  currentPushHistoryContext,
+} from "../operation-context.js";
 import type { ProviderClient } from "../hosting/client.js";
 import type { ActionResult, OperationStatus } from "../hosting/types.js";
 import { hasVerifiedCompletion } from "../hosting/verified-action.js";
@@ -55,6 +58,9 @@ export function historyClient(
             : body.target_env_id;
       // Record intent before dispatch. No startup recovery replays an action.
       const id = await history.begin({
+        ...(request.kind === "push-environment"
+          ? currentPushHistoryContext()
+          : {}),
         ...(workflow
           ? {
               workflowId: workflow.id,

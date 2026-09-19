@@ -66,6 +66,7 @@ import { renderHistoryPage, type HistoryView } from "./history.js";
 import { renderHowToUsePage } from "./how-to-use.js";
 import { renderProvidersPage } from "./providers.js";
 import { renderSettingsPage, type SettingsTab } from "./settings.js";
+import { renderProPage } from "./pro.js";
 import { renderUpdatesPage } from "./updates.js";
 import { renderSetupPage, type SetupView } from "./setup.js";
 import type { SitesResult } from "../services/sites.js";
@@ -77,6 +78,7 @@ import {
 import type { ConfigView, DashboardNotice, DashboardPage } from "./types.js";
 
 export interface PageModel {
+  readonly pro?: import("../../pro/service.js").ProView;
   readonly updatesAvailable?: boolean;
   readonly hostingTools?: HostingToolsView;
   readonly restore?: RestoreView;
@@ -181,7 +183,9 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
     case "diagnostics":
       return renderDiagnosticsPage();
     case "settings":
-      return renderSettingsPage(model.view, model.settingsTab);
+      return renderSettingsPage(model.view, model.settingsTab, model.pro);
+    case "novamira-pro":
+      return renderProPage(model.pro ?? {});
     case "updates":
       return renderUpdatesPage(model.view.version, model.updatesAvailable);
     default: {

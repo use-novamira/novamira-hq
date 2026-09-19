@@ -772,6 +772,7 @@ test("the token appears exactly once, inside the root data-signals", async () =>
       "cliSites",
       "diagnostics",
       "hostingTools",
+      "proForm",
       "providerForm",
       "pushForm",
       "restoreForm",
@@ -1014,6 +1015,11 @@ test("the build ships all assets under dist/web/static", async () => {
  * a reviewer's attention fails here.
  */
 const SHIPPED_ROUTES = [
+  "GET /novamira-pro",
+  "GET /_dashboard/pro/save",
+  "GET /_dashboard/pro/remove",
+  "GET /_dashboard/pro/plan",
+  "GET /_dashboard/pro/install",
   "GET /about",
   "GET /",
   "GET /_dashboard/connect",

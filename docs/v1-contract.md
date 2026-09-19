@@ -570,14 +570,26 @@ self-update, invoke arbitrary provider WP-CLI, manage domains or DNS, or manage
 SSH/SFTP access. Unknown tools are neither advertised nor callable by name. Credentials still come only from configured references, never
 an MCP credential argument.
 
-Dashboard push execution acknowledges immediately with a session-local job. The
+Dashboard push execution acknowledges immediately with a job. The
 same confirmation opens the existing job rather than dispatching another push.
-Up to 100 jobs are retained, evicting finished jobs first. The token-protected
+The existing private, atomic hosting history persists the job identifier, push
+name, source/destination URLs and environment IDs, scope, operation ID and times.
+Its 500-entry retention rule evicts terminal entries only, never unresolved jobs.
+The token-protected
 `/_dashboard/pushes/status` stream waits for completion; disconnecting that
 observer does not cancel execution. Jobs distinguish completion from failure
 before dispatch and uncertain outcomes after dispatch, which must not be retried
-automatically. The Push page links to recent jobs; after a dashboard restart,
-consult History and the provider, not an empty job list, before retrying.
+automatically. Push history shows unresolved jobs first. On dashboard startup,
+HQ recovers persisted pushes and checks unresolved operation IDs every 30 seconds
+with at most four concurrent status reads. Refresh status queries the existing
+operation, never sends another push; absent IDs or unavailable credentials remain
+unverified. Provider identity must still match the recorded account. Old records
+without URLs display recorded environment IDs instead. Page inventory stays warm-only.
+Newly dispatched jobs may wait up to 24 hours before switching to recoverable
+verification; this does not cancel the provider operation. The elapsed-time label
+updates each second from the persisted start time. Unknown outcomes have no finish
+time; terminal times and durations describe when HQ observed the result, not a
+provider-supplied exact completion time.
 Saved dashboard push configurations retain known source/target domains for
 display when inventory is cold. Missing domains are explicitly marked unavailable;
 confirmation always resolves current environment URLs from the provider.
@@ -1236,8 +1248,32 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 
 ### Routes
 
+Novamira Pro installation is offered from a connected site's action menu at
+`/novamira-pro?site=PROFILE`, not in Settings. Saving a missing license, review
+and completion stay on that site page. Settings manages the optional plugin
+license only; Novamira HQ does not require a license. The license is saved in the OS credential store; only
+its last four characters are stored in `novamira-pro-license.json` in HQ's state
+directory. Saving/removing it does not activate/deactivate any remote license.
+There is no license verification call on save.
+
+The explicit review is a five-minute, one-use in-memory confirmation bound to
+the selected site, reported WordPress address and saved key. Installation
+rechecks those values, activates the license using the Novamira Pro `/check`
+endpoint, accepts only JSON codes `s100` or `s101`, then requests `/download`.
+Only the returned HTTPS ZIP link is handed to WordPress. All WordPress work,
+including prerequisites and license configuration, delegates to the optional
+site CLI through `src/integration/`; HQ makes no direct site request. Sensitive
+inputs travel through CLI stdin, never argv, logs or history. Existing Pro files
+are not overwritten. Multisite installation is not supported. Errors after
+license activation explain that partial outcome and are never retried
+automatically.
+
 | Path | Method | Token |
 | --- | --- | --- |
+| `/_dashboard/pro/save` | POST | yes |
+| `/_dashboard/pro/remove` | POST | yes |
+| `/_dashboard/pro/plan` | POST | yes |
+| `/_dashboard/pro/install` | POST | yes |
 | `/assets/…` | GET, HEAD | no |
 | `/` | GET | no |
 | `/about` | GET | no |
@@ -1258,6 +1294,7 @@ no interpolated `style` attribute. Pages are `Cache-Control: no-store`.
 | `/_dashboard/pushes/status` | GET | yes |
 | `/_dashboard/pushes/apply` | POST | yes |
 | `/settings` | GET | no |
+| `/novamira-pro` | GET | no |
 | `/updates` | GET | no |
 | `/_dashboard/providers/save` | POST | yes |
 | `/_dashboard/providers/remove` | POST | yes |

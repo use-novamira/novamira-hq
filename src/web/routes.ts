@@ -99,6 +99,7 @@ import {
   createSiteProfileRemoveHandler,
 } from "./handlers/site-profiles.js";
 import { createSitesHandler } from "./handlers/sites.js";
+import { createProHandler } from "./handlers/pro.js";
 import {
   createUpdateCheckHandler,
   createUpdateInstallHandler,
@@ -150,6 +151,7 @@ export interface Route {
  * Keep it a flat list so a future batch's diff does not collide.
  */
 export interface RouteContext {
+  readonly pro?: import("../pro/service.js").ProService;
   readonly hostingTools?: import("./services/hosting-tools.js").HostingToolsService;
   readonly restore?: import("./services/restore.js").RestoreService;
   readonly appAcknowledgement?: import("../config/app-acknowledgement.js").AppAcknowledgement;
@@ -281,6 +283,7 @@ const PAGE_PATHS: Readonly<Record<string, DashboardPage>> = {
   "/novamira-setup": "novamira-setup",
   "/diagnostics": "diagnostics",
   "/settings": "settings",
+  "/novamira-pro": "novamira-pro",
   "/updates": "updates",
   "/history": "history",
   "/hosting-activity": "history",
@@ -363,7 +366,7 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
     if (page === "settings") {
       const tab = request.query.get("tab");
       return {
-        settingsTab: tab === "uninstall" ? tab : "general",
+        settingsTab: tab === "uninstall" || tab === "pro" ? tab : "general",
       };
     }
     if (page === "updates") {
@@ -380,7 +383,7 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
               notice: {
                 level: "warn" as const,
                 message:
-                  "This job is no longer in this dashboard session. Check History and your hosting provider before retrying.",
+                  "This job was not found in saved history. Check History and your hosting provider before retrying.",
               },
             }
           : {}),
@@ -495,6 +498,7 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
         );
       }
       let renderedPage = page;
+      if (page === "pushes") await context.pushExecution?.refresh(false);
       // Existing bookmarks still reach the dedicated page, with Updates active.
       if (page === "settings" && request.query.get("tab") === "updates") {
         renderedPage = "updates";
@@ -582,6 +586,14 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
           ? context.sites.snapshot(ALL_PROFILES_SENTINEL, true)
           : undefined;
       const model: PageModel = {
+        ...((renderedPage === "settings" || renderedPage === "novamira-pro") &&
+        context.pro
+          ? {
+              pro: await context.pro.view(
+                request.query.get("site") ?? undefined,
+              ),
+            }
+          : {}),
         ...(sitesSnapshot ? { sitesSnapshot } : {}),
         ...extras,
         view,
@@ -638,6 +650,30 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
     });
   }
   routes.push(
+    {
+      method: "POST",
+      path: "/_dashboard/pro/save",
+      auth: "token",
+      handler: createProHandler(context, "save"),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/pro/remove",
+      auth: "token",
+      handler: createProHandler(context, "remove"),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/pro/plan",
+      auth: "token",
+      handler: createProHandler(context, "plan"),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/pro/install",
+      auth: "token",
+      handler: createProHandler(context, "install"),
+    },
     {
       method: "GET",
       path: "/_dashboard/hosting-tools/run",

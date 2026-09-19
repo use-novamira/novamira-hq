@@ -22,6 +22,10 @@ export type HistoryChannel = "cli" | "dashboard" | "mcp";
 export type HistoryStatus =
   "needs_verification" | "accepted" | "succeeded" | "failed";
 export interface HistoryEntry {
+  readonly pushJobId?: string;
+  readonly pushName?: string;
+  readonly sourceUrl?: string;
+  readonly targetUrl?: string;
   readonly workflowId?: string;
   readonly workflowKind?: WorkflowKind;
   readonly workflowStatus?: WorkflowStatus;
@@ -46,6 +50,10 @@ export const HISTORY_LIMIT = 500;
 const MAX_BYTES = 2 * 1024 * 1024;
 const LOCK_KEY = "__hosting_history__";
 const STRING_KEYS = [
+  "pushJobId",
+  "pushName",
+  "sourceUrl",
+  "targetUrl",
   "id",
   "profile",
   "siteId",
@@ -218,6 +226,10 @@ export class HistoryStore {
     input: Pick<
       HistoryEntry,
       | "profile"
+      | "pushJobId"
+      | "pushName"
+      | "sourceUrl"
+      | "targetUrl"
       | "provider"
       | "channel"
       | "action"

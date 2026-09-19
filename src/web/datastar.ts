@@ -211,6 +211,14 @@ export function checkedAt(millis: number): Attr {
   return attr("data-checked-at", String(millis));
 }
 
+/** Absolute timestamps: elapsed time survives navigation and process restarts. */
+export function jobStartedAt(millis: number): Attr {
+  return attr("data-job-started-at", String(millis));
+}
+export function jobFinishedAt(millis: number | null): Attr {
+  return attr("data-job-finished-at", millis === null ? "" : String(millis));
+}
+
 /**
  * `data-nm-state` — whether a site row already has Novamira installed.
  *

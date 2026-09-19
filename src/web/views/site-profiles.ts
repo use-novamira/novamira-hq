@@ -79,7 +79,7 @@ function renderProfileMenu(
   const rename = post(url(RENAME_PATH, { name, ...routeContext }), {
     include: [renameSignal],
   });
-  const items = html`<details class="profile-rename"><summary class="button tiny quiet profile-menu-action">Rename</summary><form class="rename-profile"${ds.signals(
+  const items = html`<a class="profile-menu-action"${hrefAttr(url("/novamira-pro", { site: name }))}>Install Novamira Pro…</a><details class="profile-rename"><summary class="button tiny quiet profile-menu-action">Rename</summary><form class="rename-profile"${ds.signals(
     {
       [renameSignal]: name,
     },
@@ -201,7 +201,7 @@ export function renderSiteProfileRow(
   if (listContext !== undefined) {
     return html`<article class="site-row cli-site-row"${ds.novamiraState(
       row.state === "connected" ? "installed" : "install",
-    )}><strong class="cli-site-name">${row.name}</strong><small class="cli-site-url">${row.siteUrl}</small><div class="site-state">${renderConnectionControl(
+    )}><strong class="cli-site-name">${row.name}</strong><small class="cli-site-url">${row.siteUrl.replace(/^https?:\/\//i, "")}</small><div class="site-state">${renderConnectionControl(
       row,
       connect,
     )}${renderProfileMenu(
@@ -212,7 +212,7 @@ export function renderSiteProfileRow(
     )}</div></article>`;
   }
 
-  return html`<article><div><strong>${row.name}</strong><small>${row.siteUrl}${
+  return html`<article><div><strong>${row.name}</strong><small>${row.siteUrl.replace(/^https?:\/\//i, "")}${
     row.expiresAt === undefined
       ? false
       : html` · credential expires ${row.expiresAt}`

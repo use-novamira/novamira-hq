@@ -9,6 +9,22 @@ import {
   renderSiteProfileActions,
 } from "../dist/web/views/site-profiles.js";
 
+test("manual site labels omit the scheme without changing connection URLs", () => {
+  for (const scheme of ["https", "http"]) {
+    const siteUrl = `${scheme}://test.local:8890/wordpress`;
+    const row = { name: "local", siteUrl, state: "reconnect_required" };
+    for (const context of [undefined, { profile: "", includeEnvs: true }]) {
+      const markup = renderHtml(renderSiteProfileRow(row, context));
+      assert.match(
+        markup,
+        /<small(?: class="cli-site-url")?>test\.local:8890\/wordpress<\/small>/,
+      );
+      assert.ok(markup.includes(encodeURIComponent(siteUrl)));
+      assert.equal(row.siteUrl, siteUrl);
+    }
+  }
+});
+
 test("profile rename and destructive actions are hidden in one closed menu", () => {
   const row = {
     name: "example",

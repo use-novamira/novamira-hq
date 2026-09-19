@@ -37,7 +37,12 @@ test("profile menus are exclusive, close outside and on Escape, and return focus
   fire("toggle", { target: menus[1] });
   assert.equal(menus[0].open, false);
   assert.equal(menus[1].open, true);
-  fire("click", { target: { closest: () => menus[1] } });
+  fire("click", {
+    target: {
+      closest: (selector) =>
+        selector === "details.profile-menu" ? menus[1] : null,
+    },
+  });
   assert.equal(menus[1].open, true);
   fire("keydown", { key: "Escape" });
   assert.equal(menus[1].open, false);

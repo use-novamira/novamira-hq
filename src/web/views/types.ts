@@ -129,6 +129,7 @@ export type DashboardPage =
   | "pushes"
   | "push-new"
   | "novamira-setup"
+  | "novamira-pro"
   | "diagnostics"
   | "updates"
   | "settings";
@@ -143,6 +144,7 @@ export const DASHBOARD_PAGES: readonly DashboardPage[] = Object.freeze([
   "pushes",
   "push-new",
   "novamira-setup",
+  "novamira-pro",
   "diagnostics",
   "updates",
   "settings",

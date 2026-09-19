@@ -138,6 +138,7 @@ export interface SetupSignals {
 }
 
 export interface DashboardSignals {
+  readonly proForm: { readonly license: string; readonly busy: boolean };
   readonly hostingTools: { readonly loading: boolean };
   readonly restoreForm: {
     readonly backupId: string;
@@ -308,6 +309,7 @@ export function defaultDashboardSignals(
   return {
     token,
     hostingTools: { loading: false },
+    proForm: { license: "", busy: false },
     providerForm: {
       ...defaultProviderFormSignals(options?.firstProviderKind),
       open: options?.openProviderForm ?? false,
@@ -357,6 +359,7 @@ export function toSignalRecord(
   return {
     token: signals.token,
     hostingTools: { ...signals.hostingTools },
+    proForm: { ...signals.proForm },
     providerForm: { ...signals.providerForm },
     pushForm: { ...signals.pushForm },
     restoreForm: { ...signals.restoreForm },

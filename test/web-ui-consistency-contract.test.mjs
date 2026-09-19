@@ -39,9 +39,18 @@ test("all AI client logos inherit the monochrome text color", () => {
   }
 });
 
-test("failed dashboard requests produce an inline notice without exposing response data", () => {
+test("failed dashboard requests produce a dismissible notice without exposing response data", () => {
   const listeners = {};
-  const target = {};
+  const target = {
+    append: (button) => {
+      target.button = button;
+    },
+    classList: {
+      remove: (name) => {
+        target.dismissed = name;
+      },
+    },
+  };
   runInNewContext(
     readFileSync(
       new URL("../src/web/static/ui-feedback.js", import.meta.url),
@@ -50,6 +59,7 @@ test("failed dashboard requests produce an inline notice without exposing respon
     {
       window: {},
       document: {
+        createElement: () => ({ setAttribute: () => {} }),
         getElementById: () => target,
         addEventListener: (name, callback) => {
           listeners[name] = callback;
@@ -65,6 +75,9 @@ test("failed dashboard requests produce an inline notice without exposing respon
   assert.equal(target.className, "toast show warn");
   listeners["datastar-fetch"]({ detail: { type: "retries-failed" } });
   assert.match(target.textContent, /Do not repeat/);
+  assert.equal(target.button.className, "toast-dismiss");
+  listeners.click({ target: { closest: () => ({ closest: () => target }) } });
+  assert.equal(target.dismissed, "show");
 });
 
 test("the hosting connection progress label uses the hidden-by-default loading style", () => {
@@ -83,7 +96,9 @@ test("responsive navigation stays visible and Push follows Hosting accounts", ()
     new URL("../src/web/static/app.css", import.meta.url),
     "utf8",
   );
-  assert.match(css, /\.toast \{\s*display: none;\s*position: static;/);
+  assert.match(css, /\.toast \{\s*display: none;\s*position: fixed;/);
+  assert.match(css, /width: min\(520px, calc\(100vw - 32px\)\)/);
+  assert.match(css, /max-height: min\(40vh, 320px\)/);
   assert.match(css, /\.sidebar-navigation \.sidebar-foot \{ display: none;/);
   assert.match(
     css,

@@ -21,21 +21,25 @@ test("account activity filters requests, attention and the copyable report", () 
   }));
   const markup = renderHtml(renderHistoryPage(entries, "first", ["empty"]));
   assert.match(markup, /Needs attention \(1\)/);
-  assert.match(markup, /Requests \(1\)/);
+  assert.equal((markup.match(/class="history-request"/g) ?? []).length, 1);
   assert.match(markup, /id="request-first"/);
   assert.doesNotMatch(markup, /id="request-second"|"profile": "second"/);
   assert.match(markup, /href="\/hosting-activity\?profile=first"/);
-  assert.match(
-    markup,
-    /href="\/hosting-activity\?profile=first#request-first"/,
-  );
+  assert.doesNotMatch(markup, /history-attention/);
   assert.match(markup, /All accounts/);
   assert.match(markup, /value="empty"/);
   assert.match(
     renderHtml(renderHistoryPage(entries, "empty")),
-    /Requests \(0\)/,
+    /No hosting actions yet/,
   );
-  assert.match(renderHtml(renderHistoryPage(entries)), /Requests \(2\)/);
+  assert.equal(
+    (
+      renderHtml(renderHistoryPage(entries)).match(
+        /class="history-request"/g,
+      ) ?? []
+    ).length,
+    2,
+  );
 });
 
 test("hosting history belongs to Hosting accounts rather than the main navigation", () => {
@@ -46,5 +50,5 @@ test("hosting history belongs to Hosting accounts rather than the main navigatio
   assert.doesNotMatch(diagnostics, /href="\/history"/);
   const history = renderHtml(renderHistoryPage([]));
   assert.match(history, /Hosting history/);
-  assert.match(history, /Back to Hosting accounts/);
+  assert.match(history, /href="\/hosting-accounts">Hosting accounts/);
 });

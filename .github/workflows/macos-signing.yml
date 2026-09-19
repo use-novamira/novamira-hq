@@ -93,6 +93,7 @@ jobs:
           path: |
             dist-desktop/${{ matrix.asset }}
             dist-desktop/${{ matrix.asset }}.app.zip
+            dist-desktop/${{ matrix.asset }}.dmg
             dist-desktop/${{ matrix.asset }}.keychain.zip
             dist-desktop/${{ matrix.asset }}.SOURCE-OFFER.txt
             dist-desktop/${{ matrix.asset }}.build-from-source.md

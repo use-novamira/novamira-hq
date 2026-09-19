@@ -122,8 +122,8 @@ test("push jobs acknowledge immediately, survive observer disconnect and never r
   assert.equal(f.service.start(plan.id), job);
   const markup = renderHtml(renderPushJob(job));
   assert.ok(markup.includes("/_dashboard/pushes/status"));
-  assert.ok(markup.includes(plan.sourceUrl));
-  assert.ok(markup.includes(plan.targetUrl));
+  assert.ok(markup.includes(plan.sourceUrl.replace(/^https?:\/\//, "")));
+  assert.ok(markup.includes(plan.targetUrl.replace(/^https?:\/\//, "")));
   const controller = new AbortController();
   const observer = f.service.wait(plan.id, controller.signal);
   controller.abort();
@@ -138,7 +138,7 @@ test("push jobs acknowledge immediately, survive observer disconnect and never r
   );
   assert.ok(
     !renderHtml(renderPushJob(f.service.snapshot(plan.id))).includes(
-      "/_dashboard/pushes/status",
+      "data-init",
     ),
   );
   await f.service.shutdown();
@@ -169,6 +169,21 @@ test("push jobs distinguish pre-dispatch failure from uncertain provider outcome
     1,
   );
   await uncertain.service.shutdown();
+});
+
+test("a second pre-approved plan cannot replay a push after an uncertain outcome", async () => {
+  const f = fixture("live.example.com", async () => {
+    throw new Error("Lost response");
+  });
+  const first = await f.service.plan("stage-live");
+  const second = await f.service.plan("stage-live");
+  await assert.rejects(f.service.apply(first.id));
+  await assert.rejects(f.service.apply(second.id), { code: "conflict" });
+  assert.equal(
+    f.calls.filter((call) => call.kind === "push-environment").length,
+    1,
+  );
+  await f.service.shutdown();
 });
 
 test("dashboard cannot confirm a push with a missing or ambiguous destination URL", async () => {

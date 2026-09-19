@@ -42,6 +42,7 @@ import type { Command } from "commander";
 import { runDoctor } from "../doctor/index.js";
 import {
   createSiteCliIntegration,
+  createSiteOperations,
   createSiteCliResolver,
   nodeIsFile,
   nodeSpawnChild,
@@ -50,6 +51,7 @@ import {
 } from "../integration/index.js";
 import { globalHttpFetch, type HttpFetch } from "../provisioning/http.js";
 import { CliError } from "../errors.js";
+import { createProService } from "../pro/service.js";
 import { installVersion, type InstallRunner } from "../update/index.js";
 import {
   createDashboardServer,
@@ -387,6 +389,28 @@ export function createDashboardHandlers(
             let lastConflict: CliError | undefined;
             for (const candidate of candidates) {
               const started = createServer({
+                pro: createProService({
+                  paths: dependencies.paths,
+                  security: dependencies.security,
+                  credentials: dependencies.credentials,
+                  profiles: () =>
+                    createDashboardIntegration(
+                      io.env,
+                      overrides,
+                    ).listProfiles(),
+                  operations: createSiteOperations({
+                    spawn: overrides.spawn ?? nodeSpawnChild,
+                    resolve:
+                      overrides.resolveSiteCli ??
+                      createSiteCliResolver({
+                        environment: io.env,
+                        platform: process.platform,
+                        isFile: nodeIsFile,
+                      }),
+                    environment: io.env,
+                  }),
+                  fetch,
+                }),
                 version: dependencies.version,
                 paths: dependencies.paths,
                 store: dependencies.store,

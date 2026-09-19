@@ -88,6 +88,8 @@ select {
 .acknowledgement-content footer { padding-top: 8px; }
 
 .shell {
+  --shell-top: 24px;
+  --heading-height: 51px;
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
   min-height: 100vh;
@@ -103,11 +105,13 @@ select {
   border-right: 1px solid var(--side-border);
   background: var(--side-bg);
   color: var(--side-text);
-  padding: 22px 18px;
+  padding: var(--shell-top) 18px;
 }
 
 .brand {
-  display: block;
+  display: flex;
+  align-items: center;
+  min-height: var(--heading-height);
   color: inherit;
   text-decoration: none;
 }
@@ -256,16 +260,16 @@ select {
 /* ---- Main (light zone) ---- */
 .main {
   min-width: 0;
-  padding: 28px;
+  padding: var(--shell-top) 28px 28px;
 }
 
 .main-region { min-width: 0; }
-.main-region > #toast { margin: 20px 28px 0; }
+.main-region > #toast { margin: 0; }
 .page > *, .page-head > div, .panel, .how-to-card, .table-wrap { min-width: 0; }
 .page-head { flex-wrap: wrap; }
 .page-head > div:first-child { flex: 1 1 340px; }
 .page-head > .button-row { border: 0; padding: 0; margin: 0; align-items: center; }
-.page-head h1 { font-size: clamp(30px, 3.6vw, 44px); line-height: 1.15; overflow-wrap: anywhere; }
+.page-head h1 { display: flex; align-items: center; min-height: var(--heading-height); font-size: clamp(30px, 3.6vw, 44px); line-height: 1.15; overflow-wrap: anywhere; }
 .page-head p { max-width: 80ch; margin-top: 8px; }
 .report-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .report-actions [role="status"] { color: var(--muted); font-size: 13px; }
@@ -295,7 +299,7 @@ select {
 .history-request:target { outline: 2px solid var(--gold); outline-offset: 4px; }
 .history-help p { margin-top: 12px; }
 @media (max-width: 680px) {
-  .main-region > #toast { margin: 18px 18px 0; }
+  .main-region > #toast { margin: 0; }
   .history-request .details-list > div { grid-template-columns: 1fr; gap: 4px; }
 }
 
@@ -738,6 +742,23 @@ p {
   gap: 12px;
   padding: 16px;
 }
+
+/* Shared view components: spacing and action feedback are owned here. */
+.ui-panel-body { display: grid; gap: 20px; padding: 24px; min-width: 0; }
+.ui-panel-body > p, .ui-panel-body > h2, .ui-panel-body > h3 { margin: 0; }
+.ui-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding-top: 16px; border-top: 1px solid var(--border); }
+.ui-action { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.ui-status { display: flex; align-items: center; gap: 10px; }
+.ui-details > div { display: grid; gap: 10px; padding-top: 12px; overflow-wrap: anywhere; }
+.ui-details summary { cursor: pointer; color: var(--muted); }
+.ui-endpoint { display: grid; gap: 8px; padding: 16px; background: var(--surface-2); border-radius: 10px; min-width: 0; }
+.ui-endpoint strong { font-size: 18px; overflow-wrap: anywhere; }
+.ui-endpoint-target { border: 1px solid var(--gold); }
+.ui-field { gap: 8px; }
+.ui-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.ui-tabs a { padding: 8px 14px; border-radius: 8px; color: var(--text); text-decoration: none; }
+.ui-tabs a[aria-current="page"] { background: var(--surface-2); font-weight: 700; }
+.ui-panel a:not(.button) { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 
 label {
   display: grid;
@@ -1430,11 +1451,23 @@ dd {
 
 .toast {
   display: none;
-  position: static;
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1000;
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(40vh, 320px);
+  overflow: auto;
+  overflow-wrap: anywhere;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, .18);
   border-radius: var(--radius);
   border: 1px solid currentColor;
-  padding: 12px 14px;
+  padding: 16px 48px 16px 18px;
 }
+
+.toast-dismiss { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: inherit; font-size: 22px; cursor: pointer; }
+.toast-dismiss:hover { background: rgba(0, 0, 0, .07); }
+.toast-dismiss:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
 .toast.show {
   display: block;
@@ -1527,7 +1560,7 @@ dd {
     padding: 16px 18px;
   }
 
-  .sidebar .brand { margin: 0; }
+  .sidebar .brand { margin: 0; min-height: 0; }
   .sidebar-navigation { display: flex; grid-column: 1 / -1; }
   .sidebar-navigation .sidebar-foot { display: none; }
   .mobile-about-footer { display: flex; flex-wrap: wrap; gap: 12px 20px; margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); }

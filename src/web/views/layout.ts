@@ -169,6 +169,7 @@ function navLink(
   const active =
     current === page ||
     (current === "novamira-setup" && page === "sites") ||
+    (current === "novamira-pro" && page === "sites") ||
     (current === "push-new" && page === "pushes");
   return html`<a${classAttr("nav-link", active && "active")}${hrefAttr(
     url(href),
@@ -200,7 +201,7 @@ export function renderToast(notice: DashboardNotice): Html {
     "toast",
     shown && "show",
     shown && statusClass(notice.level),
-  )} role="status" aria-live="polite">${notice.message}</div>`;
+  )} role="status" aria-live="polite" aria-atomic="true"><span>${notice.message}</span><button class="toast-dismiss" type="button" aria-label="Dismiss notification">×</button></div>`;
 }
 
 /**
