@@ -54,5 +54,11 @@ export function renderPushJob(job: PushJob): Html {
 
 export function renderPushJobs(jobs: readonly PushJob[]): Html | false {
   if (jobs.length === 0) return false;
-  return html`<section class="panel push-review"><h2>Push history</h2><p class="field-help">Saved on this computer, including after restarting Novamira HQ. Open jobs appear first.</p>${jobs.map((job) => html`<a class="push-job-link"${hrefAttr(url("/push", { job: job.confirmation.id }))}><strong>${LABELS[job.status]}</strong><span>${job.confirmation.sourceUrl} → ${job.confirmation.targetUrl}</span><small>${job.confirmation.name} · ${elapsed(job)}</small></a>`)}</section>`;
+  return panel(
+    html`${jobs.map((job) => html`<a class="push-job-link"${hrefAttr(url("/push", { job: job.confirmation.id }))}><strong>${LABELS[job.status]}</strong><span>${job.confirmation.sourceUrl.replace(/^https?:\/\//i, "")} → ${job.confirmation.targetUrl.replace(/^https?:\/\//i, "")}</span><small>${job.confirmation.name} · ${elapsed(job)}</small></a>`)}`,
+    {
+      title: "Push history",
+      description: "Saved on this computer. Unfinished pushes appear first.",
+    },
+  );
 }

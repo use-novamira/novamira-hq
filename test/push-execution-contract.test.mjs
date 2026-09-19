@@ -85,21 +85,23 @@ test("dashboard push plans are read-only, explicit and one-use", async () => {
   assert.equal(plan.sourceUrl, "https://stage.example.com");
   assert.equal(plan.targetUrl, "https://live.example.com");
   const markup = renderHtml(renderPushConfirmation(plan));
-  assert.ok(markup.startsWith('<section class="page">'));
-  assert.ok(
-    markup.includes(
-      'class="push-review-url">https://live.example.com</strong>',
-    ),
-  );
+  assert.ok(markup.startsWith('<section class="page flow-page">'));
+  assert.ok(markup.includes("<strong>live.example.com</strong>"));
   assert.ok(
     markup.includes("Destination — selected content will be overwritten"),
   );
   assert.ok(
-    markup.indexOf("https://live.example.com") <
-      markup.indexOf("Technical details"),
+    markup.indexOf("live.example.com") < markup.indexOf("Technical details"),
   );
   assert.ok(
     markup.indexOf("Live (target)") > markup.indexOf("Technical details"),
+  );
+  assert.match(markup, /class="ui-panel-body"/);
+  assert.match(markup, /data-indicator/);
+  assert.match(markup, /Starting push… Do not submit again/);
+  assert.ok(!markup.includes("data-init"));
+  assert.ok(
+    markup.indexOf("Confirm and push") < markup.indexOf("Technical details"),
   );
   await f.service.apply(plan.id);
   assert.deepEqual(
