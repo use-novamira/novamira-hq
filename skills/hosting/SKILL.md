@@ -33,7 +33,7 @@ Pantheon exposes sites with their `dev`/`test`/`live` environments. Authenticati
 
 Pressable exposes sites with one environment each. Authentication is an OAuth client credential pair: the client secret is the profile credential (`PRESSABLE_CLIENT_SECRET`) and the client id is read from `PRESSABLE_CLIENT_ID`.
 
-WP Engine exposes sites as site containers and installs as environments. The WP Engine API user ID is stored in the profile `company_id` field or read from `WPE_API_USER_ID` with `WPENGINE_USERNAME` as a fallback; the API password should be read from `WPE_API_PASSWORD` with `WPENGINE_PASSWORD` as a fallback. For provider-native create workflows prefer `--from-json` with WP Engine-native payload fields.
+WP Engine exposes sites as site containers and installs as environments. The WP Engine API user ID is stored in the profile `company_id` field or read from `WPE_API_USER_ID`; the API password is read from `WPE_API_PASSWORD`. For provider-native create workflows prefer `--from-json` with WP Engine-native payload fields.
 
 Rocket.net exposes each site as one synthetic environment. The Rocket.net username is stored in the profile `company_id` field or read from `ROCKETNET_USERNAME`; the password should be read from `ROCKETNET_PASSWORD`. For clone, CDN purge, and WP-CLI workflows prefer `--from-json` with Rocket.net-native payload fields when the generic flags do not cover the provider request.
 

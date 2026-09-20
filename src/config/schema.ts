@@ -48,8 +48,6 @@ export const DEFAULT_PANTHEON_CREDENTIAL_ENV = "PANTHEON_MACHINE_TOKEN";
 export const DEFAULT_WPENGINE_API_BASE_URL = "https://api.wpengineapi.com/v1";
 export const DEFAULT_WPENGINE_CREDENTIAL_ENV = "WPE_API_PASSWORD";
 export const DEFAULT_WPENGINE_API_USER_ID_ENV = "WPE_API_USER_ID";
-export const FALLBACK_WPENGINE_CREDENTIAL_ENV = "WPENGINE_PASSWORD";
-export const FALLBACK_WPENGINE_API_USER_ID_ENV = "WPENGINE_USERNAME";
 export const DEFAULT_ROCKETNET_API_BASE_URL = "https://api.rocket.net";
 export const DEFAULT_ROCKETNET_CREDENTIAL_ENV = "ROCKETNET_PASSWORD";
 export const DEFAULT_ROCKETNET_USERNAME_ENV = "ROCKETNET_USERNAME";
@@ -70,10 +68,6 @@ export interface ProviderDefaults {
    * credential (API user id, username, email, OAuth client id). Never a secret.
    */
   readonly identityEnv?: string;
-  /** Legacy alias accepted when `credentialEnv` is unset (WP Engine only). */
-  readonly fallbackCredentialEnv?: string;
-  /** Legacy alias accepted when `identityEnv` is unset (WP Engine only). */
-  readonly fallbackIdentityEnv?: string;
   /** OAuth token endpoint, for providers that exchange a client secret. */
   readonly tokenUrl?: string;
 }
@@ -103,8 +97,6 @@ export const PROVIDER_DEFAULTS: Readonly<
     apiBaseUrl: DEFAULT_WPENGINE_API_BASE_URL,
     credentialEnv: DEFAULT_WPENGINE_CREDENTIAL_ENV,
     identityEnv: DEFAULT_WPENGINE_API_USER_ID_ENV,
-    fallbackCredentialEnv: FALLBACK_WPENGINE_CREDENTIAL_ENV,
-    fallbackIdentityEnv: FALLBACK_WPENGINE_API_USER_ID_ENV,
   },
   rocketnet: {
     apiBaseUrl: DEFAULT_ROCKETNET_API_BASE_URL,

@@ -446,9 +446,9 @@ switch on HQ's behavior:
   `WPE_API_PASSWORD`, `ROCKETNET_PASSWORD`, `HOSTINGER_API_TOKEN`,
   `CLOUDWAYS_API_KEY`), and four providers read a non-secret identity variable
   when the profile's `company_id` is empty (`PRESSABLE_CLIENT_ID`,
-  `WPE_API_USER_ID`, `ROCKETNET_USERNAME`, `CLOUDWAYS_EMAIL`). WP Engine
-  additionally accepts the legacy aliases `WPENGINE_PASSWORD` and
-  `WPENGINE_USERNAME` when its primary variables are unset.
+  `WPE_API_USER_ID`, `ROCKETNET_USERNAME`, `CLOUDWAYS_EMAIL`). There is no
+  second name for any of them: a provider reads the variable named here or
+  raises `credential_missing` naming it.
 - **`PATH` and, on Windows, `PATHEXT`**, used to resolve the optional `novamira`
   executable when `NOVAMIRA_HQ_SITE_CLI` is not set.
 

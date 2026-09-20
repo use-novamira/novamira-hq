@@ -24,6 +24,7 @@ import { platformPaths } from "../dist/config/paths.js";
 import { ConfigStore } from "../dist/config/profiles.js";
 import { envCredential } from "../dist/config/schema.js";
 import { SecretValue } from "../dist/credentials/store.js";
+import { CliError } from "../dist/errors.js";
 import { createHostingClientFactory } from "../dist/hosting/factory.js";
 import { createHttpClient } from "../dist/hosting/http-client.js";
 import { createWpEngineClient } from "../dist/hosting/providers/wpengine.js";
@@ -163,14 +164,16 @@ test("wpengine validates credentials against /accounts", async () => {
   );
 });
 
-// TestWPEngineUsesFallbackEnvCredentialNames.
+// Was TestWPEngineUsesFallbackEnvCredentialNames.
 //
-// The Go constructor reads WPE_API_USER_ID / WPE_API_PASSWORD with a
-// WPENGINE_USERNAME / WPENGINE_PASSWORD fallback itself. In HQ that resolution
-// lives in the shared factory, so this case drives the whole path — profile
-// store, credential resolution, fallback, provider module — and asserts the
-// provider ends up authenticating with the fallback pair.
-test("wpengine authenticates with the fallback environment credentials", async () => {
+// Go's `NewWPEngineClient` read WPE_API_USER_ID / WPE_API_PASSWORD with a
+// WPENGINE_USERNAME / WPENGINE_PASSWORD fallback. HQ does not port it: those
+// are not WP Engine's documented variable names — WP Engine documents the
+// `WPE_API_*` pair HQ already uses — and the Go program was never published, so
+// the aliases were compatibility with software nobody ran. This case pins the
+// removal: the profile's credential reference is the only name read, and the
+// failure names it rather than quietly authenticating with something else.
+test("wpengine reads only the credential the profile names", async () => {
   await withServer([{ body: '{"count":0,"results":[]}' }], async (server) => {
     const root = await mkdtemp(join(tmpdir(), "novamira-hq-wpengine-"));
     try {
@@ -192,14 +195,18 @@ test("wpengine authenticates with the fallback environment credentials", async (
           WPENGINE_PASSWORD: API_PASSWORD,
         },
       });
-      const client = await factory.clientFromProfile("production");
-      const validation = await client.validate();
 
-      assert.equal(validation.companyId, "api-user");
-      assert.equal(validation.credential, "env:WPENGINE_PASSWORD");
-      assertRequestLines(server.requests, [
-        "GET /v1/accounts?limit=1&offset=0",
-      ]);
+      const error = await factory.clientFromProfile("production").then(
+        () => undefined,
+        (reason) => reason,
+      );
+      assert.ok(error instanceof CliError, "the legacy names must not resolve");
+      assert.match(error.message, /WPE_API_PASSWORD/);
+      assert.ok(
+        !error.message.includes("WPENGINE_PASSWORD"),
+        "the error must name the credential the profile points at",
+      );
+      assert.equal(server.requests.length, 0, "nothing may be requested");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
