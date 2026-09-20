@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/use-novamira/novamira-hq/blob/main/SECURITY.md
+    about: Do not open an issue. Mail security@novamira.ai privately.
+  - name: WordPress site behaviour
+    url: https://github.com/use-novamira/novamira-cli
+    about: HQ never authenticates to a site. Site issues belong to @novamira/cli.

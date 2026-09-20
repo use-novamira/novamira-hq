@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+name: Bug report
+description: Something HQ does is wrong, or stopped working.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never paste a provider API key, token, password or an unredacted log.
+        HQ redacts secrets from its own output; run with `--verbose` rather than
+        reconstructing a command by hand. A suspected vulnerability goes to
+        security@novamira.ai, not here.
+  - type: input
+    id: version
+    attributes:
+      label: HQ version
+      description: The output of `novamira-hq --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - CLI
+        - Dashboard
+        - MCP
+        - Desktop application
+        - Installer
+        - Self-update
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+      description: Which hosting provider, if the problem involves one.
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: What you ran, and what happened
+      description: >
+        The smallest sequence that shows it. Include the exit code, and the
+        `--json` envelope if there is one — its `error.code` is usually the
+        fastest way to classify the failure.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and Node.js version
+    validations:
+      required: true
