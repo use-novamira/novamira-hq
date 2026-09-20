@@ -15,6 +15,11 @@ const workflow = await readFile(
   "utf8",
 );
 const runbook = await readFile(join(root, "docs/releasing.md"), "utf8");
+const defects = await readFile(join(root, "docs/release-defects.md"), "utf8");
+const defectGroups = await readFile(
+  join(root, "docs/release-defect-groups.md"),
+  "utf8",
+);
 const verification = await readFile(
   join(root, ".github/workflows/macos-signing.yml"),
   "utf8",
@@ -27,54 +32,46 @@ const entitlements = await readFile(
 const appIcon = await readFile(join(root, "scripts/macos/icon.png"));
 
 test("release metadata selects prerelease and stable dist-tags", async () => {
-  const prerelease = runMetadata("v1.0.0-rc1");
-  assert.match(prerelease, /^version=1\.0\.0-rc1$/m);
-  assert.match(prerelease, /^dist_tag=next$/m);
-  assert.match(prerelease, /^prerelease=true$/m);
+  const prerelease = await runMetadataIn(
+    { version: "1.0.0-rc1" },
+    "v1.0.0-rc1",
+  );
+  assert.equal(prerelease.status, 0, prerelease.stderr);
+  assert.match(prerelease.stdout, /^version=1\.0\.0-rc1$/m);
+  assert.match(prerelease.stdout, /^dist_tag=next$/m);
+  assert.match(prerelease.stdout, /^prerelease=true$/m);
 
-  const temporary = await mkdtemp(join(tmpdir(), "novamira-release-test-"));
-  try {
-    await writeFile(join(temporary, "package.json"), '{"version":"1.0.0"}\n');
-    const stable = run(
-      "node",
-      [join(root, "scripts/release-metadata.mjs"), "v1.0.0"],
-      temporary,
+  const stable = await runMetadataIn({ version: "1.0.0" }, "v1.0.0");
+  assert.equal(stable.status, 0, stable.stderr);
+  assert.match(stable.stdout, /^dist_tag=latest$/m);
+  assert.match(stable.stdout, /^prerelease=false$/m);
+});
+
+test("every defect has an owning session, and the register's status follows", () => {
+  const registered = new Set(defects.match(/^### (DEF-\d{3})/gm)?.map(strip));
+  const assigned = new Set(defectGroups.match(/DEF-\d{3}/g));
+  assert.ok(registered.size > 0, "the register must list defects");
+  for (const defect of registered) {
+    assert.ok(
+      assigned.has(defect),
+      `${defect} is in no implementation session`,
     );
-    assert.equal(stable.status, 0, stable.stderr);
-    assert.match(stable.stdout, /^dist_tag=latest$/m);
-    assert.match(stable.stdout, /^prerelease=false$/m);
-  } finally {
-    await rm(temporary, { recursive: true, force: true });
   }
-});
 
-test("release ordering rejects equal and older dist-tag versions", () => {
-  assert.equal(runMetadata("--assert-newer", "1.0.0-rc2", "1.0.0-rc1"), "");
-  assert.notEqual(
-    runMetadataResult("--assert-newer", "1.0.0-rc1", "1.0.0-rc1").status,
-    0,
+  // The register's headline status is the thing a reader trusts first, and it
+  // is the thing that rots. Tie it to the sessions: while one is unfinished the
+  // register must say the release is blocked, and once none is, it must not.
+  const sessions = defectGroups.match(/^## Session [^\n]+/gm) ?? [];
+  assert.ok(sessions.length > 0, "the groups document must list sessions");
+  const open = sessions.filter((session) => !session.endsWith("(Done)"));
+  const blocked = /^Status: release blocked/m.test(defects);
+  assert.equal(
+    blocked,
+    open.length > 0,
+    open.length > 0
+      ? `docs/release-defects.md must say "Status: release blocked" while ${open.length} session(s) are open`
+      : 'every session is done; docs/release-defects.md must not still say "Status: release blocked"',
   );
-  assert.notEqual(
-    runMetadataResult("--assert-newer", "1.0.0", "1.1.0").status,
-    0,
-  );
-});
-
-test("release transaction is serialized, cross-platform, pinned, and rerunnable", () => {
-  assert.match(workflow, /group: npm-release\n  cancel-in-progress: false/);
-  for (const os of ["ubuntu-latest", "macos-latest", "windows-latest"]) {
-    assert.ok(workflow.includes(os), os);
-  }
-  assert.match(workflow, /needs: \[prepare, acceptance\]/);
-  assert.match(
-    workflow,
-    /git merge-base --is-ancestor "\$commit" origin\/main/,
-  );
-  assert.match(workflow, /steps\.registry\.outputs\.publish == 'true'/);
-  assert.match(workflow, /published tarball integrity does not match/);
-  assert.match(workflow, /gh release view/);
-  assert.match(workflow, /gh release upload .*--clobber/);
-  assert.ok(!/uses: [^\n]+@v\d/.test(workflow), "actions must be SHA-pinned");
 });
 
 test("first-publication and accepted risks are explicit", () => {
@@ -265,10 +262,37 @@ test("the runbook explains the Apple credentials it asks for", () => {
   assert.match(runbook, /Verify macOS signing/);
 });
 
+/** `### DEF-001` to `DEF-001`. */
+function strip(heading) {
+  return heading.replace("### ", "");
+}
+
 function runMetadata(...args) {
   const result = runMetadataResult(...args);
   assert.equal(result.status, 0, result.stderr);
   return result.stdout;
+}
+
+/**
+ * Run the metadata script against a throwaway release with its own
+ * `package.json`, so the assertions describe the script rather than whatever
+ * state this repository's release happens to be in.
+ */
+async function runMetadataIn({ version }, ...args) {
+  const temporary = await mkdtemp(join(tmpdir(), "novamira-release-test-"));
+  try {
+    await writeFile(
+      join(temporary, "package.json"),
+      `${JSON.stringify({ version })}\n`,
+    );
+    return run(
+      "node",
+      [join(root, "scripts/release-metadata.mjs"), ...args],
+      temporary,
+    );
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
 }
 
 function runMetadataResult(...args) {

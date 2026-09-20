@@ -9,6 +9,11 @@ published after the hosting-safety decisions are implemented?
 
 ## Current Local Evidence
 
+As of 2026-09-20, `docs/release-defects.md` records every defect from the
+release review as closed, so this issue — evidence, not defects — is what gates
+the tag. Two gaps are open and known: the repository is still private, and no
+adapter has been run against a live provider API.
+
 As of 2026-09-09 (working tree, not a published release):
 
 - `bun run check` passed with 1000 passing tests and none skipped.
@@ -37,6 +42,15 @@ the exact release commit.
 - Exercise macOS signing and notarization through the dedicated protected
   workflow; do not copy Apple credentials into another job.
 - Validate provider response shapes with sanitized fixtures.
+- Run the live provider gate on an operator machine, at the release commit, for
+  every provider the release claims to support:
+  `bun run providers:live -- --report <path>`. It is read-only, refuses to run
+  under CI, and records response shapes rather than values, so its report can be
+  attached here. This is the only evidence that an adapter still matches its
+  provider's API; everything else in `test/` proves the adapter against bodies
+  we wrote ourselves. Attach one report per provider validated, and name the
+  providers with no report — a release may ship with gaps, but not with unnamed
+  ones.
 - Perform explicitly gated smoke tests only on disposable staging environments
   for workflows whose correctness depends on provider operation state.
 - Confirm that the release commit contains no forbidden destructive hosting
@@ -47,6 +61,8 @@ the exact release commit.
 ## Acceptance Criteria
 
 - All required platform and packaging jobs pass on the exact release commit.
+- The live provider gate has been run at that commit, its reports are attached,
+  and any provider without one is named as a known gap.
 - Provider-dependent safety promises are backed by fixtures and scoped staging
   evidence rather than assumptions about HTTP acceptance.
 - The release remains `1.0.0-rc1` unless a separate version decision changes it.

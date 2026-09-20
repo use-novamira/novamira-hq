@@ -1,13 +1,27 @@
 # Novamira HQ Release Defects
 
 Review date: 2026-08-13
+Resolution date: 2026-09-20
 
-Status: release blocked
+Status: all 35 defects closed — release gated on validation evidence, not on an
+open defect
 
 This document records defects found during a release-candidate review of the
 current `main` branch. The review covered the CLI, configuration and credential
 storage, hosting clients, provisioning, dashboard, site CLI integration,
 self-update, installers, packaging, and release workflows.
+
+Every defect below, DEF-001 through DEF-035, has been implemented and merged.
+`docs/release-defect-groups.md` assigns each one to an implementation session
+and all seventeen sessions are marked done; that document, not this one, records
+which session closed which defect. This register is kept as the account of what
+was found and why the fixes have the shape they do, not as a work list.
+
+What still stands between `main` and a tag is evidence, tracked in
+`issues/005-release-validation.md`: no provider adapter has been exercised
+against a live provider API, and the repository is still private. See
+*Additional Release Risks* and *Recommended Release Gate* below for the current
+state of each.
 
 ## Verification Baseline
 
@@ -583,22 +597,40 @@ when the credential is used, with less useful error classification.
 
 ## Additional Release Risks
 
-These items are not proven application defects but should be resolved or
-explicitly accepted before release.
+These items are not proven application defects. Each carries its state as of the
+resolution date above; the open ones must be resolved or explicitly accepted
+before a tag.
 
-- The repository must be public before tagging if npm provenance and the raw
-  installer URLs are expected to work.
-- Installer and launcher creation is checked mostly through static assertions;
-  the scripts are not executed end to end on each target platform in CI.
-- Windows ACL creation, verification, and doctor repair are not exercised by
-  the full contract suite.
-- GitHub Actions in publication-authorized workflows use movable major tags
-  rather than reviewed commit SHAs.
-- The documented installer URLs point at mutable `main` files rather than
-  release-bound assets.
-- Runtime dependency ranges and the third-party skills CLI's transitive ranges
-  allow users to install dependency graphs different from the graph tested for
-  this release.
+- **Open.** The repository is still private. It must be public before tagging if
+  npm provenance and the raw installer URLs are expected to work.
+- **Open.** `install.sh` and `install.ps1` are checked by static assertions in
+  `test/install-scripts-contract.test.mjs` and published as release assets, but
+  neither is executed end to end on any target platform in CI.
+- **Open.** Windows ACL creation, verification and doctor repair are not
+  exercised by the contract suite. The suite asserts POSIX modes and cannot run
+  on Windows, so the Windows job runs packaging only.
+- **Open.** The README documents the installer as a raw URL on `main`
+  (`README.md:64`, `README.md:68`), which is mutable. The release uploads
+  `install.sh` and `install.ps1` as assets on the tag
+  (`.github/workflows/release.yml:213-217`); the documented URL does not yet
+  point at them.
+- **Open.** Runtime dependency ranges and the third-party skills CLI's
+  transitive ranges allow users to install dependency graphs different from the
+  graph tested for this release.
+- **Closed.** Every action in `release.yml` is pinned to a reviewed commit SHA,
+  and `test/release-workflow-contract.test.mjs` fails the build on any `@v`
+  reference in that workflow. `package.yml` keeps movable major tags: it is an
+  accepted risk there, because that workflow holds no credential, runs with
+  `permissions: contents: read`, and authorizes no publication.
+- **Open, with a mechanism.** No provider adapter has ever been exercised
+  against a live provider API; every provider test in `test/` drives a loopback
+  server replying with bodies we wrote. `scripts/provider-live.mjs` is now the
+  read-only gate that closes this, run by an operator against their own
+  profiles. It is deliberately not a workflow: no workflow may carry a provider
+  credential, so the script refuses to run under CI, and
+  `test/provider-live-contract.test.mjs` fails the build if any workflow ever
+  names a provider credential. The evidence is still missing until the gate has
+  been run against the release commit.
 
 ## Recommended Release Gate
 
@@ -606,3 +638,14 @@ Do not tag a release until all release blockers are closed, focused regression
 tests cover their failing scenarios, the package version and contract agree,
 the first-publication procedure is rehearsed, and the Linux/macOS/Windows
 package matrix passes on the exact release commit.
+
+All release blockers are closed. What remains of the gate, in the order it must
+be satisfied, is tracked in `issues/005-release-validation.md`:
+
+1. Make the repository public.
+2. Run `scripts/provider-live.mjs` for every provider a release claims to
+   support, on the exact release commit, and read its report.
+3. Dispatch **Verify macOS signing** and read its Gatekeeper verdict.
+4. Set `package.json` to the version being tagged.
+   `scripts/release-metadata.mjs` refuses a tag that does not match it.
+5. Rehearse the first-publication procedure in `docs/releasing.md`.
