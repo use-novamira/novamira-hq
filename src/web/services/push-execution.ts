@@ -40,6 +40,65 @@ export interface PushJob {
   readonly message: string;
 }
 
+/**
+ * Re-read one push whose outcome was never confirmed, and say what became of it.
+ *
+ * Every way this can go wrong — a profile that no longer exists, an operation ID
+ * the provider has forgotten, an answer about some other operation, a network
+ * that is down — means "could not check", never "the push failed". The
+ * distinction is the whole point: telling an operator that a push failed, when
+ * all that failed was the check, invites them to push again over a push that may
+ * well have succeeded. So the catch returns the job with a message saying the
+ * check did not happen, and leaves the status alone.
+ */
+async function recheckedAgainstProvider(
+  hosting: HostingClientFactory,
+  row: HistoryEntry,
+  operationId: string,
+  job: PushJob,
+  now: () => number,
+): Promise<PushJob> {
+  try {
+    const client = await hosting.clientFromProfile(row.profile);
+    if (client.provider !== row.provider) throw new Error("Provider changed");
+    const status = await client.operationStatus(operationId);
+    if (
+      status.provider !== row.provider ||
+      status.operationId !== operationId ||
+      status.raw == null
+    )
+      throw new Error("Unverified response");
+
+    const completed = hasVerifiedCompletion(status, row.provider, operationId);
+    const failed = status.failed;
+    // Neither completed nor failed, yet the provider says it is done or answered
+    // outside 2xx: the answer does not describe a state we can act on.
+    if (
+      !completed &&
+      !failed &&
+      (status.done || status.status < 200 || status.status >= 300)
+    )
+      throw new Error("Unknown operation state");
+
+    return {
+      ...job,
+      status: completed ? "completed" : failed ? "failed" : "running",
+      finishedAt: completed || failed ? now() : null,
+      message: completed
+        ? "Push completed according to the hosting provider."
+        : failed
+          ? "The provider reported that the push failed."
+          : "The provider reports that this push is still in progress.",
+    };
+  } catch {
+    return {
+      ...job,
+      message:
+        "The previous operation could not be checked. Its status may no longer be available, or the account may be unreachable. Check your hosting account before starting another push.",
+    };
+  }
+}
+
 export function createPushExecutionService(
   store: ConfigStore,
   hosting: HostingClientFactory,
@@ -148,49 +207,17 @@ export function createPushExecutionService(
             job.status === "needs_verification" &&
             row.operationId
           ) {
-            try {
-              const client = await hosting.clientFromProfile(row.profile);
-              if (client.provider !== row.provider)
-                throw new Error("Provider changed");
-              const status = await client.operationStatus(row.operationId);
-              if (
-                status.provider !== row.provider ||
-                status.operationId !== row.operationId ||
-                status.raw == null
-              )
-                throw new Error("Unverified response");
-              const completed = hasVerifiedCompletion(
-                status,
-                row.provider,
+            jobs.set(
+              id,
+              await recheckedAgainstProvider(
+                hosting,
+                row,
                 row.operationId,
-              );
-              const failed = status.failed;
-              if (
-                !completed &&
-                !failed &&
-                (status.done || status.status < 200 || status.status >= 300)
-              )
-                throw new Error("Unknown operation state");
-              jobs.set(id, {
-                ...job,
-                status: completed ? "completed" : failed ? "failed" : "running",
-                finishedAt: completed || failed ? now() : null,
-                message: completed
-                  ? "Push completed according to the hosting provider."
-                  : failed
-                    ? "The provider reported that the push failed."
-                    : "The provider reports that this push is still in progress.",
-              });
-              continue;
-            } catch {
-              // A missing profile, an expired operation ID or a network error is not a failed push.
-              jobs.set(id, {
-                ...job,
-                message:
-                  "The previous operation could not be checked. Its status may no longer be available, or the account may be unreachable. Check your hosting account before starting another push.",
-              });
-              continue;
-            }
+                job,
+                now,
+              ),
+            );
+            continue;
           }
           jobs.set(id, job);
         }

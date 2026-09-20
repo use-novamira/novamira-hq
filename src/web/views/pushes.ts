@@ -160,6 +160,52 @@ export function renderPushesPage(
   return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Reusable push configurations between environments. Nothing runs until you review and confirm it.</p></div></header>${view.pushes.length ? html`<div class="push-card-list">${view.pushes.map((push) => renderPushCard(push))}</div>` : false}${renderAvailableDirections(view, warm)}${renderPushJobs(jobs)}</section>`;
 }
 
+/** One offered push: these two environments of this site, in this direction. */
+interface PushDirection {
+  readonly profile: string;
+  readonly siteId: string;
+  readonly siteLabel: string;
+  readonly source: HostingEnvironment;
+  readonly target: HostingEnvironment;
+}
+
+/**
+ * A group offers pushes only when what we hold about it is worth offering: the
+ * profile's provider supports environment push, its last listing did not fail,
+ * and that listing is not one kept after a failure. A push offered from a stale
+ * listing would name environments that may no longer exist.
+ */
+function contributesDirections(
+  group: SiteGroup,
+  capable: readonly { readonly name: string }[],
+): boolean {
+  return (
+    capable.some((profile) => profile.name === group.profile) &&
+    !group.error &&
+    !group.stale
+  );
+}
+
+/** Every ordered pair of distinct environments on one site. */
+function siteDirections(
+  profile: string,
+  site: SiteGroup["sites"][number],
+): PushDirection[] {
+  const environments = site.environments ?? [];
+  const siteLabel = displayLabel(site.displayName, site.name, site.id);
+  return environments.flatMap((source) =>
+    environments
+      .filter((target) => target.id !== source.id)
+      .map((target) => ({
+        profile,
+        siteId: site.id,
+        siteLabel,
+        source,
+        target,
+      })),
+  );
+}
+
 function renderAvailableDirections(
   view: ConfigView,
   warm: WarmSitesView,
@@ -180,26 +226,8 @@ function renderAvailableDirections(
     });
   const directions = warm.cacheWarm
     ? warm.groups.flatMap((group) =>
-        capable.some((profile) => profile.name === group.profile) &&
-        !group.error &&
-        !group.stale
-          ? group.sites.flatMap((site) =>
-              (site.environments ?? []).flatMap((source) =>
-                (site.environments ?? [])
-                  .filter((target) => target.id !== source.id)
-                  .map((target) => ({
-                    profile: group.profile,
-                    siteId: site.id,
-                    siteLabel: displayLabel(
-                      site.displayName,
-                      site.name,
-                      site.id,
-                    ),
-                    source,
-                    target,
-                  })),
-              ),
-            )
+        contributesDirections(group, capable)
+          ? group.sites.flatMap((site) => siteDirections(group.profile, site))
           : [],
       )
     : [];
