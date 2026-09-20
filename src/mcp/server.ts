@@ -727,6 +727,20 @@ async function setupNovamira(
   };
 }
 
+/**
+ * Answer one MCP tool call.
+ *
+ * Dispatch happens in two steps because the tools divide in two, on one
+ * question: does answering need a hosting client? A client costs a profile
+ * argument, a store read and a credential resolution, so the tools that need
+ * none — onboarding, the guide, the site CLI, history, the saved push routes,
+ * and the two confirmation-ID applies that carry their own client inside the
+ * plan they confirm — are answered first and never pay for one.
+ *
+ * `callClientlessTool` returns `undefined` for a tool it does not own, which is
+ * the signal to resolve a client and hand the call to `callHostingTool`. Both
+ * decide on the same key, so a new tool belongs to exactly one of them.
+ */
 async function callTool(
   dependencies: McpServerDependencies,
   state: McpServerState,
@@ -734,355 +748,393 @@ async function callTool(
   argumentsValue: Record<string, unknown>,
 ): Promise<Readonly<Record<string, unknown>>> {
   try {
-    const definition = TOOL_BY_NAME.get(name);
-    if (definition === undefined)
+    if (!TOOL_BY_NAME.has(name))
       throw new CliError("usage_error", `Unknown MCP tool: ${name}.`);
 
-    if (
-      name === "novamira_hq_site_connect" ||
-      name === "novamira_hq_hosting_connect"
-    ) {
-      const site = name === "novamira_hq_site_connect";
-      if (Object.keys(argumentsValue).some((key) => !site || key !== "url"))
-        throw new CliError(
-          "usage_error",
-          "This tool accepts no credentials or extra arguments. Enter credentials only in the local HQ form.",
-        );
-      const target = site ? onboardingSiteUrl(argumentsValue.url) : undefined;
-      if (!dependencies.onboarding)
-        throw new CliError(
-          "not_found",
-          "Open Novamira HQ to connect the site or hosting account; browser onboarding is unavailable in this instance.",
-        );
-      const result = await dependencies.onboarding.open(
-        target === undefined
-          ? { kind: "hosting" }
-          : { kind: "site", url: target },
+    const answered = await callClientlessTool(
+      dependencies,
+      state,
+      name,
+      argumentsValue,
+    );
+    if (answered !== undefined) return answered;
+
+    const client = await dependencies.hosting.clientFromProfile(
+      requiredString(argumentsValue, "profile"),
+    );
+    return await callHostingTool(
+      dependencies,
+      state,
+      client,
+      name,
+      argumentsValue,
+    );
+  } catch (error) {
+    return toolError(error);
+  }
+}
+
+/**
+ * The tools answered without a hosting client.
+ *
+ * `undefined` means "not one of mine", never "no result": every handler here
+ * returns a `toolResult` record, so the sentinel cannot collide with an answer.
+ */
+async function callClientlessTool(
+  dependencies: McpServerDependencies,
+  state: McpServerState,
+  name: string,
+  argumentsValue: Record<string, unknown>,
+): Promise<Readonly<Record<string, unknown>> | undefined> {
+  if (
+    name === "novamira_hq_site_connect" ||
+    name === "novamira_hq_hosting_connect"
+  ) {
+    const site = name === "novamira_hq_site_connect";
+    if (Object.keys(argumentsValue).some((key) => !site || key !== "url"))
+      throw new CliError(
+        "usage_error",
+        "This tool accepts no credentials or extra arguments. Enter credentials only in the local HQ form.",
       );
-      return toolResult(result);
-    }
+    const target = site ? onboardingSiteUrl(argumentsValue.url) : undefined;
+    if (!dependencies.onboarding)
+      throw new CliError(
+        "not_found",
+        "Open Novamira HQ to connect the site or hosting account; browser onboarding is unavailable in this instance.",
+      );
+    const result = await dependencies.onboarding.open(
+      target === undefined
+        ? { kind: "hosting" }
+        : { kind: "site", url: target },
+    );
+    return toolResult(result);
+  }
 
-    if (name === "novamira_hq_guide")
-      return toolResult({ version: dependencies.version, guide: MCP_GUIDE });
-    if (name === "novamira_hq_sites_list")
-      return toolResult(await listAllSites(dependencies));
+  if (name === "novamira_hq_guide")
+    return toolResult({ version: dependencies.version, guide: MCP_GUIDE });
+  if (name === "novamira_hq_sites_list")
+    return toolResult(await listAllSites(dependencies));
 
-    if (name.startsWith("wordpress_")) {
-      if (!dependencies.siteOperations)
-        throw new CliError(
-          "not_found",
-          "Novamira CLI integration is unavailable in this MCP instance.",
-        );
-      if (name === "wordpress_sites_list")
-        return toolResult(
-          await dependencies.siteOperations.execute({ kind: "list" }),
-        );
-      const site = requiredString(argumentsValue, "site");
-      const kind = name.slice("wordpress_".length);
-      if (kind === "doctor" || kind === "discover")
-        return toolResult(
-          await dependencies.siteOperations.execute({ kind, site }),
-        );
-      if (kind === "skill")
-        return toolResult(
-          await dependencies.siteOperations.execute({
-            kind,
-            site,
-            slug: requiredString(argumentsValue, "slug"),
-          }),
-        );
-      if (kind === "describe")
-        return toolResult(
-          await dependencies.siteOperations.execute({
-            kind,
-            site,
-            ability: requiredString(argumentsValue, "ability"),
-          }),
-        );
-      if (kind === "run") {
-        if (
-          !Object.hasOwn(argumentsValue, "input") ||
-          (argumentsValue.approveDestructive !== undefined &&
-            typeof argumentsValue.approveDestructive !== "boolean")
-        )
-          throw new CliError(
-            "usage_error",
-            "Provide JSON input and a boolean destructive approval.",
-          );
-        return toolResult(
-          await dependencies.siteOperations.execute({
-            kind,
-            site,
-            ability: requiredString(argumentsValue, "ability"),
-            input: argumentsValue.input,
-            approveDestructive: argumentsValue.approveDestructive === true,
-          }),
-        );
-      }
-    }
-
-    if (name === "hosting_history_list") {
-      const profile =
-        argumentsValue.profile === undefined
-          ? undefined
-          : requiredString(argumentsValue, "profile");
-      const entries = await dependencies.history.list(profile);
-      return toolResult({
-        entries,
-        needsAttention: attentionEntries(entries).length,
-      });
-    }
-
-    if (name === "hosting_profiles_list")
+  if (name.startsWith("wordpress_")) {
+    if (!dependencies.siteOperations)
+      throw new CliError(
+        "not_found",
+        "Novamira CLI integration is unavailable in this MCP instance.",
+      );
+    if (name === "wordpress_sites_list")
       return toolResult(
-        (await dependencies.store.listHostingProfiles()).map(profileSummary),
+        await dependencies.siteOperations.execute({ kind: "list" }),
       );
-    if (name === "hosting_novamira_setup")
-      return await setupNovamira(dependencies, argumentsValue);
-
-    if (name === "hosting_push_routes_list")
-      return toolResult(await dependencies.store.listPushes());
-
-    if (name === "hosting_environment_push_plan") {
-      if (Object.keys(argumentsValue).some((key) => key !== "route"))
-        throw new CliError(
-          "usage_error",
-          "Choose a saved route; push parameters cannot be overridden.",
-        );
-      const route = await dependencies.store.requireSavedPush(
-        requiredString(argumentsValue, "route"),
+    const site = requiredString(argumentsValue, "site");
+    const kind = name.slice("wordpress_".length);
+    if (kind === "doctor" || kind === "discover")
+      return toolResult(
+        await dependencies.siteOperations.execute({ kind, site }),
       );
-      const client = await dependencies.hosting.clientFromProfile(
-        route.hostingProfile,
+    if (kind === "skill")
+      return toolResult(
+        await dependencies.siteOperations.execute({
+          kind,
+          site,
+          slug: requiredString(argumentsValue, "slug"),
+        }),
       );
-      const plan = await prepareEnvironmentPush(client, {
-        siteId: route.siteId,
-        sourceEnvironmentId: route.sourceEnvId,
-        targetEnvironmentId: route.targetEnvId,
-        database: route.pushDb,
-        allFiles: route.pushFiles,
-        files: [],
-        searchReplace: route.searchReplace,
-      });
-      const confirmationId =
-        dependencies.createPushConfirmationId?.() ?? randomUUID();
-      const now = dependencies.now?.() ?? Date.now();
-      const expiresAt = now + PUSH_PLAN_TTL_MS;
-      for (const [id, stored] of state.pushPlans)
-        if (stored.expiresAt <= now) state.pushPlans.delete(id);
+    if (kind === "describe")
+      return toolResult(
+        await dependencies.siteOperations.execute({
+          kind,
+          site,
+          ability: requiredString(argumentsValue, "ability"),
+        }),
+      );
+    if (kind === "run") {
       if (
-        state.pushPlans.size >= MAX_PUSH_PLANS ||
-        state.pushPlans.has(confirmationId)
+        !Object.hasOwn(argumentsValue, "input") ||
+        (argumentsValue.approveDestructive !== undefined &&
+          typeof argumentsValue.approveDestructive !== "boolean")
       )
         throw new CliError(
-          "conflict",
-          "Cannot allocate another push confirmation; retry after pending plans expire.",
+          "usage_error",
+          "Provide JSON input and a boolean destructive approval.",
         );
-      state.pushPlans.set(confirmationId, {
+      return toolResult(
+        await dependencies.siteOperations.execute({
+          kind,
+          site,
+          ability: requiredString(argumentsValue, "ability"),
+          input: argumentsValue.input,
+          approveDestructive: argumentsValue.approveDestructive === true,
+        }),
+      );
+    }
+  }
+
+  if (name === "hosting_history_list") {
+    const profile =
+      argumentsValue.profile === undefined
+        ? undefined
+        : requiredString(argumentsValue, "profile");
+    const entries = await dependencies.history.list(profile);
+    return toolResult({
+      entries,
+      needsAttention: attentionEntries(entries).length,
+    });
+  }
+
+  if (name === "hosting_profiles_list")
+    return toolResult(
+      (await dependencies.store.listHostingProfiles()).map(profileSummary),
+    );
+  if (name === "hosting_novamira_setup")
+    return await setupNovamira(dependencies, argumentsValue);
+
+  if (name === "hosting_push_routes_list")
+    return toolResult(await dependencies.store.listPushes());
+
+  if (name === "hosting_environment_push_plan") {
+    if (Object.keys(argumentsValue).some((key) => key !== "route"))
+      throw new CliError(
+        "usage_error",
+        "Choose a saved route; push parameters cannot be overridden.",
+      );
+    const route = await dependencies.store.requireSavedPush(
+      requiredString(argumentsValue, "route"),
+    );
+    const client = await dependencies.hosting.clientFromProfile(
+      route.hostingProfile,
+    );
+    const plan = await prepareEnvironmentPush(client, {
+      siteId: route.siteId,
+      sourceEnvironmentId: route.sourceEnvId,
+      targetEnvironmentId: route.targetEnvId,
+      database: route.pushDb,
+      allFiles: route.pushFiles,
+      files: [],
+      searchReplace: route.searchReplace,
+    });
+    const confirmationId =
+      dependencies.createPushConfirmationId?.() ?? randomUUID();
+    const now = dependencies.now?.() ?? Date.now();
+    const expiresAt = now + PUSH_PLAN_TTL_MS;
+    for (const [id, stored] of state.pushPlans)
+      if (stored.expiresAt <= now) state.pushPlans.delete(id);
+    if (
+      state.pushPlans.size >= MAX_PUSH_PLANS ||
+      state.pushPlans.has(confirmationId)
+    )
+      throw new CliError(
+        "conflict",
+        "Cannot allocate another push confirmation; retry after pending plans expire.",
+      );
+    state.pushPlans.set(confirmationId, {
+      client,
+      plan,
+      expiresAt,
+      route: structuredClone(route),
+    });
+    return toolResult({
+      confirmationId,
+      expiresAt: new Date(expiresAt).toISOString(),
+      route: route.name,
+      plan,
+    });
+  }
+
+  if (name === "hosting_environment_push_apply") {
+    if (Object.keys(argumentsValue).some((key) => key !== "confirmationId"))
+      throw new CliError(
+        "usage_error",
+        "Apply accepts only the reviewed confirmation ID.",
+      );
+    const confirmationId = requiredString(argumentsValue, "confirmationId");
+    const stored = state.pushPlans.get(confirmationId);
+    state.pushPlans.delete(confirmationId);
+    if (
+      stored === undefined ||
+      stored.expiresAt <= (dependencies.now?.() ?? Date.now())
+    )
+      throw new CliError(
+        "not_found",
+        "The environment push plan is missing, expired, or already used.",
+      );
+    return await dependencies.store.withSavedPushLock(
+      stored.route.name,
+      async () => {
+        if (stored.expiresAt <= (dependencies.now?.() ?? Date.now()))
+          throw new CliError(
+            "not_found",
+            "The environment push plan expired while waiting. Review a new plan.",
+          );
+        const current = await dependencies.store.getSavedPush(
+          stored.route.name,
+        );
+        if (!isDeepStrictEqual(current, stored.route))
+          throw new CliError(
+            "conflict",
+            "The saved push route changed or was removed. Review a new plan before pushing.",
+          );
+        return toolResult(
+          await executeEnvironmentPush(stored.client, stored.plan),
+        );
+      },
+    );
+  }
+
+  if (name === "hosting_backup_restore_apply") {
+    const confirmationId = requiredString(argumentsValue, "confirmationId");
+    const stored = state.restorePlans.get(confirmationId);
+    state.restorePlans.delete(confirmationId);
+    if (
+      stored === undefined ||
+      stored.expiresAt <= (dependencies.now?.() ?? Date.now())
+    )
+      throw new CliError(
+        "not_found",
+        "The backup restore plan is missing, expired, or already used.",
+      );
+    return toolResult(await executeBackupRestore(stored.client, stored.plan));
+  }
+
+  return undefined;
+}
+
+/** The tools answered through a hosting client the caller already resolved. */
+async function callHostingTool(
+  dependencies: McpServerDependencies,
+  state: McpServerState,
+  client: ProviderClient,
+  name: string,
+  argumentsValue: Record<string, unknown>,
+): Promise<Readonly<Record<string, unknown>>> {
+  switch (name) {
+    case "hosting_inspection_options":
+      return toolResult(hostingInspectionOptions(client.provider));
+    case "hosting_logs_get":
+    case "hosting_activity_list":
+    case "hosting_statistics_get":
+    case "hosting_cache_clear": {
+      const option =
+        name === "hosting_logs_get"
+          ? `logs:${argumentsValue.fileName === undefined ? "access" : requiredString(argumentsValue, "fileName")}`
+          : name === "hosting_activity_list"
+            ? "activity"
+            : name === "hosting_cache_clear"
+              ? `cache:${argumentsValue.cache === undefined ? "site" : requiredString(argumentsValue, "cache")}`
+              : requiredString(argumentsValue, "option");
+      if (
+        name === "hosting_statistics_get" &&
+        !/^(usage|analytics):/u.test(option)
+      )
+        throw new CliError(
+          "usage_error",
+          "Select a statistics option, not another operation.",
+        );
+      for (const field of ["limit", "offset"] as const)
+        if (
+          argumentsValue[field] !== undefined &&
+          typeof argumentsValue[field] !== "number"
+        )
+          throw new CliError("usage_error", `${field} must be an integer.`);
+      return toolResult(
+        await inspectHosting(client, {
+          siteId: requiredString(argumentsValue, "siteId"),
+          environmentId: requiredString(argumentsValue, "environmentId"),
+          option,
+          ...(typeof argumentsValue.limit === "number"
+            ? { limit: argumentsValue.limit }
+            : {}),
+          ...(typeof argumentsValue.offset === "number"
+            ? { offset: argumentsValue.offset }
+            : {}),
+          ...(argumentsValue.start === undefined
+            ? {}
+            : { start: requiredString(argumentsValue, "start") }),
+          ...(argumentsValue.end === undefined
+            ? {}
+            : { end: requiredString(argumentsValue, "end") }),
+        }),
+      );
+    }
+    case "hosting_provider_validate":
+      return toolResult(await client.validate());
+    case "hosting_capabilities_get":
+      return toolResult(
+        applyHqCapabilityPolicy(await client.read({ kind: "capabilities" })),
+      );
+    case "hosting_sites_list":
+      return toolResult(
+        await client.listSites({
+          includeEnvironments: optionalBoolean(
+            argumentsValue,
+            "includeEnvironments",
+            false,
+          ),
+        }),
+      );
+    case "hosting_site_get":
+      return toolResult(
+        await client.getSite(requiredString(argumentsValue, "siteId")),
+      );
+    case "hosting_environments_list":
+      return toolResult(
+        await client.listEnvironments(requiredString(argumentsValue, "siteId")),
+      );
+    case "hosting_operation_get":
+      return toolResult(
+        await client.operationStatus(
+          requiredString(argumentsValue, "operationId"),
+        ),
+      );
+    case "hosting_backups_list":
+      return toolResult(
+        await client.read({
+          kind: "backups",
+          envId: requiredString(argumentsValue, "environmentId"),
+        }),
+      );
+    case "hosting_backup_create": {
+      const tag = argumentsValue.tag;
+      return toolResult(
+        await client.action({
+          kind: "create-backup",
+          envId: requiredString(argumentsValue, "environmentId"),
+          body:
+            tag === undefined
+              ? {}
+              : { tag: requiredString(argumentsValue, "tag") },
+        }),
+      );
+    }
+    case "hosting_backup_restore_plan": {
+      const plan = await prepareBackupRestore(
         client,
-        plan,
-        expiresAt,
-        route: structuredClone(route),
-      });
+        restoreSelection(argumentsValue),
+      );
+      const confirmationId =
+        dependencies.createRestoreConfirmationId?.() ?? randomUUID();
+      const now = dependencies.now?.() ?? Date.now();
+      const expiresAt = now + RESTORE_PLAN_TTL_MS;
+      for (const [id, stored] of state.restorePlans)
+        if (stored.expiresAt <= now) state.restorePlans.delete(id);
+      if (state.restorePlans.size >= MAX_RESTORE_PLANS)
+        throw new CliError(
+          "conflict",
+          "Too many pending backup restore plans; apply one or wait for expiry.",
+        );
+      if (state.restorePlans.has(confirmationId))
+        throw new CliError(
+          "conflict",
+          "Could not allocate a unique backup restore confirmation ID.",
+        );
+      state.restorePlans.set(confirmationId, { client, plan, expiresAt });
       return toolResult({
         confirmationId,
         expiresAt: new Date(expiresAt).toISOString(),
-        route: route.name,
         plan,
       });
     }
-
-    if (name === "hosting_environment_push_apply") {
-      if (Object.keys(argumentsValue).some((key) => key !== "confirmationId"))
-        throw new CliError(
-          "usage_error",
-          "Apply accepts only the reviewed confirmation ID.",
-        );
-      const confirmationId = requiredString(argumentsValue, "confirmationId");
-      const stored = state.pushPlans.get(confirmationId);
-      state.pushPlans.delete(confirmationId);
-      if (
-        stored === undefined ||
-        stored.expiresAt <= (dependencies.now?.() ?? Date.now())
-      )
-        throw new CliError(
-          "not_found",
-          "The environment push plan is missing, expired, or already used.",
-        );
-      return await dependencies.store.withSavedPushLock(
-        stored.route.name,
-        async () => {
-          if (stored.expiresAt <= (dependencies.now?.() ?? Date.now()))
-            throw new CliError(
-              "not_found",
-              "The environment push plan expired while waiting. Review a new plan.",
-            );
-          const current = await dependencies.store.getSavedPush(
-            stored.route.name,
-          );
-          if (!isDeepStrictEqual(current, stored.route))
-            throw new CliError(
-              "conflict",
-              "The saved push route changed or was removed. Review a new plan before pushing.",
-            );
-          return toolResult(
-            await executeEnvironmentPush(stored.client, stored.plan),
-          );
-        },
-      );
-    }
-
-    if (name === "hosting_backup_restore_apply") {
-      const confirmationId = requiredString(argumentsValue, "confirmationId");
-      const stored = state.restorePlans.get(confirmationId);
-      state.restorePlans.delete(confirmationId);
-      if (
-        stored === undefined ||
-        stored.expiresAt <= (dependencies.now?.() ?? Date.now())
-      )
-        throw new CliError(
-          "not_found",
-          "The backup restore plan is missing, expired, or already used.",
-        );
-      return toolResult(await executeBackupRestore(stored.client, stored.plan));
-    }
-
-    const profile = requiredString(argumentsValue, "profile");
-    const client = await dependencies.hosting.clientFromProfile(profile);
-    switch (name) {
-      case "hosting_inspection_options":
-        return toolResult(hostingInspectionOptions(client.provider));
-      case "hosting_logs_get":
-      case "hosting_activity_list":
-      case "hosting_statistics_get":
-      case "hosting_cache_clear": {
-        const option =
-          name === "hosting_logs_get"
-            ? `logs:${argumentsValue.fileName === undefined ? "access" : requiredString(argumentsValue, "fileName")}`
-            : name === "hosting_activity_list"
-              ? "activity"
-              : name === "hosting_cache_clear"
-                ? `cache:${argumentsValue.cache === undefined ? "site" : requiredString(argumentsValue, "cache")}`
-                : requiredString(argumentsValue, "option");
-        if (
-          name === "hosting_statistics_get" &&
-          !/^(usage|analytics):/u.test(option)
-        )
-          throw new CliError(
-            "usage_error",
-            "Select a statistics option, not another operation.",
-          );
-        for (const field of ["limit", "offset"] as const)
-          if (
-            argumentsValue[field] !== undefined &&
-            typeof argumentsValue[field] !== "number"
-          )
-            throw new CliError("usage_error", `${field} must be an integer.`);
-        return toolResult(
-          await inspectHosting(client, {
-            siteId: requiredString(argumentsValue, "siteId"),
-            environmentId: requiredString(argumentsValue, "environmentId"),
-            option,
-            ...(typeof argumentsValue.limit === "number"
-              ? { limit: argumentsValue.limit }
-              : {}),
-            ...(typeof argumentsValue.offset === "number"
-              ? { offset: argumentsValue.offset }
-              : {}),
-            ...(argumentsValue.start === undefined
-              ? {}
-              : { start: requiredString(argumentsValue, "start") }),
-            ...(argumentsValue.end === undefined
-              ? {}
-              : { end: requiredString(argumentsValue, "end") }),
-          }),
-        );
-      }
-      case "hosting_provider_validate":
-        return toolResult(await client.validate());
-      case "hosting_capabilities_get":
-        return toolResult(
-          applyHqCapabilityPolicy(await client.read({ kind: "capabilities" })),
-        );
-      case "hosting_sites_list":
-        return toolResult(
-          await client.listSites({
-            includeEnvironments: optionalBoolean(
-              argumentsValue,
-              "includeEnvironments",
-              false,
-            ),
-          }),
-        );
-      case "hosting_site_get":
-        return toolResult(
-          await client.getSite(requiredString(argumentsValue, "siteId")),
-        );
-      case "hosting_environments_list":
-        return toolResult(
-          await client.listEnvironments(
-            requiredString(argumentsValue, "siteId"),
-          ),
-        );
-      case "hosting_operation_get":
-        return toolResult(
-          await client.operationStatus(
-            requiredString(argumentsValue, "operationId"),
-          ),
-        );
-      case "hosting_backups_list":
-        return toolResult(
-          await client.read({
-            kind: "backups",
-            envId: requiredString(argumentsValue, "environmentId"),
-          }),
-        );
-      case "hosting_backup_create": {
-        const tag = argumentsValue.tag;
-        return toolResult(
-          await client.action({
-            kind: "create-backup",
-            envId: requiredString(argumentsValue, "environmentId"),
-            body:
-              tag === undefined
-                ? {}
-                : { tag: requiredString(argumentsValue, "tag") },
-          }),
-        );
-      }
-      case "hosting_backup_restore_plan": {
-        const plan = await prepareBackupRestore(
-          client,
-          restoreSelection(argumentsValue),
-        );
-        const confirmationId =
-          dependencies.createRestoreConfirmationId?.() ?? randomUUID();
-        const now = dependencies.now?.() ?? Date.now();
-        const expiresAt = now + RESTORE_PLAN_TTL_MS;
-        for (const [id, stored] of state.restorePlans)
-          if (stored.expiresAt <= now) state.restorePlans.delete(id);
-        if (state.restorePlans.size >= MAX_RESTORE_PLANS)
-          throw new CliError(
-            "conflict",
-            "Too many pending backup restore plans; apply one or wait for expiry.",
-          );
-        if (state.restorePlans.has(confirmationId))
-          throw new CliError(
-            "conflict",
-            "Could not allocate a unique backup restore confirmation ID.",
-          );
-        state.restorePlans.set(confirmationId, { client, plan, expiresAt });
-        return toolResult({
-          confirmationId,
-          expiresAt: new Date(expiresAt).toISOString(),
-          plan,
-        });
-      }
-      default:
-        throw new CliError("usage_error", `Unknown MCP tool: ${name}.`);
-    }
-  } catch (error) {
-    return toolError(error);
+    default:
+      throw new CliError("usage_error", `Unknown MCP tool: ${name}.`);
   }
 }
 
