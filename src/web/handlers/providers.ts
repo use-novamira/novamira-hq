@@ -120,6 +120,67 @@ function profileParameter(request: DashboardRequest): string {
 /* POST /_dashboard/providers/save                                            */
 /* -------------------------------------------------------------------------- */
 
+/** What removing a hosting account would also disconnect, and whether we know. */
+interface LinkedSites {
+  readonly verified: boolean;
+  readonly sites: ProviderRemovalView["sites"];
+}
+
+/**
+ * Read the linked sites out of a fresh inventory.
+ *
+ * Only a complete inventory counts as verified: the site CLI reachable, this
+ * profile present, no group failed or serving a listing kept after a failure,
+ * and a live connection index. Anything less and `verified` is false, because a
+ * partial inventory is indistinguishable from an account with no linked sites —
+ * and that is exactly the difference between keeping a site connection and
+ * silently removing it.
+ */
+function linkedSites(
+  inventory: Awaited<ReturnType<RouteContext["sites"]["list"]>>,
+  profile: string,
+): LinkedSites {
+  const verified =
+    inventory.siteProfiles.cliAvailable &&
+    !inventory.siteProfiles.reason &&
+    inventory.groups.some((group) => group.profile === profile) &&
+    inventory.groups.every((group) => !group.error && !group.stale) &&
+    inventory.connections?.cliAvailable === true;
+  // The last clause of `verified` is what proves `connections` is there.
+  if (!verified) return { verified, sites: [] };
+
+  const connected = new Set(
+    [...inventory.connections.byKey.values()].flatMap(
+      (connection) => connection.profiles,
+    ),
+  );
+  return {
+    verified,
+    sites: inventory.siteProfiles.profiles
+      .filter((site) => connected.has(site.name))
+      .map(({ name, siteUrl }) => ({ name, siteUrl })),
+  };
+}
+
+/**
+ * True when the site CLI still holds every planned site exactly as planned.
+ *
+ * The plan was shown to the operator and they approved removing those sites. If
+ * the CLI has become unreachable, or any of them has since been renamed,
+ * re-pointed or removed, the approval no longer describes what would happen.
+ */
+function stillExactlyAsPlanned(
+  planned: ProviderRemovalView["sites"],
+  current: Awaited<ReturnType<RouteContext["integration"]["listProfiles"]>>,
+): boolean {
+  if (!current.cliAvailable || current.reason) return false;
+  return planned.every((site) =>
+    current.profiles.some(
+      (entry) => entry.name === site.name && entry.siteUrl === site.siteUrl,
+    ),
+  );
+}
+
 export function createProviderSaveHandler(context: RouteContext): RouteHandler {
   return (request): DashboardResponse => ({
     kind: "sse",
@@ -207,33 +268,20 @@ export function createProviderRemoveHandler(
               "conflict",
               "Too many pending removal requests. Try again later.",
             );
-          let verified = false;
-          let sites: ProviderRemovalView["sites"] = [];
+          let linked: LinkedSites = { verified: false, sites: [] };
           try {
-            const inventory = await context.sites.list({
+            linked = linkedSites(
+              await context.sites.list({
+                profile,
+                includeEnvs: true,
+                refresh: true,
+              }),
               profile,
-              includeEnvs: true,
-              refresh: true,
-            });
-            verified =
-              inventory.siteProfiles.cliAvailable &&
-              !inventory.siteProfiles.reason &&
-              inventory.groups.some((group) => group.profile === profile) &&
-              inventory.groups.every((group) => !group.error && !group.stale) &&
-              inventory.connections?.cliAvailable === true;
-            if (verified && inventory.connections) {
-              const names = new Set(
-                [...inventory.connections.byKey.values()].flatMap(
-                  (connection) => connection.profiles,
-                ),
-              );
-              sites = inventory.siteProfiles.profiles
-                .filter((site) => names.has(site.name))
-                .map(({ name, siteUrl }) => ({ name, siteUrl }));
-            }
+            );
           } catch {
             /* Never infer an empty list from a failed inventory. */
           }
+          const { verified, sites } = linked;
           const plan = {
             profile,
             confirmation: randomUUID(),
@@ -275,17 +323,7 @@ export function createProviderRemoveHandler(
               "Linked sites could not be verified.",
             );
           const current = await context.integration.listProfiles();
-          if (
-            !current.cliAvailable ||
-            current.reason ||
-            plan.sites.some(
-              (site) =>
-                !current.profiles.some(
-                  (entry) =>
-                    entry.name === site.name && entry.siteUrl === site.siteUrl,
-                ),
-            )
-          )
+          if (!stillExactlyAsPlanned(plan.sites, current))
             throw new CliError(
               "conflict",
               "Saved site connections changed. Review the account again before removing them.",

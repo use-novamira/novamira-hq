@@ -21,6 +21,27 @@ import {
 } from "./index.js";
 
 /** Records provider requests and workflow correlation, never human approval. */
+/**
+ * What a push moves, written the way the dashboard writes it.
+ *
+ * The three parts are independent and any of them can be absent, so each is
+ * dropped rather than rendered empty: a push carrying only the database reads
+ * "database", never "database, , ".
+ */
+function pushScope(body: Readonly<Record<string, unknown>>): string {
+  return [
+    body.push_db === true ? "database" : undefined,
+    body.push_files_option === "ALL_FILES"
+      ? "all files"
+      : body.push_files === true
+        ? "selected files"
+        : undefined,
+    body.run_search_and_replace === true ? "search-replace" : undefined,
+  ]
+    .filter((part) => part !== undefined)
+    .join(", ");
+}
+
 export function historyClient(
   client: ProviderClient,
   profile: string,
@@ -71,17 +92,7 @@ export function historyClient(
         ...(typeof body.source_env_id === "string"
           ? {
               sourceEnvironmentId: historyText(body.source_env_id, secrets),
-              scope: [
-                body.push_db === true ? "database" : "",
-                body.push_files_option === "ALL_FILES"
-                  ? "all files"
-                  : body.push_files === true
-                    ? "selected files"
-                    : "",
-                body.run_search_and_replace === true ? "search-replace" : "",
-              ]
-                .filter(Boolean)
-                .join(", "),
+              scope: pushScope(body),
             }
           : {}),
         profile: historyText(profile),
