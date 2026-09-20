@@ -11,7 +11,7 @@ for the site CLI.
 The runtime is Node.js 22+ ESM, written in strict TypeScript and built with Bun.
 Start with `README.md` for user-facing behavior and `docs/v1-contract.md` for the
 normative output, configuration, and security contract. HQ is a TypeScript port
-of the Go `novamira-hub`; `typescript-migration-plan.md` records how it was
+of the Go `novamira-hub`; `docs/typescript-migration-plan.md` records how it was
 executed. The port is complete — every module named below exists — so treat
 `docs/v1-contract.md` as describing shipped behavior rather than intent.
 
@@ -96,6 +96,14 @@ that is unset in CI, and never run as part of `bun run check` or any workflow
 job. No workflow may carry provider credentials. Tests point the HTTP client at
 a local mock server or inject `fetch`; never run inventory or mutating provider
 calls just to test.
+
+There is exactly one sanctioned live path: `bun run providers:live`
+(`scripts/provider-live.mjs`), the release gate that proves an adapter still
+matches the API it models. It requires `NOVAMIRA_HQ_LIVE_PROVIDERS=1`, refuses
+to run when `CI` is set, can only issue the read commands in its own table, and
+reports response shapes rather than values.
+`test/provider-live-contract.test.mjs` pins all of that and fails the build if a
+workflow ever names a provider credential. Do not add a second live path.
 
 ## Orientation
 

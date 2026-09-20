@@ -38,6 +38,12 @@ jobs:
       - if: runner.os == 'macOS'
         run: bun run keychain:build
       - run: bun run check
+      # Coverage runs the same suite a second time, so it runs once rather than
+      # on all four matrix legs. It is here for the report as much as for the
+      # thresholds: the uncovered lines it names are the error branches the
+      # offline suite never reaches.
+      - if: runner.os == 'Linux' && matrix.node == 24
+        run: bun run coverage
       - run: bun run pack:inspect
       # Packs the tarball, installs it into a throwaway prefix, and exercises
       # the installed executable. Fully offline: no provider credential, no

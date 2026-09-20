@@ -58,10 +58,20 @@ an exact version whose tarball integrity differs from the tagged commit.
 ## Normal Release
 
 1. Confirm the package workflow passed on the exact current `main` commit.
-2. Create and push `v<package version>` at that commit.
-3. Approve the `npm-release` environment after the workflow's three-platform
+2. Set `package.json` to the version being released. The release refuses a tag
+   whose version does not match it.
+3. Run the **Verify provider adapters** gate on an operator machine, at that
+   commit, for every provider this release claims to support:
+   `NOVAMIRA_HQ_LIVE_PROVIDERS=1 node scripts/provider-live.mjs --report <path>`.
+   Adapter behaviour is proved offline on every push; this is the only thing
+   that proves the provider APIs still answer the way the adapters assume. It is
+   not a workflow and never will be: no workflow may carry a provider
+   credential, and the script refuses to run under CI. Attach its report — which
+   records response shapes, not values — to the release issue.
+4. Create and push `v<package version>` at that commit.
+5. Approve the `npm-release` environment after the workflow's three-platform
    acceptance job passes.
-4. Confirm the exact npm version, provenance, dist-tag, and GitHub installer
+6. Confirm the exact npm version, provenance, dist-tag, and GitHub installer
    assets.
 
 Rerunning the workflow is safe after a partial failure. If npm already holds the

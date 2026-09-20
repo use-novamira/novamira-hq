@@ -608,6 +608,7 @@ full envelope, global options, and the error-code to exit-code mapping.
 ```sh
 bun install
 bun run check              # lint, format check, and the contract tests
+bun run coverage           # the same suite, with coverage thresholds
 bun run pack:inspect       # what the published tarball contains
 bun run package:acceptance # pack it, install it, and run the installed CLI
 bun run desktop:check      # deno fmt, lint and type-check the desktop shell
@@ -616,8 +617,16 @@ node scripts/desktop-build.mjs --package   # ...and the Linux release tarball
 node scripts/desktop-smoke.mjs             # run the compiled --serve role
 ```
 
-Live provider API calls are explicitly gated and never run in CI. See
-[`AGENTS.md`](AGENTS.md) for repository conventions.
+Live provider API calls are explicitly gated and never run in CI. The one
+sanctioned live path is `bun run providers:live`, a read-only release gate that
+proves an adapter still matches the API it models; it requires
+`NOVAMIRA_HQ_LIVE_PROVIDERS=1` and refuses to run when `CI` is set, because no
+workflow may carry a provider credential.
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) is the short version of the repository's
+conventions and [`AGENTS.md`](AGENTS.md) the full one. Report a vulnerability
+privately to security@novamira.ai, as described in
+[`SECURITY.md`](SECURITY.md) — never in an issue or a pull request.
 
 ## License
 
