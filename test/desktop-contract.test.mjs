@@ -238,6 +238,9 @@ test("desktop CI offers tested artifacts without publishing a release", async ()
     "utf8",
   );
   assert.match(workflow, /workflow_dispatch:/);
+  // Manual-only, deliberately: acceptance is a run an operator dispatches on
+  // purpose, not something a push to `main` or a pull request starts.
+  assert.doesNotMatch(workflow, /^ {2}(pull_request|push):/m);
   assert.match(workflow, /actions\/upload-artifact@/);
   assert.match(workflow, /retention-days: 7/);
   assert.match(workflow, /if-no-files-found: error/);

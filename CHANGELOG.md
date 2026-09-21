@@ -21,9 +21,9 @@
 - `scripts/desktop-build.mjs` compiles the shell with the host's icon —
   `deno compile --icon` refuses on any target but Windows — and `--package`
   assembles the Linux archive reproducibly.
-- The Windows desktop build is exercised on every push: `package.yml`'s desktop
-  matrix gained `windows-latest`, and `deno compile` failing on a malformed
-  `.ico` is what checks the generator.
+- The Windows desktop build is exercised by the dispatch-only `package.yml`:
+  its desktop matrix gained `windows-latest`, and `deno compile` failing on a
+  malformed `.ico` is what checks the generator.
 
 ### Fixed
 
