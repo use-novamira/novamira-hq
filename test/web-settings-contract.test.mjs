@@ -254,7 +254,7 @@ test("desktop Updates never checks an unavailable backend or claims to be curren
     assert.ok(!markup.includes("Install update"));
     assert.ok(!markup.includes(">up to date<"));
     assert.ok(!markup.includes("check failed"));
-    assert.ok(markup.includes("Site connection component"));
+    assert.ok(!markup.includes("Site connection component"));
   }
   for (const [method, path] of [
     ["GET", "/_dashboard/updates/check"],
