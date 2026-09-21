@@ -16,6 +16,47 @@ import { platformPaths } from "../dist/config/paths.js";
 import { createPushExecutionService } from "../dist/web/services/push-execution.js";
 import { renderPushJob, renderPushJobs } from "../dist/web/views/push-job.js";
 import { renderHtml } from "../dist/web/html.js";
+import { renderPushesPage } from "../dist/web/views/pushes.js";
+
+test("Push history hides removed hosting profiles without deleting saved jobs", () => {
+  const jobs = ["active", "removed"].map((profile) => ({
+    confirmation: {
+      id: profile,
+      name: profile,
+      profile,
+      sourceUrl: `${profile}-source.example.com`,
+      targetUrl: `${profile}-target.example.com`,
+    },
+    status: "completed",
+    startedAt: 1000,
+    finishedAt: 2000,
+  }));
+  const view = {
+    profiles: [{ name: "active", provider: "instawp" }],
+    pushes: [],
+    version: "test",
+    configFile: "test",
+  };
+  const render = (profiles) =>
+    renderHtml(
+      renderPushesPage(
+        { ...view, profiles },
+        { level: "neutral", message: "" },
+        undefined,
+        jobs,
+      ),
+    );
+  const markup = render(view.profiles);
+  assert.match(markup, /active-source.example.com/);
+  assert.match(markup, /active-target.example.com/);
+  assert.ok(!markup.includes("site deleted"));
+  assert.match(markup, /<article class="push-job-link">/);
+  assert.match(markup, />View push<\/a>/);
+  assert.ok(!markup.includes("removed-source.example.com"));
+  assert.ok(!render([]).includes("Push history"));
+  assert.equal(jobs.length, 2);
+  assert.equal(jobs[1].confirmation.profile, "removed");
+});
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "hq-push-recovery-"));
@@ -181,7 +222,11 @@ test("changed provider and missing operation IDs cannot be probed or replayed", 
     "Source environment (name unavailable)",
   );
   assert.deepEqual(f.counts(), { reads: 0, writes: 1 });
-  assert.match(renderHtml(renderPushJobs(service.list())), /Push history/);
+  const markup = renderHtml(renderPushJobs(service.list()));
+  assert.match(markup, /Push history/);
+  assert.ok(!markup.includes("name unavailable"));
+  assert.match(markup, /Push · .* UTC/);
+  assert.match(markup, />Check result<\/a>/);
 });
 
 test("browser elapsed labels tick each second and freeze on the observed finish time", async () => {

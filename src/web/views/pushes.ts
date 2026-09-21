@@ -157,7 +157,11 @@ export function renderPushesPage(
   warm: WarmSitesView = COLD,
   jobs: readonly PushJob[] = [],
 ): Html {
-  return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Reusable push configurations between environments. Nothing runs until you review and confirm it.</p></div></header>${view.pushes.length ? html`<div class="push-card-list">${view.pushes.map((push) => renderPushCard(push))}</div>` : false}${renderAvailableDirections(view, warm)}${renderPushJobs(jobs)}</section>`;
+  const profiles = new Set(view.profiles.map((profile) => profile.name));
+  const visibleJobs = jobs.filter((job) =>
+    profiles.has(job.confirmation.profile),
+  );
+  return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Copy content between environments.</p></div></header>${view.pushes.length ? html`<div class="push-card-list">${view.pushes.map((push) => renderPushCard(push))}</div>` : false}${renderAvailableDirections(view, warm)}${renderPushJobs(visibleJobs)}</section>`;
 }
 
 /** One offered push: these two environments of this site, in this direction. */
@@ -243,10 +247,10 @@ function renderAvailableDirections(
   );
   const loadNotice =
     !warm.cacheWarm || incomplete
-      ? html`<p>Open Sites, click Refresh to update hosting environments, then return to Push. No new directions can be confirmed for accounts whose inventory is unavailable.</p><a class="button secondary"${hrefAttr(url("/sites"))}>Refresh hosting sites</a>`
+      ? html`<a class="button secondary"${hrefAttr(url("/sites"))}>Open Sites</a>`
       : false;
   if (available.length) {
-    return html`<section class="panel"><div class="panel-head"><div><h2>Available directions</h2><p>Choose a direction to configure. Reverse directions are separate setups; saving does not run a push.</p></div></div>${incomplete ? html`<div class="empty">${loadNotice}</div>` : false}<div class="compact-list">${available.map((direction) => html`<article><div><strong>${direction.siteLabel} · ${displayLabel(direction.source.displayName, direction.source.name, direction.source.id)} → ${displayLabel(direction.target.displayName, direction.target.name, direction.target.id)}</strong><small>${direction.profile} · From: ${direction.source.primaryDomain ?? "URL unavailable"} → To: ${direction.target.primaryDomain ?? "URL unavailable"}</small></div><a class="button secondary"${hrefAttr(url("/push/new", { profile: direction.profile, site: direction.siteId, source: direction.source.id, target: direction.target.id }))}>Set up a push</a></article>`)}</div></section>`;
+    return html`<section class="panel"><div class="panel-head"><div><h2>New push</h2><p>Choose the source and destination. You will confirm before anything is copied.</p></div></div>${incomplete ? html`<div class="empty">${loadNotice}</div>` : false}<div class="compact-list">${available.map((direction) => html`<article><div><strong>${direction.siteLabel} · ${displayLabel(direction.source.displayName, direction.source.name, direction.source.id)} → ${displayLabel(direction.target.displayName, direction.target.name, direction.target.id)}</strong><small>${direction.profile} · From: ${direction.source.primaryDomain ?? "URL unavailable"} → To: ${direction.target.primaryDomain ?? "URL unavailable"}</small></div><a class="button secondary"${hrefAttr(url("/push/new", { profile: direction.profile, site: direction.siteId, source: direction.source.id, target: direction.target.id }))}>Set up a push</a></article>`)}</div></section>`;
   }
   let title: string;
   let message: string;
@@ -260,11 +264,9 @@ function renderAvailableDirections(
     message = pushesStatusLine(view.profiles, warm);
     action = html`<a class="button secondary"${hrefAttr(url("/hosting-accounts"))}>Review hosting accounts</a>`;
   } else if (!warm.cacheWarm || incomplete) {
-    title = warm.cacheWarm
-      ? "Hosting inventory needs updating"
-      : "Load sites to continue";
+    title = warm.cacheWarm ? "Sites need refreshing" : "Load sites to continue";
     message =
-      "Available directions could not be determined from the current inventory.";
+      "Load your sites to choose where to copy content. Previous pushes remain below.";
     action = loadNotice;
   } else if (directions.length) {
     title = "All directions are already configured";
@@ -273,7 +275,7 @@ function renderAvailableDirections(
   } else {
     title = "At least two environments are needed";
     message = pushesStatusLine(view.profiles, warm);
-    action = html`<p>Add another environment with your hosting provider, then refresh Sites and return here.</p><a class="button secondary"${hrefAttr(url("/sites"))}>Refresh hosting sites</a>`;
+    action = html`<p>Add another environment with your hosting provider, then refresh Sites and return here.</p><a class="button secondary"${hrefAttr(url("/sites"))}>Open Sites</a>`;
   }
   return html`<section class="empty empty-block"><h2>${title}</h2><p>${message}</p>${action}</section>`;
 }

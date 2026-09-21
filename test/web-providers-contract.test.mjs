@@ -595,7 +595,7 @@ test("a verified new account shows app and AI actions using the same validated c
   assert.ok(markup.includes("With your AI"));
   assert.ok(markup.includes("List sites"));
   assert.ok(markup.includes('href="/sites">View sites'));
-  assert.ok(markup.includes('href="/configure-ai">Configure your AI'));
+  assert.ok(!markup.includes('href="/configure-ai">Configure your AI'));
   assert.ok(markup.includes("does not authorize access to WordPress"));
   assert.ok(!markup.includes("sites.delete"));
   assert.ok(!recorder.body.includes(SECRET));

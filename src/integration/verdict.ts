@@ -55,6 +55,13 @@ const CONNECTED: ProfileVerdict = Object.freeze({ kind: "connected" as const });
 const RECONNECT: ProfileVerdict = Object.freeze({ kind: "reconnect" as const });
 
 export function verdictForStatus(status: SiteCliAuthStatus): ProfileVerdict {
+  // Legacy auth status inspects token expiry without using the CLI's normal
+  // refresh flow. It cannot establish that interactive authorization is needed.
+  if (status.credentialState === "expired") {
+    return status.restReachable === true
+      ? CONNECTED
+      : { kind: "unavailable", reason: "token_refresh_pending" };
+  }
   if (CREDENTIAL_USABILITY[status.credentialState] === "reconnect") {
     return RECONNECT;
   }

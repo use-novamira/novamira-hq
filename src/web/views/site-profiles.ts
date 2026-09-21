@@ -46,7 +46,8 @@ import {
   type Html,
 } from "../html.js";
 import { dynamicSignalPath, siteProfileRenameSignal } from "../signals.js";
-import { type SiteProfileRowView, type SiteProfileState } from "./types.js";
+import { type SiteProfileRowView } from "./types.js";
+import { connectionStatus } from "./components.js";
 
 /** The panel's own routes. Spelled once; the handlers pin the same strings. */
 const CONNECT_PATH = "/_dashboard/site-profiles/connect";
@@ -109,27 +110,10 @@ function renderProfileMenu(
  * The pill's text and `pill` modifier, exhaustive over the four states, so a
  * fifth state cannot ship without one.
  */
-const PILLS: Readonly<
-  Record<
-    SiteProfileState,
-    { readonly text: string; readonly modifier: string | false }
-  >
-> = {
-  connected: { text: "Access authorized", modifier: "ok" },
-  reconnect_required: { text: "Authorization required", modifier: "warn" },
-  unreachable: { text: "Access not verified", modifier: false },
-  unknown: { text: "Access not verified", modifier: false },
-};
-
-/** `title="…"` when there is a sentence, and no attribute when there is not. */
-function titleAttr(text: string | undefined) {
-  return text === undefined || text === "" ? false : attr("title", text);
-}
-
-/** Reconnect-required is rendered as one action, not as a pill plus an action. */
+/** Actions are separate from the shared connection status text. */
 function reconnectButton(row: SiteProfileRowView, action: Expr): Html {
   const busy = dynamicSignalPath("reconnecting", row.name);
-  return html`<button class="button tiny" type="button"${ds.indicator(busy)}${ds.attrs({ disabled: signal(busy) })}${ds.on("click", action)}><span${ds.classes({ hidden: signal(busy) })}>Authorize again</span><span class="loading-inline ds-toggle"${ds.classes({ open: signal(busy) })}>Authorizing…</span></button>`;
+  return html`<button class="button tiny" type="button"${ds.indicator(busy)}${ds.attrs({ disabled: signal(busy) })}${ds.on("click", action)}><span${ds.classes({ hidden: signal(busy) })}>Renew access</span><span class="loading-inline ds-toggle"${ds.classes({ open: signal(busy) })}>Authorizing…</span></button>`;
 }
 
 export function renderCheckAccess(): Html {
@@ -137,20 +121,21 @@ export function renderCheckAccess(): Html {
     url("/_dashboard/sites", { connections_only: true, include_envs: true }),
     { include: ["sites"] },
   );
-  return html`<button class="button tiny" type="button"${ds.indicator("sites.loading")}${ds.attrs({ disabled: signal("sites.loading") })}${ds.on("click", action)}>Check access</button>`;
+  return html`<button class="button tiny" type="button"${ds.indicator("sites.loading")}${ds.attrs({ disabled: signal("sites.loading") })}${ds.on("click", action)}><span${ds.classes({ hidden: signal("sites.loading") })}>Check connection</span><span class="loading-inline ds-toggle"${ds.classes({ open: signal("sites.loading") })} role="status">Checking…</span></button>`;
 }
 
 function renderConnectionControl(row: SiteProfileRowView, connect: Expr): Html {
-  const pill =
-    row.reason === "site_incompatible"
-      ? { text: "Novamira not ready", modifier: "warn" }
-      : PILLS[row.state];
-  if (row.state === "reconnect_required") {
-    return reconnectButton(row, connect);
-  }
-  const status = html`<span${classAttr("pill", pill.modifier)}${titleAttr(
+  if (row.reason === "token_refresh_pending")
+    return connectionStatus("configured", row.hint);
+  const status = connectionStatus(
+    row.state === "connected" || row.state === "reconnect_required"
+      ? row.state
+      : "unavailable",
     row.hint,
-  )}>${pill.text}</span>`;
+  );
+  if (row.state === "reconnect_required") {
+    return html`${status}${reconnectButton(row, connect)}`;
+  }
   if (row.state === "connected") return status;
   return html`${status}${renderCheckAccess()}`;
 }

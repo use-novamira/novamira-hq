@@ -160,7 +160,7 @@ test("only explicit task completion proves success, with safe normalized output"
   }
 });
 
-test("guarded InstaWP restore waits for fresh safety version before non-retrying restore", async () => {
+test("guarded InstaWP restore sends only the non-retrying restore", async () => {
   const { client, calls } = fixture();
   const plan = await prepareBackupRestore(client, {
     targetEnvironmentId: "42",
@@ -176,13 +176,17 @@ test("guarded InstaWP restore waits for fresh safety version before non-retrying
   const restore = calls.findIndex(
     (c) => c.path === "/sites/42/restore-versions/12",
   );
-  assert.ok(safety >= 0 && restore > safety);
+  assert.equal(safety, -1);
+  assert.ok(restore >= 0);
+  assert.ok(
+    !calls.some((c) => c.path === "/site-versions" && c.method === "POST"),
+  );
   assert.equal(calls[restore].method, "PUT");
   assert.equal(calls[restore].idempotent, false);
   assert.equal(calls.at(-1).path, "/tasks/101/status");
 });
 
-test("failed safety version blocks the restore", async () => {
+test("failed restore task is reported without creating another version", async () => {
   const { client, calls } = fixture({ state: "failed" });
   const plan = await prepareBackupRestore(client, {
     targetEnvironmentId: "42",
@@ -195,7 +199,13 @@ test("failed safety version blocks the restore", async () => {
       timeoutSeconds: 1,
     }),
   );
-  assert.ok(!calls.some((c) => c.path.includes("restore-versions")));
+  assert.equal(
+    calls.filter((c) => c.path.includes("restore-versions")).length,
+    1,
+  );
+  assert.ok(
+    !calls.some((c) => c.path === "/site-versions" && c.method === "POST"),
+  );
 });
 
 test("incomplete versions cannot be planned or selected in the dashboard", async () => {
@@ -214,7 +224,7 @@ test("incomplete versions cannot be planned or selected in the dashboard", async
   const labels = backupChoices(
     await ready.read({ kind: "backups", envId: "42" }),
   );
-  assert.match(labels[0].label, /2026-09-17.*Before update.*ID 12/);
+  assert.equal(labels[0].label, "17 Sept 2026, 12:00 UTC");
 });
 
 test("Site Versions catalog pagination is bounded and malformed envelopes fail closed", async () => {

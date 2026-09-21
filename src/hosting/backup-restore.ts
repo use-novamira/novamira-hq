@@ -4,10 +4,10 @@
 /**
  * Guarded, provider-neutral backup restoration shared by CLI and MCP.
  *
- * A restore is allowed only when the provider can list, create, and restore
+ * A restore is allowed only when the provider can list and restore
  * backups. Planning proves that the selected backup is present in the target
- * environment's own catalog. Applying first creates and awaits a fresh safety
- * backup of that environment, then starts and awaits the requested restore.
+ * environment's own catalog. Applying starts and awaits only the requested
+ * restore. Backup creation is a separate, explicitly requested operation.
  */
 
 import { CliError } from "../errors.js";
@@ -36,14 +36,11 @@ export interface BackupRestorePlan {
   readonly targetEnvironmentId: string;
   readonly backupId: string;
   readonly scope: "all-content";
-  readonly safetyBackup: "required";
   readonly notifiedUserId?: string;
 }
 
 export interface BackupRestoreExecution {
   readonly plan: BackupRestorePlan;
-  readonly safetyBackup: ActionResult;
-  readonly safetyBackupStatus?: OperationStatus;
   readonly restore: ActionResult;
   readonly restoreStatus?: OperationStatus;
 }
@@ -179,7 +176,6 @@ export async function prepareBackupRestore(
 
   const available = capabilities(await client.read({ kind: "capabilities" }));
   requireCapability(client.provider, available, "backups.list");
-  requireCapability(client.provider, available, "backups.create");
   requireCapability(client.provider, available, "backups.restore");
 
   const catalog = await client.read({
@@ -198,7 +194,6 @@ export async function prepareBackupRestore(
     targetEnvironmentId,
     backupId,
     scope: "all-content",
-    safetyBackup: "required",
     ...(notifiedUserId === undefined ? {} : { notifiedUserId }),
   };
 }
@@ -271,16 +266,6 @@ async function executeRestoreSteps(
       ? {}
       : { notifiedUserId: plan.notifiedUserId }),
   });
-  const safetyBackup = await sendGuardedAction(
-    client,
-    {
-      kind: "create-backup",
-      envId: plan.targetEnvironmentId,
-      body: { tag: "novamira-hq pre-restore safety backup" },
-    },
-    wait.signal,
-  );
-  const safetyBackupStatus = await waitForAction(client, safetyBackup, wait);
   const restore = await sendGuardedAction(
     client,
     {
@@ -293,8 +278,6 @@ async function executeRestoreSteps(
   const restoreStatus = await waitForAction(client, restore, wait);
   return {
     plan,
-    safetyBackup,
-    ...(safetyBackupStatus === undefined ? {} : { safetyBackupStatus }),
     restore,
     ...(restoreStatus === undefined ? {} : { restoreStatus }),
   };

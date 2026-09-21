@@ -50,7 +50,7 @@ require list/restore capabilities. Backups remain at the provider.
 
 `GET /backup-restore` is a dedicated Sites subpage. It performs no provider
 requests on page load. The environment menu offers restore for Kinsta, Pantheon,
-Rocket.net and InstaWP; the service rechecks the governed list/create/restore capabilities.
+Rocket.net and InstaWP; the service rechecks the governed list/restore capabilities.
 Token-protected `POST /_dashboard/backups/catalog` loads the selected environment's
 backups. `POST /_dashboard/backups/plan` requires an explicit all-content
 acknowledgement and, for Kinsta, the notification user ID. It verifies environment
@@ -58,7 +58,8 @@ ownership and URL and uses the shared backup-restore planner. Plans expire after
 five minutes and are session-local, bounded, and one-use.
 `POST /_dashboard/backups/apply` consumes the confirmation and starts a detached
 job, rechecking profile and destination identity. The shared executor revalidates
-the catalog and waits for a fresh safety backup before restore. Duplicate requests
+the catalog and executes only the requested restore. Backup creation is a separate
+explicit action, never an automatic HQ step or prerequisite. Duplicate requests
 return the existing job, not another mutation. `GET /_dashboard/backups/status`
 is token-protected and observes only; request cancellation does not cancel jobs.
 Shutdown aborts jobs. Unconfirmed outcomes instruct the operator to check Activity
@@ -620,10 +621,10 @@ workflow; any automatic backup is part of the provider's own push contract.
 Backup restore is another two-call transaction. Plan requires the target
 environment, a non-empty backup id, and an explicit `allContent: true`; Kinsta
 also requires its provider notification user id. It requires advertised backup
-list/create/restore support, reads the target's backup catalog, and refuses an id
+list/restore support, reads the target's backup catalog, and refuses an id
 not present there. Apply consumes the five-minute, session-local confirmation
-before any provider request, creates and awaits a fresh target safety backup,
-then starts and awaits the restore. Restore accepts no provider-native JSON and
+before any provider request, then starts and awaits only the restore.
+Backup creation remains a separate explicit action. Restore accepts no provider-native JSON and
 never deletes a backup.
 
 Expected command, hosting, policy and argument failures are MCP tool results with
@@ -788,9 +789,9 @@ are not implemented by their HQ adapters.
 
 `hosting backups restore` has no `--from-json` form. It requires `--env`,
 `--backup-id`, `--all-content`, and the global `--yes`; Kinsta additionally
-requires `--notified-user-id`. Before mutation it verifies list/create/restore
-support and finds the id in that environment's catalog. It then creates and
-waits for a fresh safety backup, restores all content, and requires verified
+requires `--notified-user-id`. Before mutation it verifies list/restore
+support and finds the id in that environment's catalog. It restores all content
+without creating another backup, and requires verified
 completion of the restore. Missing operation IDs, synthetic statuses and unknown
 outcomes stop the workflow with a non-retryable error: verify at the provider
 before repeating. Apply revalidates the backup catalog before mutation. The
@@ -1574,6 +1575,7 @@ form to itself and no page reloads.
   Hosting sites offer Hide from list, covering all environments of that site.
   Visibility is a browser-local preference keyed by hosting profile and provider site ID,
   persisted in localStorage for that dashboard origin, not in CLI storage or at the provider.
+  The sidebar footer displays the running application's version beside About.
   Show hidden sites reveals them with Restore to list; clearing browser storage resets
   these preferences. Hiding never logs out, deletes a profile, or changes the site.
   Configure push is a secondary environment-menu action, never an immediate push.
@@ -2027,7 +2029,7 @@ Creation accepts only `tag`; optional naming uses a separate PUT, truncated to
 25 characters. Naming failure preserves the task ID and never retries creation.
 Restore accepts only `backup_id`, requires a completed version in the target
 catalog, and is never automatically retried. Shared CLI/MCP/dashboard safeguards
-require explicit confirmation and a completed fresh safety version first.
+require explicit confirmation; they do not create a pre-restore version.
 Operation IDs `version-task:<task-id>` poll `/tasks/{task-id}/status`; only
 `completed` proves success. Unknown or missing states remain unconfirmed.
 The catalog exposes only IDs, names, dates, status and kind; no credentials or

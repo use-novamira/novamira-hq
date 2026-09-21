@@ -407,7 +407,7 @@ function registerBackupsCommands(
 
   const restore = backups
     .command("restore")
-    .description("restore a complete backup after creating a safety backup");
+    .description("restore a complete backup without creating another backup");
   addEnvOption(restore);
   restore
     .option("--backup-id <id>", "backup id from this environment's catalog")

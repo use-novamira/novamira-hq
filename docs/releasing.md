@@ -193,9 +193,9 @@ If `APPLE_SIGNING_IDENTITY` is unset, signing and therefore publication fail.
 
 ### Downloading test builds without a release
 
-**Package acceptance** runs on pushes to `main` and can also be dispatched
-manually. Each desktop job uploads its build only after the server and MCP
-smoke tests pass. Download it from the run's **Artifacts** section within seven
+**Package acceptance** is manual-only: dispatch it from the Actions tab, or
+with `gh workflow run package.yml`. Each desktop job uploads its build only
+after the server and MCP smoke tests pass. Download it from the run's **Artifacts** section within seven
 days. Linux includes its installation archive; Windows includes the unsigned
 executable. The macOS test artifacts are unsigned arm64 and Intel executables in
 tarballs, not signed `.app`s suitable for sharing with colleagues. Use the

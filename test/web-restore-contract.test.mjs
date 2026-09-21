@@ -17,7 +17,7 @@ function fixture(createOnly = false) {
   let clock = 0;
   let config = "original";
   let domain = "https://example.test";
-  let safetyFailed = false;
+  let restoreFailed = false;
   let supported = true;
   const client = {
     provider: "kinsta",
@@ -49,7 +49,7 @@ function fixture(createOnly = false) {
         operationId,
         status: 200,
         done: true,
-        failed: safetyFailed,
+        failed: restoreFailed,
         raw: { done: true },
       };
     },
@@ -73,10 +73,20 @@ function fixture(createOnly = false) {
     advance: () => (clock = 300_001),
     change: () => (config = "changed"),
     move: () => (domain = "https://other.test"),
-    fail: () => (safetyFailed = true),
+    fail: () => (restoreFailed = true),
     disable: () => (supported = false),
   };
 }
+test("Kinsta millisecond timestamps become readable UTC dates", () => {
+  assert.deepEqual(
+    backupChoices({
+      environment: {
+        backups: [{ id: 123, created_at: Date.UTC(2026, 8, 21, 9, 4) }],
+      },
+    }),
+    [{ id: "123", label: "21 Sept 2026, 09:04 UTC" }],
+  );
+});
 test("dashboard restore catalog is read-only and shows only backup entries", async () => {
   const f = fixture();
   const catalog = await f.service.catalog(target);
@@ -147,7 +157,7 @@ test("dashboard restore refuses missing acknowledgement, notification user, wron
   );
   assert.deepEqual(f.calls, []);
 });
-test("dashboard restore is one-use, starts with safety backup, and polling never replays it", async () => {
+test("dashboard restore is one-use and polling never replays it", async () => {
   const f = fixture();
   const review = await f.service.plan(target, "42", true, "user");
   assert.deepEqual(f.calls, []);
@@ -157,7 +167,7 @@ test("dashboard restore is one-use, starts with safety backup, and polling never
   await f.service.wait(review.id, new AbortController().signal);
   assert.equal(f.service.snapshot(review.id).status, "completed");
   f.service.start(review.id);
-  assert.deepEqual(f.calls, ["create-backup", "restore-backup"]);
+  assert.deepEqual(f.calls, ["restore-backup"]);
   await f.service.shutdown();
 });
 test("expired, changed-profile and changed-destination plans cannot mutate", async () => {
@@ -174,13 +184,13 @@ test("expired, changed-profile and changed-destination plans cannot mutate", asy
     await f.service.shutdown();
   }
 });
-test("failed safety backup prevents dashboard restore", async () => {
+test("failed restore remains unverified without creating a backup", async () => {
   const f = fixture();
   f.fail();
   const review = await f.service.plan(target, "42", true, "user");
   f.service.start(review.id);
   await f.service.wait(review.id, new AbortController().signal);
-  assert.deepEqual(f.calls, ["create-backup"]);
+  assert.deepEqual(f.calls, ["restore-backup"]);
   assert.equal(f.service.snapshot(review.id).status, "needs_verification");
 });
 test("restore form uses explicit boolean acknowledgement and escaped labels", async () => {
@@ -193,6 +203,9 @@ test("restore form uses explicit boolean acknowledgement and escaped labels", as
   const markup = renderHtml(renderRestore({ target, catalog }));
   assert.match(markup, /Kinsta user ID/);
   assert.match(markup, /restoreForm.allContent/);
+  assert.match(markup, /!\$restoreForm.allContent/);
+  assert.match(markup, /!\$restoreForm.backupId/);
+  assert.match(markup, /!\$restoreForm.notifiedUserId/);
   assert.match(markup, /Continue/);
   const review = await f.service.plan(target, "42", true, "user");
   assert.match(

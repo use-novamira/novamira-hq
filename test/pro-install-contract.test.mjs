@@ -33,10 +33,14 @@ test("Pro separates app settings from site installation", () => {
   const settings = renderHtml(renderPro({ last4: "1234" }));
   assert.match(settings, /Novamira HQ does not require a license/);
   assert.match(settings, /class="panel-head"/);
-  assert.match(settings, /class="form-grid"/);
+  assert.match(settings, /class="ui-secret-editor"/);
+  assert.match(settings, /placeholder="••••••••1234"/);
+  assert.ok(!settings.includes("Saved license:"));
+  assert.ok(!settings.includes('value="••••••••1234"'));
   assert.ok(!settings.includes("Review installation"));
   const page = renderHtml(renderProPage({ site: "example", last4: "1234" }));
-  assert.match(page, /Review installation/);
+  assert.match(page, /Check site/);
+  assert.doesNotMatch(page, /Do not close|Check the site before reviewing/);
   assert.match(page, /Back to Sites/);
   assert.ok(!page.includes('href="/settings'));
   const completed = renderHtml(

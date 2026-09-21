@@ -43,6 +43,8 @@ test("success copy is concise and suppresses only the redundant success notice",
   assert.ok(markup.includes('<th scope="col">In the app</th>'));
   assert.ok(markup.includes('<th scope="col">With your AI</th>'));
   assert.ok(markup.includes("Not available"));
+  assert.ok(!markup.includes('href="/configure-ai"'));
+  assert.ok(markup.includes('aria-label="Not available">—</span>'));
   assert.equal((markup.match(/<table /g) ?? []).length, 1);
   assert.ok(!markup.includes("hosting plan and permissions"));
   assert.doesNotMatch(
@@ -120,11 +122,7 @@ test("account actions compare app and AI without raw adapter notes", () => {
   assert.doesNotMatch(markup, /Clear the site cache|deletion|SSH/);
   assert.doesNotMatch(markup, /POST \/technical|sites.delete|GitHub/);
   assertUnavailable(markup, "Push content between environments");
-  assert.ok(
-    markup.includes(
-      "configure your AI client to use the available AI actions.",
-    ),
-  );
+  assert.ok(markup.includes("Open Sites to use these actions."));
   assert.doesNotMatch(markup, /\bCLI\b|terminal/);
 });
 

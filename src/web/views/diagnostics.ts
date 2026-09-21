@@ -63,11 +63,12 @@ export function renderDiagnosticsPage(): Html {
 export function renderDiagnosticsOutput(
   notice: DashboardNotice,
   body: string,
+  shareable?: string,
 ): Html {
   if (notice.message === "") {
     return html`<div${idAttr("diagnostics-output")} class="diagnostics-output"><p>${body}</p></div>`;
   }
   return html`<div${idAttr("diagnostics-output")} class="diagnostics-output">${
     notice.message === "" ? false : renderNotice(notice)
-  }${body === "" ? false : html`<section class="report-panel"><div class="report-actions"><button type="button" class="button secondary"${ds.on("click", copyReport("diagnostics-report", "diagnostics-copy-status"))}>Copy report</button><span id="diagnostics-copy-status" role="status" aria-live="polite"></span></div><pre id="diagnostics-report" class="code-output">${body}</pre></section>`}</div>`;
+  }${body === "" ? false : html`<section class="report-panel"><div class="report-actions"><button type="button" class="button secondary"${ds.on("click", copyReport(shareable === undefined ? "diagnostics-report" : "diagnostics-shareable-report", "diagnostics-copy-status"))}>Copy report</button><span id="diagnostics-copy-status" role="status" aria-live="polite"></span></div>${shareable === undefined ? false : html`<p>Copy report includes check results only. The local details below are not included; avoid sharing screenshots of them publicly.</p><pre id="diagnostics-shareable-report" hidden>${shareable}</pre>`}<pre id="diagnostics-report" class="code-output">${body}</pre></section>`}</div>`;
 }

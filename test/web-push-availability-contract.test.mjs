@@ -65,7 +65,7 @@ test("cold, failed and incomplete inventory never claim all directions are confi
     render([], [{ ...group, sites: [{ id: "site" }] }]),
   ]) {
     assert.ok(!markup.includes("All directions are already configured"));
-    assert.ok(markup.includes("Refresh hosting sites"));
+    assert.ok(markup.includes("Open Sites"));
   }
 });
 

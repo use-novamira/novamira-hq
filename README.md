@@ -9,7 +9,8 @@ and themes — and provisions the Novamira plugin so a site becomes ready for an
 agent to use. Site and environment deletion, site reset, backup deletion, domain
 deletion, DNS writes, and SSH/SFTP credential management are deliberately
 outside HQ's surface and provider adapters. Backup restoration is available only
-through a guarded recovery workflow that first creates a new safety backup.
+through a guarded recovery workflow. Backup creation is a separate explicit action;
+HQ does not create a backup automatically before restoring.
 
 HQ never holds a WordPress site token or calls authenticated site REST directly.
 Its MCP can also delegate WordPress tasks to the optional `novamira` CLI, which
@@ -371,8 +372,8 @@ a success an agent could not use.
 
 InstaWP backup creation, listing and in-place restore use **Site Versions** (files
 and database), not the separate Snapshots product. CLI, MCP and dashboard use
-the same guarded restore flow, including a completed fresh safety version before
-restoring. Only task status `completed` confirms success. Labels are limited to
+the same guarded restore flow, without automatically creating another version.
+Only task status `completed` confirms success. Labels are limited to
 25 characters; provider plan limits apply. Deletion and sharing are not exposed.
 This integration is covered by offline tests, not yet validated on a live account.
 
@@ -488,8 +489,8 @@ unexposed. The MCP server retains HQ's WordPress-site boundary rule.
 Backup restore is also two-step. `hosting_backup_restore_plan` requires an
 explicit target environment, a backup ID from that environment's catalog, and
 `allContent: true`. `hosting_backup_restore_apply` consumes its five-minute
-one-use confirmation and creates and waits for a fresh safety backup before
-restoring.
+one-use confirmation and executes only the selected restore. Creating a backup
+requires a separate explicit action.
 
 The same MCP also exposes WordPress site listing, doctor, discovery, site-skill
 loading, Ability description and execution through the optional `novamira` CLI.

@@ -49,16 +49,25 @@ export function renderPushJob(job: PushJob): Html {
   const body = panel(
     html`${operationStatus(job.message, running)}<p>${elapsed(job)}</p>${endpoint("Copy from", plan.sourceUrl)}${endpoint("Destination", plan.targetUrl, true)}<p>Content: ${plan.scope}</p>${unresolved ? html`<p class="field-help">${running ? "You can close Novamira HQ. Monitoring resumes when you reopen it." : "Do not repeat this push until you have checked its outcome."}</p>` : false}${actions}${technicalDetails(html`<p>Source: ${plan.source}</p><p>Destination: ${plan.target}</p><p>Started: ${new Date(job.startedAt).toISOString()}</p>${job.operationId ? html`<p>Operation: ${job.operationId}</p>` : false}`)}`,
   );
-  return html`<section class="page flow-page"${unresolved ? ds.init(getStream(url("/_dashboard/pushes/status", { job: plan.id }), { include: [] })) : false}>${pageHeader(LABELS[job.status], { description: plan.name, back: { label: "All pushes", href: url("/push") } })}${body}</section>`;
+  return html`<section class="page flow-page"${unresolved ? ds.init(getStream(url("/_dashboard/pushes/status", { job: plan.id }), { include: [] })) : false}>${pageHeader(LABELS[job.status], { back: { label: "All pushes", href: url("/push") } })}${body}</section>`;
 }
 
 export function renderPushJobs(jobs: readonly PushJob[]): Html | false {
   if (jobs.length === 0) return false;
   return panel(
-    html`${jobs.map((job) => html`<a class="push-job-link"${hrefAttr(url("/push", { job: job.confirmation.id }))}><strong>${LABELS[job.status]}</strong><span>${job.confirmation.sourceUrl.replace(/^https?:\/\//i, "")} → ${job.confirmation.targetUrl.replace(/^https?:\/\//i, "")}</span><small>${job.confirmation.name} · ${elapsed(job)}</small></a>`)}`,
+    html`${jobs.map((job) => {
+      const known = ![
+        job.confirmation.sourceUrl,
+        job.confirmation.targetUrl,
+      ].some((value) => value.includes("(name unavailable)"));
+      const date =
+        new Date(job.startedAt).toISOString().replace("T", " ").slice(0, 16) +
+        " UTC";
+      return html`<article class="push-job-link"><strong>${known ? `${job.confirmation.sourceUrl.replace(/^https?:\/\//i, "")} → ${job.confirmation.targetUrl.replace(/^https?:\/\//i, "")}` : `Push · ${date}`}</strong><small>${known ? `${date} · ` : ""}${job.confirmation.profile}</small><span>${job.status === "needs_verification" ? "Outcome not verified" : LABELS[job.status]}</span><a class="text-link"${hrefAttr(url("/push", { job: job.confirmation.id }))}>${job.status === "needs_verification" ? "Check result" : "View push"}</a></article>`;
+    })}`,
     {
       title: "Push history",
-      description: "Saved on this computer. Unfinished pushes appear first.",
+      description: "Previous pushes, with the site details saved at the time.",
     },
   );
 }

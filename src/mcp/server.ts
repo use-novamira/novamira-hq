@@ -509,7 +509,7 @@ const TOOL_DEFINITIONS: readonly (McpTool & {})[] = [
   {
     name: "hosting_backup_restore_apply",
     description:
-      "Apply a one-use restore plan. Novamira HQ first creates and awaits a fresh safety backup of the target environment.",
+      "Apply a one-use restore plan. This overwrites the target with the selected backup; it does not create another backup.",
     inputSchema: objectSchema(
       {
         confirmationId: nonEmptyString(

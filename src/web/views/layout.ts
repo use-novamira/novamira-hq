@@ -114,7 +114,7 @@ export function renderDocument(input: DocumentInput): Html {
  * profile and push counts back without changing the signature.
  */
 export function renderSidebar(
-  _view: ConfigView,
+  view: ConfigView,
   page: DashboardPage,
   activeNav = true,
 ): Html {
@@ -131,7 +131,7 @@ export function renderSidebar(
     url("/sites", { new: "cli" }),
   )}><strong>Manually</strong><span>Connect an existing Novamira site by URL</span></a><a${hrefAttr(
     url("/hosting-accounts", { new: "host" }),
-  )}><strong>From a hosting account</strong><span>Connect an account and discover its sites</span></a></div></div>${renderNav(page, activeNav)}<div class="sidebar-foot"><a class="sidebar-about"${hrefAttr(url("/updates"))}${activeNav && page === "updates" ? attr("aria-current", "page") : false}>App updates</a><a class="sidebar-about"${hrefAttr(url("/about"))}${page === "about" ? attr("aria-current", "page") : false}>About Novamira HQ</a></div></div></aside>`;
+  )}><strong>From a hosting account</strong><span>Connect an account and discover its sites</span></a></div></div>${renderNav(page, activeNav)}<div class="sidebar-foot"><a class="sidebar-about"${hrefAttr(url("/updates"))}${activeNav && page === "updates" ? attr("aria-current", "page") : false}>App updates</a><div class="sidebar-about-row"><a class="sidebar-about"${hrefAttr(url("/about"))}${page === "about" ? attr("aria-current", "page") : false}>About Novamira HQ</a>${view.version ? html`<small class="sidebar-version">v${view.version}</small>` : false}</div></div></div></aside>`;
 }
 
 /**

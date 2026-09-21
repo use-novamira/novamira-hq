@@ -12,10 +12,10 @@ import { html, attr, idAttr, hrefAttr, url, type Html } from "../html.js";
 
 export type HistoryView = readonly HistoryEntry[];
 const LABELS: Record<HistoryStatus, string> = {
-  accepted: "Awaiting confirmation",
+  accepted: "Outcome not verified",
   succeeded: "Completed",
   failed: "Failed",
-  needs_verification: "To verify",
+  needs_verification: "Outcome not verified",
 };
 
 function actionLabel(action: string): string {
@@ -50,6 +50,48 @@ function requestCard(entry: HistoryEntry): Html {
   return html`<article${idAttr(`request-${entry.id}`)} class="history-request"><header class="history-request-head"><div><h3>${actionLabel(entry.action)}</h3><p>${entry.targetUrl ?? entry.profile}</p></div><div class="history-request-status"><strong>${LABELS[entry.status]}</strong><time>${dateLabel(entry.startedAt)}</time></div></header>${uncertain ? html`<p class="field-help">Completion has not been confirmed. Check before repeating this action.</p>` : false}${entry.action === "push-environment" ? html`<a class="text-link"${hrefAttr(url("/push", { job: entry.pushJobId ?? entry.id }))}>Open push and check status</a>` : false}<details><summary>Request details</summary><dl class="details-list">${detail("Request", entry.action)}${detail("Hosting account", entry.profile)}${detail("Started", entry.startedAt)}${detail("Last observed", entry.updatedAt)}${detail("Source", entry.channel)}${detail("Site ID", entry.siteId)}${detail("Source environment ID", entry.sourceEnvironmentId)}${detail("Target environment ID", entry.environmentId)}${detail("Scope", entry.scope)}${detail("Provider operation", entry.operationId)}${detail("Request error", entry.errorCode)}${detail("Workflow", entry.workflowKind)}${detail("Workflow ID", entry.workflowId)}${detail("Workflow outcome", entry.workflowStatus)}${detail("Workflow error", entry.workflowErrorCode)}</dl></details></article>`;
 }
 
+function verificationAction(entry: HistoryEntry): Html | false {
+  if (entry.status !== "accepted" && entry.status !== "needs_verification")
+    return false;
+  if (
+    (entry.action === "create-backup" || entry.action === "restore-backup") &&
+    entry.environmentId
+  ) {
+    return html`<a class="text-link"${hrefAttr(url("/backup-restore", { profile: entry.profile, site: entry.siteId ?? "", env: entry.environmentId }))}>Check available backups</a>`;
+  }
+  if (entry.action === "push-environment") return false;
+  return html`<p class="field-help">Check this operation in your hosting account before repeating it. No approval is requested here.</p>`;
+}
+
+function historyCards(entries: HistoryView): Html {
+  const groups = new Map<string, HistoryEntry[]>();
+  for (const entry of entries) {
+    const key =
+      entry.workflowKind === "novamira-setup" && entry.workflowId
+        ? JSON.stringify([entry.profile, entry.provider, entry.workflowId])
+        : entry.id;
+    const group = groups.get(key) ?? [];
+    group.push(entry);
+    groups.set(key, group);
+  }
+  return html`${[...groups.values()].map((group) => {
+    const first = group[0];
+    if (!first) return false;
+    if (first.workflowKind !== "novamira-setup" || !first.workflowId)
+      return html`${requestCard(first)}${verificationAction(first)}`;
+    const latest =
+      [...group].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ??
+      first;
+    const status =
+      latest.workflowStatus === "succeeded"
+        ? "Completed"
+        : latest.workflowStatus === "failed"
+          ? "Failed"
+          : "Outcome not verified";
+    return html`<article class="history-workflow"><header class="history-request-head"><div><h3>Novamira setup</h3><p>${first.targetUrl ?? first.profile}</p></div><div class="history-request-status"><strong>${status}</strong><time>${dateLabel(first.startedAt)}</time></div></header>${status === "Outcome not verified" ? html`<p>HQ has no confirmed final result. Check the site before starting setup again.</p>` : false}<details><summary>Setup steps (${group.length})</summary>${group.map(requestCard)}</details></article>`;
+  })}`;
+}
+
 export function renderHistoryPage(
   allEntries: HistoryView,
   profile = "",
@@ -67,7 +109,7 @@ export function renderHistoryPage(
   ].sort();
   const historyUrl = url("/hosting-activity", profile ? { profile } : {});
   const attention = attentionEntries(entries);
-  return html`<section class="page history-page"><header class="page-head"><div><h1>Hosting history</h1><p>Your recent hosting actions.</p></div><div class="button-row"><a class="button secondary" href="/hosting-accounts">Hosting accounts</a><a class="button secondary"${hrefAttr(historyUrl)}>Refresh list</a></div></header><form class="panel history-filter" method="get" action="/hosting-activity"><label for="history-profile">Hosting account</label><select id="history-profile" name="profile"><option value="">All accounts</option>${profiles.map((name) => html`<option${attr("value", name)}${name === profile ? attr("selected", "") : false}>${name}</option>`)}</select><button class="button secondary" type="submit">Apply</button></form><section class="how-to-card">${attention.length ? html`<p class="field-help">Needs attention (${attention.length}) · See the status beside each action below.</p>` : false}${entries.length ? html`<div class="history-requests">${entries.map(requestCard)}</div>` : html`<p>No hosting actions yet.</p>`}<details class="history-help"><summary>Technical report</summary><p>Refresh reads local history only; it does not check the provider or repeat operations. To check a push, open its job.</p><p>Up to 500 requests are kept; unresolved work is retained. WordPress actions through Novamira CLI and changes made outside Novamira HQ are not included. A failed workflow does not undo its earlier requests.</p>${
+  return html`<section class="page history-page"><header class="page-head"><div><h1>Hosting history</h1><p>Your recent hosting actions.</p></div><div class="button-row"><a class="button secondary" href="/hosting-accounts">Hosting accounts</a><a class="button secondary"${hrefAttr(historyUrl)}>Refresh list</a></div></header><form class="panel history-filter" method="get" action="/hosting-activity"><label for="history-profile">Hosting account</label><select id="history-profile" name="profile"><option value="">All accounts</option>${profiles.map((name) => html`<option${attr("value", name)}${name === profile ? attr("selected", "") : false}>${name}</option>`)}</select><button class="button secondary" type="submit">Apply</button></form><section class="how-to-card">${attention.length ? html`<p class="field-help">Needs attention (${attention.length}) · See the status beside each action below.</p>` : false}${entries.length ? html`<div class="history-requests">${historyCards(entries)}</div>` : html`<p>No hosting actions yet.</p>`}<details class="history-help"><summary>Technical report</summary><p>Refresh reads local history only; it does not check the provider or repeat operations. To check a push, open its job.</p><p>Up to 500 requests are kept; unresolved work is retained. WordPress actions through Novamira CLI and changes made outside Novamira HQ are not included. A failed workflow does not undo its earlier requests.</p>${
     entries.length
       ? html`<button class="button secondary" type="button"${ds.on("click", copyReport("history-copy-report", "history-copy-status"))}>Copy report</button><span id="history-copy-status" role="status" aria-live="polite"></span><pre id="history-copy-report" class="code-output">${entries
           .map((entry) =>

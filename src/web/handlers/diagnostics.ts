@@ -57,6 +57,7 @@ import { ALL_PROFILES_SENTINEL } from "../signals.js";
 import type { SseStream } from "../sse.js";
 import { renderDiagnosticsOutput } from "../views/diagnostics.js";
 import type { DashboardNotice } from "../views/types.js";
+import { shareableDiagnostics } from "../services/shareable-diagnostics.js";
 
 /**
  * Go's `patchDiagnosticsOutput` (`server.go:908-912`): the panel first, the
@@ -68,8 +69,9 @@ export function patchDiagnosticsOutput(
   stream: SseStream,
   notice: DashboardNotice,
   body: string,
+  shareable?: string,
 ): void {
-  stream.patchElements(renderDiagnosticsOutput(notice, body), {
+  stream.patchElements(renderDiagnosticsOutput(notice, body, shareable), {
     selectorId: "diagnostics-output",
     mode: "outer",
   });
@@ -107,6 +109,7 @@ export function createDiagnosticsDoctorHandler(
           stream,
           { level: "ok", message: "Doctor report generated." },
           pretty(report),
+          pretty(shareableDiagnostics(report)),
         );
       } catch (error) {
         const cliError = asCliError(error);

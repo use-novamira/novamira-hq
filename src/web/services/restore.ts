@@ -58,12 +58,27 @@ export function backupChoices(value: unknown): { id: string; label: string }[] {
       if (typeof id === "string" || typeof id === "number") {
         const date =
           row.created_at ?? row.createdAt ?? row.timestamp ?? row.date;
-        entries.set(
-          String(id),
-          row.kind === "site_version"
-            ? `${typeof date === "string" && date ? `${date} · ` : ""}${typeof row.name === "string" ? row.name : "Site version"} · ID ${String(id)}`
-            : `${String(id)}${typeof date === "string" ? ` · ${date}` : ""}`,
-        );
+        const parsed =
+          typeof date === "number" && Number.isFinite(date)
+            ? new Date(date)
+            : typeof date === "string" && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(date)
+              ? new Date(date)
+              : null;
+        const label =
+          parsed && Number.isFinite(parsed.getTime())
+            ? new Intl.DateTimeFormat("en-GB", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+                timeZone: "UTC",
+                hourCycle: "h23",
+              }).format(parsed) + " UTC"
+            : typeof date === "string" && date
+              ? date
+              : `Backup ${String(id)}`;
+        entries.set(String(id), label);
       }
     }
     for (const [key, child] of Object.entries(row))
@@ -106,9 +121,7 @@ export function createRestoreService(
     if (
       !Array.isArray(caps) ||
       !(
-        create
-          ? ["backups.create"]
-          : ["backups.list", "backups.create", "backups.restore"]
+        create ? ["backups.create"] : ["backups.list", "backups.restore"]
       ).every((name) =>
         caps.some((c: unknown) => {
           const entry = asRecord(c);
