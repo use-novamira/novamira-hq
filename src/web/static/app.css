@@ -238,6 +238,9 @@ select {
 .sidebar-about { color: rgba(255,255,255,.7); font-size: 12px; text-decoration: none; padding: 8px 0; }
 .sidebar-about:hover, .sidebar-about[aria-current="page"] { color: var(--gold); }
 .sidebar-about:focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
+.sidebar-foot { gap: 2px; padding-top: 12px; }
+.sidebar-about-row { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 8px; }
+.sidebar-version { color: rgba(255,255,255,.5); font-size: 10px; line-height: 1.4; white-space: nowrap; }
 
 .sidebar-legal {
   display: grid;

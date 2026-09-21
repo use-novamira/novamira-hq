@@ -49,12 +49,14 @@ test("About displays the running version, attribution, license and fixed links",
   );
 });
 
-test("sidebar footer contains App updates and About instead of version and legal text", () => {
+test("sidebar footer contains App updates, About and the actual app version", () => {
   const markup = renderHtml(renderSidebar({ version: "9.8.7-test" }, "about"));
   assert.ok(
     markup.includes('class="sidebar-about" href="/about" aria-current="page"'),
   );
-  assert.ok(!markup.includes("9.8.7-test"));
+  assert.ok(
+    markup.includes('<small class="sidebar-version">v9.8.7-test</small>'),
+  );
   const footer = markup.match(/<div class="sidebar-foot">(.*?)<\/div>/s)?.[0];
   assert.ok(footer.includes('href="/updates"'));
   assert.ok(!markup.includes("AGPL-3.0-or-later"));

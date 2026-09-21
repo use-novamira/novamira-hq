@@ -1575,6 +1575,7 @@ form to itself and no page reloads.
   Hosting sites offer Hide from list, covering all environments of that site.
   Visibility is a browser-local preference keyed by hosting profile and provider site ID,
   persisted in localStorage for that dashboard origin, not in CLI storage or at the provider.
+  The sidebar footer displays the running application's version beside About.
   Show hidden sites reveals them with Restore to list; clearing browser storage resets
   these preferences. Hiding never logs out, deletes a profile, or changes the site.
   Configure push is a secondary environment-menu action, never an immediate push.

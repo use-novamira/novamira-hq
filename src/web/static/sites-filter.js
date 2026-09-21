@@ -8,6 +8,7 @@
   var hiddenSites = new Set();
   var COLLAPSED_KEY = "novamira-hq.collapsed-site-groups.v1";
   var collapsedGroups = new Set();
+  var expandedGroups = new Set();
   try {
     var storedCollapsed = JSON.parse(localStorage.getItem(COLLAPSED_KEY) || "[]");
     if (Array.isArray(storedCollapsed)) collapsedGroups = new Set(storedCollapsed.filter(function (v) { return typeof v === "string"; }).slice(0, 10000));
@@ -113,6 +114,9 @@
   function paginate() {
     expandAll();
     document.querySelectorAll("#sites-result .site-grid").forEach(function (grid) {
+      var group = grid.closest("details.inventory-group[id]");
+      var key = group ? group.id : grid;
+      if (expandedGroups.has(key)) return;
       var all = Array.prototype.slice.call(grid.children).filter(function (c) {
         return c.classList && c.classList.contains("site-row") && !c.classList.contains("sf-hidden");
       });
@@ -125,6 +129,7 @@
       btn.textContent = "Show " + (all.length - CAP) + " more";
       btn.addEventListener("click", function () {
         pauseObserver(function () {
+          expandedGroups.add(key);
           all.forEach(function (row) { row.classList.remove("sf-capped"); });
           btn.remove();
         });
