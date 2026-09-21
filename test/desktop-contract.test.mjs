@@ -76,13 +76,14 @@ test("desktop shell pins HQ's runtime dependencies at package.json's ranges", ()
   assert.equal(denoConfig.version, manifest.version);
   for (const [name, range] of Object.entries(manifest.dependencies)) {
     assert.equal(
-      denoConfig.imports[name],
-      `npm:${name}@${range}`,
+      denoConfig.imports[name === "@novamira/cli" ? `${name}/entry` : name],
+      `npm:${name}@${range}${name === "@novamira/cli" ? "/entry" : ""}`,
       `${name} must be mapped to the npm package at package.json's range`,
     );
   }
   const extra = Object.keys(denoConfig.imports).filter(
-    (name) => !(name in manifest.dependencies),
+    (name) =>
+      !(name in manifest.dependencies) && name !== "@novamira/cli/entry",
   );
   assert.deepEqual(extra, ["@webview/webview"]);
   assert.match(
@@ -129,7 +130,14 @@ test("desktop shell runs HQ's own dashboard or MCP entry point", () => {
     code,
     /new URL\("\.\.\/dist\/mcp\/main\.js", import\.meta\.url\)/,
   );
-  assert.match(code, /await mcpMain\(Deno.args.slice\(1\)\)/);
+  assert.match(
+    code,
+    /await mcpMain\(Deno.args.slice\(1\), undefined, undefined,/,
+  );
+  assert.ok(
+    code.indexOf('Deno.args[0] === "--site-cli"') <
+      code.indexOf('Deno.args[0] === "--mcp"'),
+  );
   // Re-spawns itself, never a `novamira-hq` or `node` found on PATH.
   assert.match(code, /new Deno\.Command\(Deno\.execPath\(\)/);
   assert.ok(!/"node"|"novamira-hq"|"npx"/.test(code));

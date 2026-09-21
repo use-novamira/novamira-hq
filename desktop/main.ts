@@ -33,6 +33,7 @@ import {
   prepareCommandPath,
 } from "./runtime.ts";
 import { installMacMenus } from "./macos-menu.ts";
+import process from "node:process";
 
 const SERVE_FLAG = "--serve";
 const WINDOW_TITLE = "Novamira HQ";
@@ -44,25 +45,54 @@ interface DashboardEnvelope {
   readonly error?: { readonly message?: unknown };
 }
 
-if (Deno.args[0] === "--mcp") {
+function siteCliLaunch() {
+  return {
+    command: Deno.execPath(),
+    prefixArgs: [...serverArgs(), "--site-cli"],
+  };
+}
+
+if (Deno.args[0] === "--site-cli") {
+  const { main } = await import("@novamira/cli/entry");
+  Deno.exit(
+    await main(Deno.args.slice(1), undefined, undefined, {
+      managed: {
+        updateHint: "Update Novamira HQ to update its bundled site CLI.",
+      },
+    }),
+  );
+} else if (Deno.args[0] === "--mcp") {
   await prepareCommandPath();
   const specifier = new URL("../dist/mcp/main.js", import.meta.url).href;
   const { mcpMain } = (await import(specifier)) as {
-    mcpMain(argv: readonly string[]): Promise<void>;
+    mcpMain(
+      argv: readonly string[],
+      streams: undefined,
+      environment: undefined,
+      overrides: {
+        siteCliLaunch: ReturnType<typeof siteCliLaunch>;
+        distribution: "desktop";
+        mcpLaunch: { command: string; args: string[] };
+      },
+    ): Promise<void>;
   };
-  await mcpMain(Deno.args.slice(1));
+  await mcpMain(Deno.args.slice(1), undefined, undefined, {
+    siteCliLaunch: siteCliLaunch(),
+    distribution: "desktop",
+    mcpLaunch: { command: Deno.execPath(), args: [...serverArgs(), "--mcp"] },
+  });
 } else if (Deno.args[0] === "--cli") {
   // Signed terminal entry point: same commands and credential backend as the
   // dashboard, without opening a window or exposing a raw-secret bridge.
   await prepareCommandPath();
   const specifier = new URL("../dist/main.js", import.meta.url).href;
   const { main } = (await import(specifier)) as typeof import("./hq.d.ts");
-  Deno.exit(
-    await main(Deno.args.slice(1), undefined, undefined, {
-      distribution: "desktop",
-      mcpLaunch: { command: Deno.execPath(), args: [...serverArgs(), "--mcp"] },
-    }),
-  );
+  // Drain integration's referenced process-tree kill escalation before exit.
+  process.exitCode = await main(Deno.args.slice(1), undefined, undefined, {
+    distribution: "desktop",
+    siteCliLaunch: siteCliLaunch(),
+    mcpLaunch: { command: Deno.execPath(), args: [...serverArgs(), "--mcp"] },
+  });
 } else if (Deno.args[0] === SERVE_FLAG) {
   await serve();
 } else {
@@ -86,6 +116,7 @@ async function serve(): Promise<void> {
     undefined,
     {
       distribution: "desktop",
+      siteCliLaunch: siteCliLaunch(),
       mcpLaunch: { command: Deno.execPath(), args: [...serverArgs(), "--mcp"] },
     },
   );

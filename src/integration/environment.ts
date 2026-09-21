@@ -7,6 +7,7 @@ export function siteCliEnvironment(
   platform: NodeJS.Platform = process.platform,
 ): NodeJS.ProcessEnv {
   const result = { ...environment };
+  result.NOVAMIRA_UPDATE_CHECK = "0";
   // An explicitly empty PATH is an intentional isolated environment.
   if (platform === "darwin" && environment.PATH !== "") {
     const entries = (environment.PATH ?? "").split(":").filter(Boolean);

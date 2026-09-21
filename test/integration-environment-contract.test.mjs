@@ -7,17 +7,14 @@ import { siteCliEnvironment } from "../dist/integration/environment.js";
 import { createSiteCliResolver } from "../dist/integration/resolve.js";
 import { envelopeReason } from "../dist/integration/classify.js";
 
-test("Finder PATH resolves the CLI and supplies the same directories for env node", async () => {
+test("Finder PATH supports explicit script overrides without global CLI discovery", async () => {
   const environment = { PATH: "/usr/bin:/bin:/usr/sbin:/sbin" };
   const resolve = createSiteCliResolver({
     environment,
     platform: "darwin",
     isFile: async (path) => path === "/usr/local/bin/novamira",
   });
-  assert.deepEqual(await resolve(), {
-    command: "/usr/local/bin/novamira",
-    prefixArgs: [],
-  });
+  assert.equal(await resolve(), undefined);
   const child = siteCliEnvironment(environment, "darwin");
   assert.ok(child.PATH.split(":").includes("/usr/local/bin"));
   assert.ok(child.PATH.split(":").includes("/opt/homebrew/bin"));

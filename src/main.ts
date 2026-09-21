@@ -54,6 +54,8 @@ import {
 import { VERSION } from "./version.js";
 import { HistoryStore, type HistoryChannel } from "./history/index.js";
 import { historyClient } from "./history/client.js";
+import type { SiteCliResolution } from "./integration/resolve.js";
+import { forwardSiteCli } from "./integration/forward.js";
 
 /**
  * The version literal moved to `src/version.ts` so `src/provisioning/` can
@@ -94,6 +96,7 @@ export interface RuntimeEnvironment extends PathEnvironment {
  * gets the real, complete provider registry.
  */
 export interface MainOverrides {
+  readonly siteCliLaunch?: SiteCliResolution;
   readonly dashboard?: import("./cli/dashboard.js").DashboardCommandOverrides;
   readonly mcpLaunch?: McpLaunch;
   readonly distribution?: "npm" | "desktop";
@@ -190,6 +193,16 @@ export async function main(
   };
 
   try {
+    const resolveSiteCli = createSiteCliResolver({
+      environment,
+      platform: process.platform,
+      isFile: nodeIsFile,
+      ...(overrides.siteCliLaunch === undefined
+        ? {}
+        : { packagedTarget: overrides.siteCliLaunch }),
+    });
+    if (argv[0] === "site-cli")
+      return await forwardSiteCli(argv.slice(1), resolveSiteCli, environment);
     const paths = platformPaths(environment);
     const security = defaultFileSecurity();
     // Exactly one lock manager per process: it rejects re-entrant acquisition
@@ -278,9 +291,7 @@ export async function main(
       });
 
     const handlers = createCommandHandlers({
-      ...(overrides.dashboard === undefined
-        ? {}
-        : { dashboard: overrides.dashboard }),
+      dashboard: { resolveSiteCli, ...overrides.dashboard },
       distribution: overrides.distribution ?? "npm",
       mcpConnection: createMcpConnectionService(
         overrides.mcpLaunch ?? DEFAULT_MCP_LAUNCH,
@@ -304,11 +315,7 @@ export async function main(
       // is the only place HQ runs `novamira`, so there is one of these and the
       // doctor takes it rather than opening a second one.
       probeSiteCli: createSiteCliProbe({
-        resolve: createSiteCliResolver({
-          environment,
-          platform: process.platform,
-          isFile: nodeIsFile,
-        }),
+        resolve: resolveSiteCli,
         spawn: nodeSpawnChild,
         environment,
       }),

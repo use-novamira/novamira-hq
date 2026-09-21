@@ -9,12 +9,12 @@
  * name and config path. Under the boundary rule none of that exists: HQ never
  * holds a WordPress site token, never calls a REST route on a configured site's
  * behalf, and never proxies an Ability. What it emits instead is the one
- * command the operator runs next, on the separate `novamira` CLI, which is the
+ * command the operator runs next, through `novamira-hq site-cli`, which is the
  * tool that does hold the credential.
  *
  * Both renderings come from one {@link Handoff} so the human line and the JSON
- * `next_step` cannot drift. `command` is argv with no shell in it, so Phase 6's
- * dashboard can spawn it verbatim; `commandLine` is the copyable fallback.
+ * `next_step` cannot drift. `command` is the public forwarding argv;
+ * dashboard actions use the integration resolver. `commandLine` is copyable.
  *
  * `novamira auth login <url>` carries NO `--name` and NO `--no-open`. Profile
  * naming belongs to the site CLI (it is the tool that owns the profile), and
@@ -24,11 +24,11 @@
 import type { NovamiraSetupResult } from "./setup.js";
 import { redactText } from "../output/redact.js";
 
-/** The separate CLI that owns the site credential. HQ only prints its name. */
-export const SITE_CLI_EXECUTABLE = "novamira";
+/** Public HQ command forwarding to the child that owns site credentials. */
+export const SITE_CLI_EXECUTABLE = "novamira-hq";
 
 export interface Handoff {
-  /** argv, no shell. The dashboard's Connect action spawns this verbatim. */
+  /** Public terminal argv, no shell. */
   readonly command: readonly string[];
   /** The copyable one-line fallback. */
   readonly commandLine: string;
@@ -36,7 +36,7 @@ export interface Handoff {
 
 /** `novamira auth login <url>`. */
 export function connectHandoff(siteUrl: string): Handoff {
-  const command = [SITE_CLI_EXECUTABLE, "auth", "login", siteUrl];
+  const command = [SITE_CLI_EXECUTABLE, "site-cli", "auth", "login", siteUrl];
   return { command, commandLine: command.join(" ") };
 }
 

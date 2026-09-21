@@ -48,6 +48,9 @@ output, configuration, and security contract.
   Managed CLI invocations suppress update notices and independent self-update.
   npm and desktop must ship the same exact public CLI release and required data;
   desktop uses its embedded `--site-cli` role, not an assumed Node executable.
+  The current bundled release is `@novamira/cli@1.3.0`; update the npm and Deno
+  pins and integrity locks together. Only integration's child entry and desktop's
+  site-CLI role may import the public `@novamira/cli/entry` export.
 - `src/skills/` is read-only and imports only Node builtins and `errors.js`.
   Skill registration belongs to `npx skills add`; site guidance belongs to the
   site CLI. Hosting skill guidance stops at `novamira-hq site-cli auth login`.

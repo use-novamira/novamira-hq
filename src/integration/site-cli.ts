@@ -5,8 +5,8 @@
  * The site CLI's *public* v1 surface, as HQ consumes it: the exact argv of the
  * two commands, the child environment, and the validators for the two payloads.
  *
- * **The boundary this file sits on.** `@novamira/cli` is an optional
- * integration — never imported, never a runtime, package or peer dependency.
+ * **The boundary this file sits on.** The bundled CLI runs in a child process;
+ * only the dedicated launch entry imports its public callable entry point.
  * HQ never reads the site CLI's configuration file, its profile store, its
  * credential store, its keychain records, or `NOVAMIRA_HOME`. The integration's
  * only inputs are the stdout of two child processes HQ spawns itself, and its

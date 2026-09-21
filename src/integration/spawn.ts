@@ -56,6 +56,7 @@
  */
 
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { constants } from "node:os";
 
 export interface ChildInvocation {
   /** An executable path or a bare name resolved from `PATH`. Never a command line. */
@@ -69,6 +70,8 @@ export interface ChildInvocation {
   readonly signal: AbortSignal;
   /** Bounded JSON input for a non-interactive site operation; never inherited. */
   readonly input?: string;
+  /** Public terminal forwarding: inherit all streams without buffering output. */
+  readonly inheritStdio?: boolean;
 }
 
 /**
@@ -149,11 +152,13 @@ export const nodeSpawnChild: SpawnChild = (invocation) =>
         shell: false,
         windowsHide: true,
         detached: true,
-        stdio: [
-          invocation.input === undefined ? "ignore" : "pipe",
-          "pipe",
-          "pipe",
-        ],
+        stdio: invocation.inheritStdio
+          ? "inherit"
+          : [
+              invocation.input === undefined ? "ignore" : "pipe",
+              "pipe",
+              "pipe",
+            ],
         env: invocation.env,
       });
     } catch (error: unknown) {
@@ -282,7 +287,13 @@ export const nodeSpawnChild: SpawnChild = (invocation) =>
     // delivered to the whole tree, and a pipe can only stay open while a tree
     // member still lives — so the forced-kill escalation always ends in a
     // `close`, never in a promise held open by orphaned descendants.
-    child.once("close", (code: number | null) => {
-      finish(terminationKind ?? "exited", code);
-    });
+    child.once(
+      "close",
+      (code: number | null, signal: NodeJS.Signals | null) => {
+        finish(
+          terminationKind ?? "exited",
+          code ?? (signal === null ? null : 128 + constants.signals[signal]),
+        );
+      },
+    );
   });

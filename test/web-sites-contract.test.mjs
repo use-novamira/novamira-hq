@@ -833,11 +833,19 @@ test("8: the four connection states render their documented pill and actions", a
   assert.ok(!markup.includes('<span class="pill">Not connected</span>'));
   assert.ok(markup.includes(">Connect</span>"));
   assert.ok(markup.includes(">Connection not verified</span>"));
-  assert.ok(markup.includes("novamira auth login https://env-c.example.com"));
+  assert.ok(
+    markup.includes(
+      "novamira-hq site-cli auth login https://env-c.example.com",
+    ),
+  );
   assert.ok(markup.includes("/_dashboard/connect?url="));
   // `connected` offers nothing; the Setup CTA belongs to the two unconnected
   // states only.
-  assert.ok(!markup.includes("novamira auth login https://env-a.example.com"));
+  assert.ok(
+    !markup.includes(
+      "novamira-hq site-cli auth login https://env-a.example.com",
+    ),
+  );
 
   // With the site CLI absent every cell is Unknown, every Connect is disabled,
   // and the install hint is the only sentence on the page.

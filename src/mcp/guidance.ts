@@ -10,7 +10,7 @@ This guide applies to Claude Desktop, Claude Code and every other MCP client.
 You do not need a terminal or a separately installed skill to use these tools.
 
 Inventory
-- Start with novamira_hq_sites_list for the complete available inventory. It reads WordPress site profiles through the optional Novamira CLI and inventories every configured hosting account, including environments.
+- Start with novamira_hq_sites_list for the complete available inventory. It reads WordPress site profiles through the bundled Novamira CLI and inventories every configured hosting account, including environments.
 - Results are grouped by source, not deduplicated by name. An entry may occur in both sources. Preserve profile names and provider IDs for subsequent tool calls; compare exact URLs/origins before describing entries as the same site, and do not assume different domains are aliases.
 - Display URLs prominently alongside names. Hosting discovery does not imply WordPress authorization. If a source fails, explain that the listing is partial; never say that its sites do not exist.
 - For an explicitly hosting-only request use hosting_profiles_list and hosting_sites_list. For connected WordPress profiles only use wordpress_sites_list. Empty hosting accounts do not mean there are no connected sites.

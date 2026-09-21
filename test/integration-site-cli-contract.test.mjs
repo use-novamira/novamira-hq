@@ -698,7 +698,7 @@ test("a refresh writes nothing and carries no child output", async () => {
   }
 });
 
-test("the resolver honours the override, PATH, the Windows shim and nothing found", async () => {
+test("the resolver prefers explicit executables and packaged targets without PATH fallback", async () => {
   const override = createSiteCliResolver({
     environment: {
       NOVAMIRA_HQ_SITE_CLI: "/opt/novamira/bin/novamira",
@@ -712,74 +712,52 @@ test("the resolver honours the override, PATH, the Windows shim and nothing foun
     prefixArgs: [],
   });
 
-  const posix = createSiteCliResolver({
-    environment: { PATH: "/empty:/usr/local/bin" },
+  const packagedTarget = {
+    command: "C:\\Program Files\\HQ.exe",
+    prefixArgs: ["--site-cli"],
+  };
+  const packaged = createSiteCliResolver({
+    environment: { PATH: "/fake/global" },
+    platform: "win32",
+    isFile: async () => {
+      throw new Error("no probing");
+    },
+    packagedTarget,
+  });
+  assert.deepEqual(await packaged(), packagedTarget);
+  for (const name of [
+    "novamira.cmd",
+    "novamira.ps1",
+    "novamira.bat",
+    "novamira",
+  ]) {
+    const shim = createSiteCliResolver({
+      environment: { NOVAMIRA_HQ_SITE_CLI: name },
+      platform: "win32",
+      isFile: async () => true,
+      packagedTarget,
+    });
+    assert.equal(await shim(), undefined);
+  }
+  const native = createSiteCliResolver({
+    environment: { NOVAMIRA_HQ_SITE_CLI: "C:\\Other CLI\\site.exe" },
+    platform: "win32",
+    isFile: async () => true,
+    packagedTarget,
+  });
+  assert.deepEqual(await native(), {
+    command: "C:\\Other CLI\\site.exe",
+    prefixArgs: [],
+  });
+  const damaged = createSiteCliResolver({
+    environment: { PATH: "/usr/bin" },
     platform: "linux",
-    isFile: async (candidate) => candidate === "/usr/local/bin/novamira",
+    isFile: async () => true,
+    resolveEntry: () => {
+      throw new Error("missing export");
+    },
   });
-  assert.deepEqual(await posix(), {
-    command: "/usr/local/bin/novamira",
-    prefixArgs: [],
-  });
-
-  // The layout `npm i -g @novamira/cli` actually writes on Windows: three shims
-  // side by side, the *extensionless* one first in the probe order. It is a
-  // POSIX `sh` script, not an executable image, so returning it would send
-  // `CreateProcess` a file it cannot run and the `.cmd` fallback below — the
-  // reason this whole branch exists — would never be reached.
-  const shimDirectory = "C:\\Users\\op\\AppData\\Roaming\\npm";
-  const entry = `${shimDirectory}\\node_modules\\@novamira\\cli\\dist\\index.js`;
-  const npmShims = new Set([
-    `${shimDirectory}\\novamira`,
-    `${shimDirectory}\\novamira.cmd`,
-    `${shimDirectory}\\novamira.ps1`,
-    entry,
-  ]);
-  const windowsShim = createSiteCliResolver({
-    environment: { Path: shimDirectory, PATHEXT: ".COM;.EXE;.BAT;.CMD" },
-    platform: "win32",
-    execPath: "C:\\Program Files\\nodejs\\node.exe",
-    isFile: async (candidate) => npmShims.has(candidate),
-  });
-  assert.deepEqual(await windowsShim(), {
-    command: "C:\\Program Files\\nodejs\\node.exe",
-    prefixArgs: [entry],
-  });
-
-  // The same layout with the entry script missing resolves to nothing at all,
-  // rather than to a shim nothing can spawn.
-  const windowsNoEntry = createSiteCliResolver({
-    environment: { Path: shimDirectory, PATHEXT: ".COM;.EXE;.BAT;.CMD" },
-    platform: "win32",
-    execPath: "C:\\Program Files\\nodejs\\node.exe",
-    isFile: async (candidate) => npmShims.has(candidate) && candidate !== entry,
-  });
-  assert.equal(await windowsNoEntry(), undefined);
-
-  // The second layout: `bin` beside `lib`, which nvm-windows and npm's default
-  // prefix use.
-  const libEntry = `C:\\Users\\op\\AppData\\Roaming\\lib\\node_modules\\@novamira\\cli\\dist\\index.js`;
-  const windowsLib = createSiteCliResolver({
-    environment: { Path: shimDirectory, PATHEXT: ".COM;.EXE;.BAT;.CMD" },
-    platform: "win32",
-    execPath: "C:\\Program Files\\nodejs\\node.exe",
-    isFile: async (candidate) =>
-      candidate === `${shimDirectory}\\novamira` || candidate === libEntry,
-  });
-  assert.deepEqual(await windowsLib(), {
-    command: "C:\\Program Files\\nodejs\\node.exe",
-    prefixArgs: [libEntry],
-  });
-
-  const windowsExe = createSiteCliResolver({
-    environment: { Path: shimDirectory },
-    platform: "win32",
-    isFile: async (candidate) => candidate === `${shimDirectory}\\novamira.exe`,
-  });
-  assert.deepEqual(await windowsExe(), {
-    command: `${shimDirectory}\\novamira.exe`,
-    prefixArgs: [],
-  });
+  assert.equal(await damaged(), undefined);
 
   const missing = createSiteCliResolver({
     environment: { PATH: "/usr/bin" },
@@ -1213,10 +1191,11 @@ test("the dashboard command builds the service from the real seams", async () =>
     [CLI.command, CLI.command],
   );
 
-  // The default seams, driven with an empty `PATH` so the real resolver finds
-  // nothing: no child starts, and the answer is the degraded state with its
-  // install hint rather than an error or a switched-off feature.
-  const real = createDashboardIntegration({ PATH: "" });
+  // A missing explicit override must degrade rather than fall back to the bundle.
+  const real = createDashboardIntegration({
+    PATH: "",
+    NOVAMIRA_HQ_SITE_CLI: "/missing-hq-contract-cli",
+  });
   const absent = await real.connectionStates([QUERY]);
   assert.deepEqual(absent.byKey.get(QUERY.key), {
     state: "unavailable",

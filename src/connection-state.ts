@@ -138,7 +138,7 @@ export const SITE_CLI_OVERRIDE_ENV = "NOVAMIRA_HQ_SITE_CLI";
  * not a diagnostic.
  */
 export const SITE_CLI_INSTALL_HINT =
-  "Install the Novamira site CLI (npm install -g @novamira/cli) to see connection state, " +
+  "Repair or update Novamira HQ to restore its bundled site CLI and connection state, " +
   `or set ${SITE_CLI_OVERRIDE_ENV} to its executable.`;
 
 /**
@@ -151,12 +151,12 @@ const UNAVAILABLE_HINTS: Readonly<Record<UnavailableReason, string>> = {
     "The site connection is saved. The CLI handles token renewal when used; token expiry alone does not require signing in again. Reachability has not been verified.",
   cli_absent: SITE_CLI_INSTALL_HINT,
   cli_incompatible:
-    "Update the Novamira site CLI: the installed version does not support the commands Novamira HQ uses.",
+    "Update Novamira HQ or its explicitly selected external site CLI: this CLI version does not support the required commands.",
   cli_timeout: "The Novamira site CLI did not answer in time; try again.",
   cli_failed:
-    "The Novamira site CLI could not be run; check the installation and try again.",
+    "The site CLI could not be run. Repair or update Novamira HQ, or check its explicit external CLI override.",
   malformed_output:
-    "The Novamira site CLI returned output Novamira HQ could not read; check that its version is current.",
+    "The site CLI returned unreadable output. Repair or update Novamira HQ, or check its explicit external CLI override.",
   output_truncated:
     "The Novamira site CLI returned more output than Novamira HQ reads; check that its version is current.",
   deadline_exceeded:

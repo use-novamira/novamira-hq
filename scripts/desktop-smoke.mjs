@@ -20,7 +20,7 @@
 // death reaches the server, and a server that does not exit from it is one that
 // would outlive its window.
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { Buffer } from "node:buffer";
 import { get } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -30,6 +30,8 @@ import { argv, env, exit, platform, stderr, stdout } from "node:process";
 import { clearTimeout, setTimeout } from "node:timers";
 import { fileURLToPath, URL } from "node:url";
 import { defaultFileSecurity } from "../dist/config/file-security.js";
+import { verifySiteCli } from "./site-cli-acceptance.mjs";
+import { readFile } from "node:fs/promises";
 
 const STARTUP_TIMEOUT_MS = 90_000;
 const SHUTDOWN_TIMEOUT_MS = 30_000;
@@ -47,6 +49,10 @@ const executable =
   );
 
 const home = await mkdtemp(join(tmpdir(), "novamira-hq-smoke-"));
+const systemPath =
+  platform === "win32"
+    ? `${env.SystemRoot}\\System32;${env.SystemRoot}\\System32\\WindowsPowerShell\\v1.0`
+    : "";
 let child;
 let mcpChild;
 try {
@@ -54,12 +60,45 @@ try {
   // HQ deliberately rejects an existing config root with inherited access.
   // Secure our own throwaway root; never weaken the application's checks.
   await defaultFileSecurity().secureDirectory(home);
+  const spawned = spawnSync(
+    fileURLToPath(
+      new URL(
+        `../dist-desktop/spawn-acceptance${platform === "win32" ? ".exe" : ""}`,
+        import.meta.url,
+      ),
+    ),
+    [],
+    {
+      encoding: "utf8",
+      timeout: 30_000,
+      env: { ...env, PATH: systemPath, DENO_DIR: join(home, "spawn-cache") },
+    },
+  );
+  if (spawned.status !== 0)
+    throw new Error(spawned.stderr || "Embedded spawn acceptance failed");
+  stdout.write(spawned.stdout);
+  const manifest = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  );
+  await verifySiteCli(
+    resolve(executable),
+    ["--cli", "site-cli"],
+    home,
+    manifest.dependencies["@novamira/cli"],
+    "deno",
+  );
+  stdout.write(
+    "desktop-smoke: bundled CLI assets, OAuth loopback, PKCE, profiles, and mocked site operation passed without external runtimes\n",
+  );
   child = spawn(resolve(executable), ["--serve"], {
     // Piped and never written to, exactly as the window holds it.
     stdio: ["pipe", "pipe", "inherit"],
     env: {
       ...env,
       NOVAMIRA_HQ_HOME: home,
+      NOVAMIRA_HOME: join(home, "site"),
+      PATH: systemPath,
+      DENO_DIR: join(home, "empty-runtime-cache"),
       // A smoke test must not reach the npm registry, and the dashboard command
       // already suppresses the check; this says so twice.
       NOVAMIRA_HQ_UPDATE_CHECK: "0",
@@ -93,7 +132,14 @@ try {
   stdout.write(`desktop-smoke: stopped with ${describeExit(code)}\n`);
   mcpChild = spawn(resolve(executable), ["--mcp"], {
     stdio: ["pipe", "pipe", "inherit"],
-    env: { ...env, NOVAMIRA_HQ_HOME: home, NOVAMIRA_HQ_UPDATE_CHECK: "0" },
+    env: {
+      ...env,
+      PATH: systemPath,
+      DENO_DIR: join(home, "empty-runtime-cache"),
+      NOVAMIRA_HOME: join(home, "site"),
+      NOVAMIRA_HQ_HOME: home,
+      NOVAMIRA_HQ_UPDATE_CHECK: "0",
+    },
   });
   const mcpCheck = verifyMcp(mcpChild);
   mcpChild.stdin.end(
@@ -110,6 +156,12 @@ try {
       },
       { jsonrpc: "2.0", method: "notifications/initialized" },
       { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+      {
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: { name: "wordpress_sites_list", arguments: {} },
+      },
     ]
       .map((value) => JSON.stringify(value))
       .join("\n") + "\n",
@@ -154,6 +206,14 @@ function verifyMcp(process_) {
           .map((line) => JSON.parse(line));
         const initialized = replies.find((reply) => reply.id === 1)?.result;
         const listed = replies.find((reply) => reply.id === 2)?.result;
+        const sites = replies.find((reply) => reply.id === 3)?.result;
+        if (
+          !sites ||
+          sites.isError ||
+          JSON.parse(sites.content[0].text).length !== 0
+        ) {
+          throw new Error("The MCP role did not reach the bundled site CLI");
+        }
         if (
           !initialized?.serverInfo ||
           !Array.isArray(listed?.tools) ||

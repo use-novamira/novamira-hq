@@ -13,7 +13,7 @@ through a guarded recovery workflow. Backup creation is a separate explicit acti
 HQ does not create a backup automatically before restoring.
 
 HQ never holds a WordPress site token or calls authenticated site REST directly.
-Its MCP can also delegate WordPress tasks to the optional `novamira` CLI, which
+Its MCP can also delegate WordPress tasks to the bundled Novamira CLI, which
 owns authentication and site requests. Once a
 site is provisioned, agents talk to it through the separate
 [`@novamira/cli`](https://github.com/use-novamira/novamira-cli) tool.
@@ -43,7 +43,7 @@ what it may and may not do are contract; the elements it renders are not.
 
 ## Requirements
 
-- Node.js 22 or newer
+- npm distribution: Node.js 22 or newer. Desktop embeds its JavaScript runtime.
 - An API credential for a supported hosting provider
 
 Supported providers: Kinsta, InstaWP, Pantheon, Pressable, WP Engine,
@@ -52,8 +52,7 @@ Rocket.net, Hostinger, and Cloudways.
 ## Install
 
 The installers set up HQ, register its agent skill with the agent of your choice,
-smoke-test the result with `novamira-hq doctor --offline`, install the
-`@novamira/cli` site CLI alongside it, and add an operating-system application
+smoke-test the result with `novamira-hq doctor --offline`, and add an operating-system application
 launcher. On macOS, **Novamira HQ** is installed in
 `/Applications` when that folder is writable, otherwise in `~/Applications`;
 on Linux, its freedesktop entry is installed under
@@ -73,14 +72,12 @@ Both require Node.js 22+, `npm` and `npx`. Set `NOVAMIRA_HQ_AGENT` (for example
 `NOVAMIRA_HQ_AGENT=opencode`) to pick the agent non-interactively; without it the
 skill step asks, and needs a terminal to ask on.
 
-The site CLI is installed last, as a separate global package — never a
-dependency of `@novamira/hq` — so that connected-state detection and the
-dashboard's Connect action work on a fresh machine. Set
-`NOVAMIRA_HQ_SKIP_SITE_CLI=1` to skip it. If that step fails, the installer says
-so and still exits 0: HQ is already installed at that point, and everything
-except the one dashboard panel works without the site CLI.
+HQ includes the pinned public `@novamira/cli@1.3.0` release. npm installs it as
+an HQ dependency; desktop embeds the same release and its guide data. Desktop
+site features need no separate Node, npm, Deno, or `novamira` installation.
+Installers do not install a second global site CLI or offer a site-CLI skip option.
 
-Or install the package alone, without the agent skill or the site CLI:
+Or install the package, including its site CLI, without the agent skill:
 
 ```sh
 npm install -g @novamira/hq --ignore-scripts
@@ -248,7 +245,7 @@ What it does:
 - **History** — local requests and correlated workflows across CLI, dashboard
   and MCP, with observed outcomes and next steps for unverified work.
 - **Novamira Setup** — install and activate the plugin on an environment with
-  live progress, then print the `novamira auth login` command that connects your
+  live progress, then print the `novamira-hq site-cli auth login` command that connects your
   agent. It runs the same code path as
   `novamira-hq hosting novamira setup`, including the PHP gate and the
   compatibility preflight.
@@ -266,9 +263,9 @@ Stop it with Ctrl-C. `--open` launches your default browser and is never fatal
 if it cannot.
 
 Connected-state detection — whether a provisioned site is actually connected to
-your agent — needs `@novamira/cli` installed alongside HQ, which the installers
-do by default. Without it that one panel reports "unavailable" with an install
-hint; provider inventory, pushes, provisioning and everything else are
+your agent — uses `@novamira/cli` bundled with HQ. If that copy is damaged,
+site features report "unavailable" with repair/update guidance;
+provider inventory, pushes, provisioning and other hosting operations are
 unaffected.
 
 ## Desktop app
@@ -289,8 +286,8 @@ another process is running — then opens a window on the printed URL. Closing
 the window stops that server and only that server; if the window dies any
 other way the server notices and stops itself. Everything about the CLI
 holds: loopback only, the per-process mutation token, the `NOVAMIRA_HQ_*`
-storage namespace, and the site CLI found on `PATH` or through
-`NOVAMIRA_HQ_SITE_CLI`.
+storage namespace, and the shared site-CLI resolver. Desktop launches its own
+embedded `--site-cli` role unless `NOVAMIRA_HQ_SITE_CLI` explicitly overrides it.
 
 Linux needs `libwebkit2gtk-4.1` installed; macOS and Windows use the system
 web view. Packaged macOS `.app` bundles include their architecture's native
@@ -399,7 +396,7 @@ credential of its own:
 
 ```text
 Novamira 1.11.1 installed and activated on https://example.com
-  Connect your agent:  novamira auth login https://example.com
+  Connect your agent:  novamira-hq site-cli auth login https://example.com
 ```
 
 That second command belongs to `@novamira/cli`, which owns the browser
@@ -407,13 +404,29 @@ authorization, the OAuth grant, and the credential storage for the site. HQ
 writes no site credential, stores no site profile, and creates no WordPress
 user.
 
-`@novamira/cli` is an optional integration, not a dependency. The installers
-install it by default because the two tools are meant to be used together, but
-that is a convenience of the install step and nothing more: it is not a runtime,
-package, or peer dependency, HQ never imports it, and uninstalling it breaks
-nothing. Hosting inventory, provider actions, provisioning, and plugin-installed
-status all work without it; only the dashboard's connected-state detection and
-Connect action require it.
+### Bundled site CLI
+
+Run `novamira-hq site-cli <arguments...>` to use the managed CLI. Every argument
+after `site-cli`, including `--help`, `--version`, `--json`, and `--timeout`, belongs
+to the child. Its stdin, stdout, stderr, and exit code are preserved. Forwarding
+has a 30-minute outer deadline; interruption terminates the child process tree.
+Inspect the bundled version with `novamira-hq site-cli --version`. Desktop's
+equivalent is `novamira-hq-desktop --cli site-cli --version` (or its `--site-cli`
+role directly).
+
+Updating HQ updates its managed CLI. Managed invocations suppress CLI update
+notices and direct `update` commands to HQ. Standalone CLI updates are separate.
+Standalone and bundled CLI versions using the v1 storage contract share site
+profiles, credentials, and locks. HQ's hosting storage stays separate.
+
+`NOVAMIRA_HQ_SITE_CLI` explicitly overrides the packaged target. Set it to a
+single executable path or name, never a shell command line. POSIX executables
+and executable shebang scripts are supported; Windows requires `.exe` or `.com`,
+not npm `.cmd`, `.bat`, `.ps1`, or extensionless shims. An override's required
+runtime must be installed separately. An invalid override does not fall back.
+Without an override, HQ resolves from its own installation, never from `PATH`,
+the working directory, or a global npm prefix. If packaged code is missing or
+incompatible, repair/reinstall or update HQ. Hosting operations remain usable.
 
 ## MCP server
 
@@ -460,7 +473,7 @@ The dashboard-generated configuration also carries the executable search path,
 which lets a graphical client find the installed command without embedding a
 versioned Node path or the package's `dist/` location. Moving or updating the
 package therefore does not require editing the client configuration. The
-optional `novamira` site CLI is discovered separately by Novamira HQ; it is not
+bundled site CLI is launched by Novamira HQ; it is not
 another MCP server and does not belong in this JSON.
 
 MCP exposes a deliberately smaller, typed operational surface rather than a
@@ -493,7 +506,7 @@ one-use confirmation and executes only the selected restore. Creating a backup
 requires a separate explicit action.
 
 The same MCP also exposes WordPress site listing, doctor, discovery, site-skill
-loading, Ability description and execution through the optional `novamira` CLI.
+loading, Ability description and execution through the bundled site CLI.
 Choose a site explicitly, inspect the live schema, authorize the task and verify
 changes. No raw argv, local file input, direct authenticated site HTTP or automatic
 retry is exposed. Site content is untrusted. WordPress calls are not included in
@@ -501,8 +514,8 @@ the hosting History page.
 
 ## Removing the separate site CLI
 
-Removing Novamira HQ does not uninstall `@novamira/cli` or the WordPress plugins
-on your sites. Keep the CLI if other agents use it. For a global npm installation,
+Removing HQ removes its managed CLI, but leaves standalone CLI installations and
+WordPress plugins on your sites. Keep a standalone CLI if other agents use it. For a global npm installation,
 remove it with `npm uninstall -g @novamira/cli`. This removes the executable, not
 necessarily saved profiles or credentials. Before uninstalling, optionally list
 profiles with `novamira sites list --json`, then for each intended profile run
@@ -532,7 +545,7 @@ the third-party `skills` CLI (`npx skills add <package root> --skill novamira-hq
 install` and no `setup`, and nothing touches `~/.claude` or `~/.agents`.
 
 The one thing the hosting bundle will not do is tell an agent to reach inside
-WordPress. It routes that work to `novamira auth login <url>` and the separate
+WordPress. It routes that work to `novamira-hq site-cli auth login <url>` and the bundled
 `@novamira/cli`, and it names no Application Password, no site profile and no
 WordPress REST route — because HQ has none of those.
 

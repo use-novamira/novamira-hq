@@ -188,61 +188,12 @@ test("6: the agent skill is registered from the packaged directory, never writte
   );
 });
 
-test("7: the site CLI is installed by default, as a separate global package", () => {
+test("7: installers use HQ's bundled CLI and expose no separate installation switch", () => {
   for (const [name, source] of Object.entries(code)) {
-    assert.ok(source.includes("@novamira/cli"), name);
+    assert.ok(source.includes("novamira-hq site-cli auth login"), name);
     assert.ok(source.includes("--ignore-scripts"), name);
-    // Installed unpinned, like @novamira/hq itself: same publisher, same trust
-    // domain. The exact pin rule is for the third-party `skills` CLI alone.
-    assert.ok(!/@novamira\/cli@/.test(source), name);
-    // Opt-out, so a default-on install is still the user's call.
-    assert.ok(source.includes("NOVAMIRA_HQ_SKIP_SITE_CLI"), name);
-  }
-  assert.match(
-    shell,
-    /if npm install --global --ignore-scripts "\$site_package"; then/,
-    "install.sh",
-  );
-  assert.match(
-    powershell,
-    /& \$npm @\("install", "--global", "--ignore-scripts", \$sitePackage\)/,
-    "install.ps1",
-  );
-});
-
-test("8: a failed site CLI install is reported, never fatal", () => {
-  // HQ is installed and smoke-tested before this step, and its contract is that
-  // `novamira` being absent degrades exactly one dashboard panel. So the
-  // optional integration failing must not fail an install that already worked.
-
-  // install.sh runs under `set -eu`, so the install has to sit in an `if`
-  // condition — a bare command would abort the script.
-  assert.match(code["install.sh"], /if npm install [^\n]*; then\n/);
-  assert.ok(
-    !/^\s*npm install --global --ignore-scripts "\$site_package"\s*$/m.test(
-      code["install.sh"],
-    ),
-  );
-
-  // install.ps1 must not route it through Invoke-Checked, which throws.
-  for (const line of powershell.split("\n")) {
-    if (!line.includes("$sitePackage")) continue;
-    assert.ok(
-      !line.includes("Invoke-Checked"),
-      `install.ps1: the site CLI install must not be checked: ${line}`,
-    );
-  }
-  // …and it catches, because PowerShell 7.4+ throws on a nonzero native exit
-  // under $ErrorActionPreference = "Stop".
-  assert.match(code["install.ps1"], /\$LASTEXITCODE -eq 0/);
-  assert.match(code["install.ps1"], /\}\s*catch\s*\{/);
-
-  // Neither script makes HQ's own success depend on the site CLI, and neither
-  // invokes its executable: HQ smoke-tests HQ.
-  for (const [name, source] of Object.entries(code)) {
-    assert.ok(!/fail "[^"]*@novamira\/cli/.test(source), name);
-    assert.ok(!/Fail "[^"]*\$sitePackage/.test(source), name);
-    assert.ok(!/\bnovamira auth login "\$/.test(source), name);
+    assert.ok(!source.includes("@novamira/cli"), name);
+    assert.ok(!source.includes("NOVAMIRA_HQ_SKIP_SITE_CLI"), name);
   }
 });
 
@@ -279,14 +230,12 @@ test("10: the installers are not shipped inside the package they install", () =>
   // installers' contract depends on both.
   assert.deepEqual(manifest.bin, { "novamira-hq": "dist/index.js" });
   assert.deepEqual(Object.keys(manifest.dependencies).sort(), [
+    "@novamira/cli",
     "@starfederation/datastar-sdk",
     "commander",
   ]);
-  // The installers install the site CLI by default (test 7); that must never
-  // leak back into the manifest. `@novamira/cli` is not a runtime, dev,
-  // optional, peer or bundled dependency, in any field.
+  assert.equal(manifest.dependencies["@novamira/cli"], "1.3.0");
   for (const field of [
-    "dependencies",
     "devDependencies",
     "optionalDependencies",
     "peerDependencies",

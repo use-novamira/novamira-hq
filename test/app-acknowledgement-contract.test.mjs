@@ -61,7 +61,8 @@ test("the app explains setup approval, overwrite risks and independent backups",
     "Push and restore operations can overwrite",
     "backup in a safe location, separate from the site",
     "This acknowledgement does not authorize operations",
-    "Configure and continue",
+    "Continue",
+    "site connection CLI is included",
     "/_dashboard/app/acknowledge",
   ])
     assert.ok(markup.includes(value), value);

@@ -116,10 +116,10 @@ It **writes no credential and stores no profile**. CLI and MCP require no app ac
 HQ provisions; it does not connect. After `hosting novamira setup` succeeds, the next step belongs to a different tool:
 
 ```bash
-novamira auth login https://example.com
+novamira-hq site-cli auth login https://example.com
 ```
 
-`novamira` is `@novamira/cli`, an optional separate install (`npm install -g @novamira/cli`). HQ never holds a site token, never calls a WordPress REST route on a site's behalf, and never proxies an Ability. Do not ask `novamira-hq` to read or change anything inside WordPress.
+`novamira-hq site-cli` launches HQ's pinned `@novamira/cli` in a child process. HQ never holds a site token or calls authenticated WordPress REST directly. Continue site work through the site CLI's own guidance or typed WordPress MCP tools.
 
 ## Complex payloads
 

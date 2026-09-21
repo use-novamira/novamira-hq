@@ -72,6 +72,16 @@ run from moving `latest` or `next` backward.
 
 ## Desktop Assets
 
+HQ pins public `@novamira/cli@1.3.0` in npm and desktop. Publish compatible upstream
+changes before changing that exact pin; never build from a sibling checkout.
+Verify both lockfiles, packaged entry and guide data, legal notices, and compiled
+`--site-cli` acceptance with an empty PATH and fresh runtime cache. Run
+`bun run check`, `bun run pack:inspect`, `bun run package:acceptance`,
+`bun run desktop:check`, and the compiled smoke/acceptance scripts. Platform
+acceptance must exercise dedicated test credentials, mocked site operations,
+OAuth loopback/browser behavior, and descendant cancellation on each target.
+Updating HQ updates the managed CLI; installers must not install a global CLI.
+
 The `desktop` job compiles the Deno shell on `ubuntu-latest` and
 `windows-latest`, runs the compiled executable's `--serve` role before it is
 uploaded, and attaches it to the release the job above created. macOS is a

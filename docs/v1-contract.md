@@ -92,30 +92,49 @@ remain backward compatible with and ships no legacy import.
 | lint / format | ESLint / Prettier |
 | license | AGPL-3.0-or-later |
 | release owner | Ovation S.r.l. through reviewed `use-novamira` GitHub workflows and npm trusted publishing with provenance |
-| runtime dependencies | exactly `commander` and `@starfederation/datastar-sdk` |
+| runtime dependencies | `commander`, `@starfederation/datastar-sdk`, and exact `@novamira/cli@1.3.0` |
 | bundled data | the published tarball contains `dist/`, `skills/` (`novamira-hq`, `core`, `hosting`) and `legal/` |
 | installers | `install.sh` and `install.ps1`, published as GitHub release assets and served from the repository's raw URL; **not** inside the npm tarball |
-| distribution | npm only: no Homebrew formula, no `.deb`, no DMG, no Windows installer, no release-archive download |
+| distribution | npm package and standalone compiled desktop application |
 | release line | release candidates use `1.0.0-rcN`; the first stable public release is `1.0.0` |
 | package acceptance | `bun run package:acceptance` packs the tarball, installs it into a throwaway prefix, and exercises the installed executable offline; it runs in CI on Linux, macOS and Windows, and again in the release job against the published version |
 
 The package has no lifecycle setup, downloaded runtime, required native
 executable or addon, and no native keychain module: OS credential storage uses
-inbox platform commands. `@novamira/cli` is an optional integration and is never
-a runtime, package, or peer dependency.
+inbox platform commands. The pinned site CLI is imported only in its child-process
+entry, never in HQ's hosting, dashboard, provisioning, or MCP parent process.
 
 The `1.0.0-rcN` packages are prereleases of this normative v1 contract, not a
 pre-1.0 compatibility line. Stable v1 begins at `1.0.0`; release-candidate tags
 must not become npm's `latest` dist-tag.
 
-The installers do install `@novamira/cli` by default, as a **separate global npm
-package** installed after HQ itself. That is an install-step convenience and
-changes no other rule in this document: HQ never imports it, it appears in no
-dependency field of `package.json`, and every runtime behavior below that is
-specified to work with `novamira` absent still does. The step is skipped when
-`NOVAMIRA_HQ_SKIP_SITE_CLI` is set, its failure is reported and never fatal —
-HQ is installed and smoke-tested before it runs — and the installers never
-invoke the `novamira` executable.
+Both distributions ship the same pinned public site CLI release. npm resolves its
+supported `@novamira/cli/entry` export from HQ's installation and launches an
+integration-owned wrapper with Node. Desktop embeds the exact npm artifact,
+dependencies and guide data and launches itself with `--site-cli` before its
+window/server roles. Desktop needs no external JavaScript runtime or CLI cache.
+Installers do not separately install a global CLI; the old skip option is removed.
+
+`novamira-hq site-cli <arguments...>` is a raw terminal forwarding grammar.
+`site-cli` must be the first argument; all subsequent arguments and flags belong
+to the child. Child stdin/stdout/stderr and exit codes are preserved without an HQ
+JSON envelope or update notice. The outer deadline is 30 minutes (exit 124);
+SIGINT/SIGTERM terminate the process tree (exit 130/143). Managed CLI `update`
+and `update --check` fail with HQ update guidance before package-manager or
+registry activity. Inspect its version with `novamira-hq site-cli --version`.
+
+The shared resolver is used by terminal, doctor, dashboard, login/profile/site
+operations, and MCP. `NOVAMIRA_HQ_SITE_CLI` takes precedence, with no silent
+fallback if invalid. It names one executable (POSIX executable/shebang script;
+Windows `.exe`/`.com` only), not arguments or a shell command. Windows npm shims
+are unsupported; a desktop executable is never assumed to be Node. Without an
+override, no PATH or global npm search occurs. Missing/incompatible packaged code
+produces repair/update guidance while hosting operations remain available.
+
+HQ updates its managed CLI as part of its own update. Standalone installations
+are untouched and update independently. CLI v1 profiles, credentials, and locks
+are shared between compatible standalone and bundled versions, retaining the
+CLI's existing namespace, separate from HQ storage.
 
 The installers add an operating-system application launcher without privilege
 escalation. On macOS the shell installer creates `/Applications/Novamira HQ.app`
@@ -133,7 +152,7 @@ user's shell `PATH`.
 
 HQ never holds a WordPress site token, never calls a WordPress REST route on a
 configured site's behalf directly. Typed WordPress MCP tools delegate only to
-the optional site CLI through `src/integration/`; that child owns site HTTP and
+the bundled site CLI through `src/integration/`; that child owns site HTTP and
 authentication. The v1 schema has no
 site profiles, HQ issues no Application Password, and HQ never reads the site
 CLI's configuration or credential storage.
@@ -213,7 +232,7 @@ meanings are fixed: `profile_not_found` is a missing local hosting profile or
 saved push, `not_found` is a missing remote provider resource,
 `credential_invalid` covers provider 401/403 and unusable local credential
 records, `provider_unsupported` is an operation a provider deliberately does not
-implement, `integration_unavailable` is the optional `novamira` CLI being
+implement, `integration_unavailable` is the bundled site CLI being
 absent, incompatible, or unusable, and `server_unsupported` is the provisioning
 preflight's verdict that the site itself cannot run the Novamira plugin — its
 PHP version, its WordPress version, the installed plugin's version, its REST
@@ -450,15 +469,16 @@ switch on HQ's behavior:
   `WPE_API_USER_ID`, `ROCKETNET_USERNAME`, `CLOUDWAYS_EMAIL`). WP Engine
   additionally accepts the legacy aliases `WPENGINE_PASSWORD` and
   `WPENGINE_USERNAME` when its primary variables are unset.
-- **`PATH` and, on Windows, `PATHEXT`**, used to resolve the optional `novamira`
-  executable when `NOVAMIRA_HQ_SITE_CLI` is not set.
+- **`PATH`**, used by the OS to launch explicitly selected external executable
+  overrides and platform services. Packaged CLI resolution does not search it.
 
 **HQ never reads the site CLI's variables.** `NOVAMIRA_HOME`,
 `NOVAMIRA_ALLOW_INSECURE_HTTP`, `NOVAMIRA_UPDATE_CHECK` and `NOVAMIRA_REGISTRY`
 have no effect on HQ, are never interpreted, and are never forwarded to a child
 process on HQ's behalf. The one exception is deliberate and narrow: when HQ
 spawns `novamira` through `src/integration/`, that child inherits the ambient
-environment it would have had anyway.
+environment it would have had anyway, with `NOVAMIRA_UPDATE_CHECK=0` to suppress
+independent update notices. Packaged launch entries also select managed mode.
 
 `NOVAMIRA_HQ_AGENT` (with `NOVAMIRA_AGENT` as a fallback) is read by the
 installers, not by `novamira-hq`; it selects the agent `npx skills add`
@@ -725,7 +745,7 @@ run. The published tarball therefore contains `skills/novamira-hq/SKILL.md`,
 `skills/core/SKILL.md` and `skills/hosting/SKILL.md`.
 
 The `hosting` bundle's guidance never describes site access. It names
-`novamira auth login <url>` — the separate `@novamira/cli` — as the step after
+`novamira-hq site-cli auth login <url>` — the bundled `@novamira/cli` — as the step after
 `hosting novamira setup`, and it mentions no Application Password, no site
 profile and no WordPress REST route.
 
@@ -955,7 +975,7 @@ redirect, an oversized body, and every validation failure below are final on the
 first observation.
 
 The document is checked against HQ's own copy of the site CLI's v1 compatibility
-matrix — HQ never imports `@novamira/cli` — and the **first** failing check is
+matrix — provisioning never imports `@novamira/cli` — and the **first** failing check is
 named in `details.check`:
 
 | Check | Requirement |
@@ -1136,9 +1156,9 @@ metadata and all of it is redacted like every other diagnostic.
   },
   "ready": true,
   "next_step": {
-    "tool": "novamira",
-    "command": ["novamira", "auth", "login", "https://example.com"],
-    "command_line": "novamira auth login https://example.com"
+    "tool": "novamira-hq",
+    "command": ["novamira-hq", "site-cli", "auth", "login", "https://example.com"],
+    "command_line": "novamira-hq site-cli auth login https://example.com"
   }
 }
 ```
@@ -1165,7 +1185,7 @@ Human mode prints one block, unstyled and with no glyph:
 
 ```text
 Novamira 1.11.1 installed and activated on https://example.com
-  Connect your agent:  novamira auth login https://example.com
+  Connect your agent:  novamira-hq site-cli auth login https://example.com
 ```
 
 Under `--no-compat-check` the version is unknown, because it is read from the
@@ -1174,7 +1194,7 @@ metadata, and the skip is stated rather than implied:
 ```text
 Novamira installed and activated on https://example.com
   Compatibility not checked (--no-compat-check).
-  Connect your agent:  novamira auth login https://example.com
+  Connect your agent:  novamira-hq site-cli auth login https://example.com
 ```
 
 The two warnings the command can raise, `compatibility_not_checked` and
@@ -1479,7 +1499,7 @@ about a setup run is written to disk. A job records a failure as its `code` and
 `message` only — `details` are never rendered, because a compatibility failure
 carries the whole install record there and the envelope's redaction runs on the
 JSON path alone. The result panel renders what landed on the site and the
-`novamira auth login <url>` handoff; it holds no WordPress credential, username,
+`novamira-hq site-cli auth login <url>` handoff; it holds no WordPress credential, username,
 REST URL or site profile, because HQ produces none of those.
 
 `/_dashboard/diagnostics/doctor` runs the same report as `novamira-hq doctor`,
@@ -1621,7 +1641,7 @@ form to itself and no page reloads.
   Apply actions contact providers.
 - **Novamira Setup** (`/novamira-setup`) — the target panel, the AI-Abilities
   toggle and Start button, the live event log, and, when a run has finished, what
-  landed on the site plus the `novamira auth login` handoff. `?job=<id>` reopens
+  landed on the site plus the `novamira-hq site-cli auth login` handoff. `?job=<id>` reopens
   a run; `?profile=&env=` reopens the most recent run for that environment.
 - **Diagnostics** (`/diagnostics`) — a local Health check and its output panel.
   Hosting history and account-specific available actions belong to Hosting
@@ -1790,7 +1810,7 @@ uses the normal typed nonzero contract.
 `profile.credentials`, `integration.site_cli` and `update.available` can never
 be `fail`. One
 unresolvable credential reference must not condemn an installation whose other
-profiles work, and `@novamira/cli` is an optional integration — hosting
+profiles work, and a damaged bundled site CLI does not block hosting — hosting
 inventory, provider actions, provisioning and plugin-installed status all work
 without it, and only the dashboard's connected-state detection and Connect action
 degrade. A fresh install has neither profiles nor the site CLI and must report
@@ -1921,7 +1941,7 @@ desktop distribution keeps using its own embedded executable and `--mcp`.
 Both forms use fixed argv and copy only HQ location overrides, never provider
 secrets or the executable search path. No shell is used to reinterpret commands;
 on Windows, a shell-only `.cmd` shim is not a directly executable command.
-The optional `novamira` site CLI is resolved separately by Novamira HQ and is
+The bundled site CLI is resolved by Novamira HQ and is
 not another MCP server or part of the generated client configuration.
 Claude Desktop's primary action downloads `/mcp/novamira-hq.mcpb`, a ZIP
 generated in memory using the manifest-and-launcher format from Novamira.
@@ -1952,15 +1972,9 @@ without importing webview or depending on a running dashboard.
 The initial acknowledgement fills the window, hides the sidebar and shows the
 Novamira HQ logo. Acceptance restores navigation and opens the choice to connect
 a site by URL or a hosting account, without a success toast; configuring the AI
-client comes after connecting a site. "Configure and continue" checks the site
-connection component and installs the separate global `@novamira/cli` package
-with npm only if absent, without install scripts or elevation. Compatible
-installations are reused; incompatible or unreadable installations are not
-silently replaced. Setup is recorded as complete only after a successful probe.
-Failures stay on setup for retry: there is no hosting-only or skip option.
-Startup checks are read-only, including when an acknowledgement already exists;
-installation requires the explicit setup action. CLI and MCP operation remain
-independent of this dashboard setup gate.
+client comes after connecting a site. "Continue" records the acknowledgement.
+The site CLI is bundled; onboarding never installs packages or gates hosting on
+a site-CLI probe. CLI and MCP operation remain independent of this acknowledgement.
 The dashboard explains hosting setup approval, PHP/filesystem/data access,
 push and restore overwrites, and keeping an up-to-date, separately stored backup
 that the user knows how to restore. It does not list excluded operations as a

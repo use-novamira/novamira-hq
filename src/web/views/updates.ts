@@ -125,5 +125,5 @@ function renderUnavailableCard(current: string): Html {
 
 export function renderUpdatesPage(current: string, available = true): Html {
   const card = { ...initialUpdateCardView(current), unavailable: !available };
-  return html`<section class="page flow-page updates-page"><header class="page-head"><div><h1>Novamira HQ updates</h1><p>Update this application, not your sites’ WordPress plugins or themes.</p></div></header>${renderUpdateCard(card)}<section class="panel"><div class="panel-head"><div><h2>Site connection component</h2><p>Novamira CLI connects your WordPress sites. Setup installs it when missing, but updating Novamira HQ does not currently update this separate component.</p></div></div></section></section>`;
+  return html`<section class="page flow-page updates-page"><header class="page-head"><div><h1>Novamira HQ updates</h1><p>Update this application, not your sites’ WordPress plugins or themes.</p></div></header>${renderUpdateCard(card)}<section class="panel"><div class="panel-head"><div><h2>Site connection component</h2><p>Novamira CLI is bundled with Novamira HQ. Updating Novamira HQ updates its managed CLI; standalone CLI installations are updated separately.</p></div></div></section></section>`;
 }

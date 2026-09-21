@@ -590,7 +590,11 @@ test("10: integration.site_cli warns for every unhappy path and never spawns a r
     assert.equal(check.evidence.reason, entry.reason, entry.label);
     assert.equal(check.evidence.minimum, MINIMUM_SITE_CLI_VERSION, entry.label);
     if (entry.hint === true)
-      assert.match(String(check.evidence.hint), /@novamira\/cli/, entry.label);
+      assert.match(
+        String(check.evidence.hint),
+        /Repair or update Novamira HQ/,
+        entry.label,
+      );
     if (entry.version !== undefined)
       assert.equal(check.evidence.version, entry.version, entry.label);
     // Never `fail`, and never enough to fail the report on its own.
