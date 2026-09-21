@@ -1,397 +1,88 @@
 # AGENTS.md
 
-## Repository overview
+Novamira HQ (`novamira-hq`) is the hosting CLI and local dashboard for Novamira.
+It uses Node.js 22+, ESM, strict TypeScript, and Bun tooling.
+See `README.md` for usage and `docs/v1-contract.md` for the normative behavior,
+output, configuration, and security contract.
 
-Novamira HQ (`@novamira/hq`, executable `novamira-hq`) is the hosting-side
-command-line tool and local dashboard for Novamira. It manages hosting-provider
-profiles and provider API credentials, operates provider resources across eight
-hosting providers, and provisions the Novamira plugin so a site becomes ready
-for the site CLI.
+## Product boundaries
 
-The runtime is Node.js 22+ ESM, written in strict TypeScript and built with Bun.
-Start with `README.md` for user-facing behavior and `docs/v1-contract.md` for the
-normative output, configuration, and security contract. HQ is a TypeScript port
-of the Go `novamira-hub`; `typescript-migration-plan.md` records how it was
-executed. The port is complete — every module named below exists — so treat
-`docs/v1-contract.md` as describing shipped behavior rather than intent.
+- HQ owns hosting resources and plugin provisioning. WordPress authentication,
+  site HTTP, and site profiles belong to the site CLI. Delegate through
+  `src/integration/`; never read its config/credentials or store site tokens in HQ.
+  The sole direct site request allowed is setup's unauthenticated
+  `GET {siteUrl}/.well-known/oauth-protected-resource`, with `Accept` and
+  `User-Agent` but never `Authorization`.
+- No site deletion/reset, environment/backup/domain deletion, DNS-record mutation,
+  or SSH/SFTP access management on any surface. Expose capabilities only through
+  the positive allowlist in `src/hosting/capabilities.ts`.
+- Environment push requires explicit positive scope, distinct source/target,
+  and provider support. Execute and wait for the native push only. Restore
+  verifies the backup in the target environment's catalog; CLI requires `--yes`
+  and full-content acknowledgement.
+  Neither operation creates a separate backup automatically.
+- MCP exposes typed tools, no generic argv bridge or access presets. Push and
+  restore use plan/apply with short-lived, session-local, one-use confirmation IDs;
+  neither CLI nor MCP restore accepts provider-native JSON.
+- Resolve HQ storage through `src/config/paths.ts`. Use `NOVAMIRA_HQ_HOME` /
+  `NOVAMIRA_HQ_CONFIG`, never `NOVAMIRA_HOME`; keychain service is `ai.novamira.hq`.
+  Stored credentials use the OS service with no automatic file fallback.
+  macOS caller authorization belongs to `native/macos/keychain.swift`: only a live
+  HQ parent signed by the helper's Developer ID team gets silent authorization;
+  interpreted callers require per-operation consent.
 
-## Boundary rule
+## Architecture constraints
 
-> HQ never holds a WordPress site token, never calls a WordPress REST route on a
-> configured site's behalf directly. WordPress MCP tools delegate to the bundled
-> Novamira CLI exclusively through `src/integration/`.
+- `src/cli/` is the composition layer. `src/web/`, `src/integration/`, and
+  `src/provisioning/` must not import it. Integration also must not import web.
+  Shared connection/profile types live in root modules.
+- Web receives doctor/update services through structural dependency interfaces,
+  not imports from `src/doctor/` or `src/update/`. Neither service imports CLI/web;
+  update also must not import doctor. Web services must not import views/handlers.
+- Run site commands only through integration's shared resolver and child-process
+  seam, never in HQ's parent process. Prefer the packaged CLI; honor
+  `NOVAMIRA_HQ_SITE_CLI` without a silent PATH fallback. Preserve cancellation,
+  bounded capture, timeouts, and whole-process-tree termination. Never persist or
+  log child output. Site-CLI failures must not disable hosting operations.
+- `site-cli <arguments...>` preserves child flags, streams, and exit codes.
+  Managed CLI invocations suppress update notices and independent self-update.
+  npm and desktop must ship the same exact public CLI release and required data;
+  desktop uses its embedded `--site-cli` role, not an assumed Node executable.
+- `src/skills/` is read-only and imports only Node builtins and `errors.js`.
+  Skill registration belongs to `npx skills add`; site guidance belongs to the
+  site CLI. Hosting skill guidance stops at `novamira-hq site-cli auth login`.
+- A completed doctor report exits successfully regardless of report status.
+  `profile.credentials`, `integration.site_cli`, and `update.available` cannot
+  fail. `--fix` only repairs private-path permissions and creates the state
+  directory; `--offline` omits the update check entirely.
+- Update is npm-only. Scripted, piped, JSON, quiet, dashboard, and offline-doctor
+  invocations must suppress background checks before any request or state write.
 
-HQ operates hosting resources and provisions the plugin. Its MCP also delegates
-site discovery, diagnostics, skills, schema inspection and Ability execution to
-the site CLI, which alone owns authentication and site HTTP. There is no `site/` package, no Application
-Passwords, and no `site_profiles` in the schema. Do not add a code path that
-reintroduces direct site access or credential storage.
+## Dashboard conventions
 
-The one exception is bounded: `hosting novamira setup` issues a single
-`GET {siteUrl}/.well-known/oauth-protected-resource`, the public unauthenticated
-compatibility metadata, carrying `Accept` and `User-Agent` and no `Authorization`
-header, ever. No other URL on a configured site may be requested.
+- Use `html.ts`'s branded templates and `Attr`/`Url`, and `datastar.ts` helpers
+  rather than handwritten Datastar attributes. Only `sse.ts` imports the SDK.
+- Narrow posted signals in `signals-input.ts`; repaint through `patch.ts`
+  (signals, `#main`, `#nav`, `#toast`). SSE handlers catch errors as notice patches.
+- Push pages and post-profile-action repaints use warm inventory only; they must
+  not trigger provider calls. Setup jobs call `provisionNovamira` as a whole.
+- Declare new routes in `docs/v1-contract.md` and the route conventions test.
 
-## Hosting safety exclusions
+## Development and verification
 
-HQ deliberately implements no site deletion/reset, environment deletion, backup
-deletion, domain deletion, DNS-record mutation, or SSH/SFTP access management
-through CLI, dashboard, MCP, the provider-neutral client, or provider adapters.
-Capability output must pass through
-`src/hosting/capabilities.ts`, whose positive allowlist keeps unknown
-provider-native operations private by default.
-
-`hosting envs push` is the exceptional high-impact operation: it requires an
-explicit positive scope, validates distinct source/target environments and
-requires provider support for push. It invokes and waits for the provider's
-native push operation only: it never creates a separate backup or composes
-backup and push into a workflow. Backups remain explicit standalone operations;
-any backup the provider creates as part of its native push belongs to the
-provider's contract. MCP exposes only typed tools; it has no generic CLI/argv
-bridge. MCP push is a two-step plan/apply flow using a short-lived,
-session-local, one-use confirmation ID. All supported typed MCP tools are
-exposed at launch; there are no access presets.
-
-Backup restore is the recovery-only exception. The CLI requires `--yes` plus an
-explicit full-content acknowledgement; MCP requires a short-lived, session-local, one-use
-plan/apply confirmation. Both surfaces verify the backup in the target
-environment's catalog and execute only the requested restore. Backup creation is
-a separate explicit action, never an HQ prerequisite or automatic step of restore.
-Neither accepts provider-native JSON for restore, and backup
-deletion remains absent everywhere.
-
-## Storage namespace
-
-HQ's namespace is disjoint from the site CLI's, and `NOVAMIRA_HOME` is never
-read or interpreted.
-
-- override root `NOVAMIRA_HQ_HOME`, explicit config override `NOVAMIRA_HQ_CONFIG`
-- Linux `novamira-hq` below the XDG config/state/cache roots
-- macOS `Novamira HQ` below Application Support and Caches
-- Windows `Novamira HQ` below `APPDATA` / `LOCALAPPDATA`
-- keychain service `ai.novamira.hq`, never `ai.novamira.cli`
-
-Resolve every path through `src/config/paths.ts` and never join a namespace
-segment by hand.
-
-## Site CLI integration
-
-`@novamira/cli` is an exact-version runtime dependency pinned to a public npm
-release with a supported callable launch export and embedded-distribution mode.
-Both npm and desktop distributions ship the same release and required package
-data; an unpublished sibling checkout is not a release pin.
-
-Site commands execute in separate child processes through `src/integration/`.
-For npm, an integration-owned wrapper imports the supported launch export using
-Node. For desktop, a desktop-only `--site-cli` role imports it using embedded
-Deno. HQ's parent process never executes site commands in-process. All consumers
-share launch-target resolution, prefer the packaged target, and honor the explicit
-`NOVAMIRA_HQ_SITE_CLI` override with documented supported external launch forms.
-Never silently fall back to PATH or assume a desktop executable is Node.
-
-Hosting inventory, actions, provisioning, and plugin-installed status remain
-usable when site-CLI invocation fails. Doctor and dashboard provide actionable
-repair/update guidance for damaged packaged installations. HQ never reads the
-site CLI's config or credential storage and couples only to its supported launch
-interface, public v1 command grammar, and output. Bundled and standalone CLI
-invocations share the existing site-CLI namespace, separate from HQ's namespace.
-
-`novamira-hq site-cli <arguments...>` forwards arguments without HQ consuming
-child flags, preserves stdin/stdout/stderr and exit codes, and supplies the public
-handoff path. Integration calls retain cancellation, timeouts, bounded captured
-output, and process-tree termination; terminal forwarding inherits streams.
-Managed invocations suppress automatic CLI update notices and disable independent
-package-manager self-update. Updating HQ updates its managed CLI; standalone CLI
-installations remain independently managed.
-
-`install.sh` and `install.ps1` install HQ with its dependency, without a separate
-global site-CLI installation or `NOVAMIRA_HQ_SKIP_SITE_CLI` option. Preserve HQ
-smoke tests, skill registration, and desktop launchers.
-
-## Provider API calls
-
-Live provider API calls stay explicitly gated behind an environment variable
-that is unset in CI, and never run as part of `bun run check` or any workflow
-job. No workflow may carry provider credentials. Tests point the HTTP client at
-a local mock server or inject `fetch`; never run inventory or mutating provider
-calls just to test.
-
-## Orientation
-
-- `src/errors.ts` is the single source of the `CliError` code and exit taxonomy.
-- `src/skills/` is a **leaf**: it reads the packaged `skills/` directory at the
-  repository root (`novamira-hq`, `core`, `hosting`) and hands the markdown to
-  `src/cli/skills.ts` and to the doctor's `skills.bundled` check. It imports
-  `node:` builtins and `../errors.js` and nothing else, and it **writes nothing,
-  anywhere** — there is no `skills install` and no `setup` command, because
-  registering a skill with an agent is `npx skills add`'s job. There is no `site`
-  bundle: site guidance ships with `@novamira/cli`, and the hosting bundle's
-  prose must never describe site access — it names `novamira-hq site-cli auth login` as the
-  step after provisioning and stops. `package.json`'s `files` ships `skills/`;
-  `scripts/copy-static.mjs` must not be taught about it, because that script
-  exists only for assets that live _inside_ `src/`.
-- `src/doctor/` is the local installation report: `engine.ts` holds the
-  `pass`/`warn`/`fail` record shape and the sequential runner that isolates a
-  throwing check, `checks.ts` the frozen check ids in their frozen order. It may
-  import `src/config/`, `src/credentials/`, `src/skills/`, `src/integration/`
-  and `src/update/`, and may import neither `src/cli/` nor `src/web/` — both of
-  those call _it_. Four rules are contract, not preference: a produced report is
-  a successful invocation whatever its status; `profile.credentials`,
-  `integration.site_cli` and `update.available` can never be `fail`, because one
-  bad credential reference, an unavailable site CLI and an out-of-date install
-  are all normal; `--fix` may only repair private-path permissions and create
-  the state directory; and `--offline` **removes** `update.available` from the
-  list rather than running it and recording a skip.
-- `src/update/` is the npm-only self-update: `registry.ts`'s anonymous dist-tag
-  read, `install.ts`'s package-manager command and spawn seam, `notifier.ts`'s
-  cached record and background notice. It may import `src/config/` (atomic
-  write, file security, the lock manager), `src/semver.ts` and `src/errors.js`,
-  and must import none of `src/cli/`, `src/web/`, `src/doctor/`. Go's
-  release-archive download, checksum verification and in-place executable
-  replacement are deleted, not ported, and HQ makes no request to GitHub. The
-  registry `fetch` and the installer runner are both injectable, and every test
-  supplies both — no test in this repository reaches the npm registry or spawns
-  a package manager. The state record lives at `<stateDir>/update-check.json`,
-  resolved through `src/config/paths.ts`; `NOVAMIRA_HOME`,
-  `NOVAMIRA_UPDATE_CHECK` and `NOVAMIRA_REGISTRY` are never read, and the
-  opt-out and override are `NOVAMIRA_HQ_UPDATE_CHECK` and `NOVAMIRA_HQ_REGISTRY`.
-  The background notice is suppressed _before_ the request, never after it: a
-  scripted, piped, `--json`, `--quiet`, `dashboard` or `doctor --offline`
-  invocation performs no registry read and writes no state.
-- `src/semver.ts` is a leaf holding `Semver`, `parseSemver`, `compareSemver`,
-  `compareSemverStrings` and `isSemver`. It used to live in
-  `src/provisioning/compatibility.ts`, which now re-exports it so existing
-  callers and `test/provisioning-contract.test.mjs` are unchanged; it moved so
-  `src/update/` could compare versions without importing `src/provisioning/`.
-- `src/connection-state.ts` is the shared connected-state vocabulary — the
-  four-state union, `ConnectionQuery`/`ConnectionSnapshot`/`ConnectOutcome`, and
-  the fixed hint per `UnavailableReason`. It sits at the root, beside
-  `errors.ts` and `json.ts`, and imports nothing, because `src/integration/`
-  computes those values and `src/web/` renders them and the two are peers that
-  may share only a root module.
-- `src/site-profiles.ts` is the second root module of that kind, and answers a
-  different question: not "is this hosting environment connected?" but "what
-  does the operator's `novamira` hold, and what can be done to it?". It declares
-  `SiteProfileState` / `SiteProfileSummary` / `SiteProfileListing` /
-  `SiteProfileOutcome` and the site CLI's own profile-name grammar, and imports
-  exactly one thing, `UnavailableReason`. The grammar is not politeness: a
-  profile name becomes an argv element of `sites rename/remove` and of
-  `--site <name>`, so an unchecked leading `-` would run a different command
-  than the one HQ meant. Nothing on these types can hold a credential;
-  `expiresAt` is a time, carried because it is what an operator needs in order
-  to decide whether to reconnect.
-- `src/output/` renders the success/failure envelope and redacts diagnostics.
-- `src/config/` resolves HQ paths and owns locks, atomic writes, owner-only file
-  security, the `config.json` v1 schema, and the config store.
-- `src/credentials/` resolves env/file/stored credential references and backs
-  `stored` with the OS credential service. No automatic file fallback is allowed.
-  The file backend is explicit for embedders/tests; CLI file references remain
-  an explicit user choice. On macOS `native/macos/keychain.swift` is the sole
-  Keychain helper, packaged as a universal signed bundle for desktop and npm.
-  Only the live HQ parent signed by the helper's Developer ID team gets silent
-  caller authorization; interpreted callers require per-operation consent.
-  Never trust an interpreter, argv, path, or environment as proof of HQ identity.
-  Legacy test records are not migrated; there is no osascript/security fallback.
-- `src/hosting/` holds the shared HTTP client, provider-neutral types, the
-  `ProviderClient` request unions, the profile-to-client factory, and the eight
-  provider clients under `src/hosting/providers/`. `shell.ts` builds WP-CLI
-  command lines (refusing rather than escaping anything that changes a command's
-  meaning) and `operations.ts` polls long-running provider operations; both sit
-  below the CLI so provisioning can use them. `src/json.ts` holds `asRecord` and
-  the RFC 6901 pointer lookup, for the same reason.
-- `src/provisioning/` installs and configures the Novamira plugin over provider
-  WP-CLI, checks the site against HQ's own copy of the site CLI's v1
-  compatibility matrix, and emits the `novamira-hq site-cli auth login` handoff. It is the
-  layer Phase 6's dashboard calls directly, so it must never import from
-  `src/cli/`; `src/cli/` imports from it.
-- `src/web/` is the local dashboard: `html.ts`'s branded tagged template and
-  `Attr`/`Url` constructors, `expr.ts` and `datastar.ts` (one helper per
-  Datastar attribute — a hand-written `data-…` string is a review failure),
-  `signals.ts`'s one root signal object, `patches.ts`'s SSE fragment catalog,
-  `sse.ts` (the only module that may import `@starfederation/datastar-sdk`),
-  `request.ts`/`responses.ts`/`routes.ts`/`static.ts`, `server.ts` with the
-  loopback bind guard and the per-process mutation token, and `views/`.
-  `signals-input.ts` is the only place a posted signal record is narrowed, and
-  `patch.ts` is the one page-repaint patch sequence (signals, `#main`, `#nav`,
-  `#toast` — in that order). `views/pages.ts` is the exhaustive page-body
-  dispatcher every batch adds one `case` arm to; a page's view model lives in
-  its own view module, never in `views/types.ts`. `services/` holds the
-  dashboard's own mutable state and its read/write paths — it may import
-  `src/config/`, `src/credentials/`, `src/hosting/`, `src/provisioning/`,
-  `src/connection-state.ts` and `src/integration/`'s public surface, and may not
-  import `src/web/views/` or `src/web/handlers/`. `services/sites.ts` owns the
-  five-minute provider-listing cache and the single `connectionStates` round per
-  listing. The push pages read the cache **warm only** and must never
-  trigger a provider call, and `/_dashboard/connect` spawns
-  the resolved site-CLI target with `auth login <url>` through `src/integration/` and renders no child
-  output, ever. `/sites` is one unified inventory: hosting environments include
-  matched profiles held by the **site CLI**, and unmatched profiles appear in a
-  final CLI-only group. `views/site-profiles.ts` provides those rows and controls;
-  it does not define a separate page. `handlers/site-profiles.ts` owns the four
-  routes that manage a site-CLI profile. They reach `src/integration/`, never a
-  provider API, then re-list the site CLI and repaint the unified warm inventory
-  without triggering provider calls. Do not confuse them with Go's deleted
-  `/_dashboard/sites/{save,remove}`, which wrote HQ's own site profiles; the
-  route conventions test still asserts those two paths appear nowhere.
-  `services/setup-jobs.ts` is the Novamira-setup job registry: it
-  calls `provisionNovamira` from `src/provisioning/` **whole** — no second copy
-  of the sequence, no Application Password, no site-profile write — runs it
-  detached from the request, and bounds both the registry and each job's event
-  log. `handlers/setup.ts`'s progress stream is the one looping handler in the
-  dashboard and must honour `request.signal`. `handlers/diagnostics.ts` answers
-  the two `/_dashboard/diagnostics/*` routes; nothing under `src/web/` imports
-  `src/doctor/` — `DashboardDoctor` is declared structurally on
-  `DashboardServerDependencies`, exactly as `DashboardIntegration` is, and
-  `src/cli/dashboard.ts` supplies the real runner bound to
-  `{ offline: true, fix: false }`. `handlers/updates.ts` answers the two
-  `/_dashboard/updates/*` routes the same way, through the structurally-declared
-  `DashboardUpdates`; nothing under `src/web/` imports `src/update/` either, and
-  the installer's output never crosses that boundary. `handlers/` is one module per
-  route group, mirroring `src/cli/hosting/`'s shape; a handler is a pure
-  `(request) => DashboardResponse` and every SSE handler catches its own errors
-  and turns them into a notice patch, because an escaping throw would answer an
-  SSE route with a JSON envelope. It is a **peer of `src/cli/`, never a
-  consumer**: nothing under `src/web/` may import `src/cli/`, and
-  `src/cli/dashboard.ts` imports `src/web/index.ts`.
-- `src/integration/` is the site CLI connected-state service and the **only**
-  place HQ runs `novamira` — `probe.ts`'s `--version` probe for the doctor
-  included: an injectable spawn seam (`shell: false`, an argv
-  array, bounded output, a per-child timeout plus a shared refresh deadline),
-  executable resolution, total origin normalization, and the two-stage
-  `sites list` then `auth status` algorithm behind the four states
-  `not_configured` / `connected` / `reconnect_required` / `unavailable`, plus
-  `connect.ts`'s Connect action (`auth login <url>` on the resolved target, the non-secret URL
-  as its only argument) and `classify.ts`, the child-outcome classification both
-  share. The spawn seam's termination is directed at the child's whole process
-  tree — a group-directed signal on POSIX, `taskkill /T` on Windows — so a
-  timeout or abort kills every descendant and the promise settles even when one
-  of them retains an inherited output pipe. `profiles.ts` is the site-profile management service the dashboard's
-  panel calls — `sites list`, `auth status --site`, `auth logout --site` and
-  `sites rename`, and `sites remove` — and it is composed into
-  `SiteCliIntegration` rather than
-  constructed separately, so there is one spawn seam and one resolver.
-  `verdict.ts` and `pool.ts` are the two leaves `connection.ts` and
-  `profiles.ts` share: the reading of a single `auth status` answer, and bounded
-  concurrency. A second copy of either is how the connection cell and the panel
-  would end up disagreeing about the same profile on the same page. Every
-  failure mode is a state, never a hosting error — the one exception is a
-  profile name the site CLI's grammar cannot represent, which throws
-  `usage_error` before anything is spawned, because that is a caller bug and not
-  an unreachable CLI. Only the integration-owned child wrapper and desktop's
-  site-CLI child role may import `@novamira/cli`'s supported launch export;
-  the site CLI's config,
-  credential storage and `NOVAMIRA_HOME` are never read; child output is never
-  persisted or logged. Adding another command means adding an argv builder to
-  `site-cli.ts` and a method to `profiles.ts` — never a spawn anywhere else. It
-  is a peer of `src/web/` and `src/cli/` and imports neither.
-- `src/index.ts`, `src/main.ts`, and `src/cli/` are the entry point, the
-  composition root, and the commander program plus its handlers.
-- `src/cli/hosting/` is one module per command group; `src/cli/hosting/index.ts`
-  composes them into the `hosting` tree and extends the existing `config`
-  command. `program.ts` owns the grammar and the globals, `commands.ts` builds
-  every handler from `CommandDependencies`. A global option name is reserved
-  across the whole tree, because a parent command consumes a matching option
-  anywhere in argv.
-- `test/*-contract.test.mjs` runs offline against `dist/`; every suite isolates
-  itself under `NOVAMIRA_HQ_HOME` in a temporary directory.
-- `scripts/` and `.github/workflows/` cover SPDX headers, packaging, and
-  releases.
-- `src/web/static/` holds the nine browser assets, copied verbatim from the Go
-  program: a vendored MIT Datastar build, two SIL OFL fonts with their licence
-  texts, and three files of ours. They are excluded from ESLint, Prettier and
-  the SPDX header script, and `scripts/copy-static.mjs` copies them into
-  `dist/` as part of `bun run build`. Do not reformat them.
-- `install.sh` and `install.ps1` live at the repository root and are **not** in
-  `package.json`'s `files`: an installer inside the package it installs is
-  circular. They are served from the repository's raw URL and attached to each
-  GitHub release. They install the package with `--ignore-scripts`, smoke-test it
-  with `novamira-hq doctor --offline` — which is why a `warn` report must exit 0
-  — then register the bundled skill with an exactly pinned `skills@x.y.z`, and
-  rely on HQ's exact pinned `@novamira/cli` dependency for site features.
-  Neither installer separately installs a global CLI or runs the
-  `novamira` executable. `install.sh` creates the macOS application
-  `/Applications/Novamira HQ.app` when that directory is writable, otherwise
-  falling back to `~/Applications`, and a Linux freedesktop entry below
-  `${XDG_DATA_HOME:-~/.local/share}/applications`; `install.ps1` creates a
-  **Novamira HQ** shortcut in the current user's Start Menu. Every launcher runs
-  `novamira-hq dashboard --open` using the exact HQ entry point and Node
-  executable found at install time.
-  `scripts/package-acceptance.mjs` packs the tarball, installs it into a
-  throwaway prefix and drives the installed executable; `bun run
-package:acceptance` runs it, and all three packaging jobs plus the release job
-  do too.
-- `desktop/` is the Deno desktop shell: `main.ts` and `deno.json`, plus
-  `hq.d.ts`, the one-line type of the one HQ export it calls, and
-  `ai.novamira.hq.desktop.desktop`, the freedesktop entry the Linux release
-  archive carries. It is **not** in
-  `package.json`'s `files`, it is ignored by ESLint and Prettier (`deno fmt`,
-  `deno lint` and `deno check` own it, through `bun run desktop:check`), and
-  `bun run desktop:build` compiles it with `dist/` and `skills/` embedded into
-  `dist-desktop/`. It contains no dashboard logic and no second server: the
-  executable supports a `--site-cli` child role that loads the pinned CLI's
-  supported launch export in managed-distribution mode, propagates its exit code,
-  and opens no window or server. Its JavaScript, dependencies, and package data
-  must be embedded and usable offline without external runtimes or caches.
-  Inject this executable with the fixed role prefix as the shared site-CLI target,
-  including development launch arguments when uncompiled.
-  For the dashboard, the executable re-spawns itself as `--serve`, which runs `dist/main.js`'s `main`
-  with `dashboard --json --listen 127.0.0.1:0` under Deno's Node compatibility,
-  and the window is a `@webview/webview` pointed at the URL in the envelope.
-  `Webview.run()` blocks the thread, which is why the server is a child rather
-  than a worker, why the server watches its stdin pipe for the window's death,
-  and why `@webview/webview` is imported lazily in the window role only. The
-  runtime dependencies pinned in `desktop/deno.json` must match `package.json`'s;
-  `test/desktop-contract.test.mjs` asserts that and runs `deno fmt`/`lint` when
-  a `deno` is on `PATH`. Never add a `deno`-only code path under `src/`. The
-  release's macOS assets — arm64 and Intel, each compiled natively on its own
-  runner — are signed by `scripts/macos-sign.sh`, which lives in `scripts/` and
-  not in `desktop/` because it is a packaging step, not part of the shell: it
-  wraps the compiled executable in `Novamira HQ.app`, gives it the `novamira-hq.icns` it
-  builds with `sips` and `iconutil` from `scripts/macos/icon.png` — the one
-  committed 1024x1024 master, so no derived size can drift from it — signs both
-  under the Hardened Runtime with `scripts/macos/entitlements.plist`, notarizes
-  them in one submission and staples the bundle. Two jobs run it and no others may:
-  `release.yml`'s `desktop-macos`, and `macos-signing.yml`, the dispatch-only
-  **Verify macOS signing** that proves the path without publishing anything;
-  each runs both architectures as a matrix. The
-  Apple secrets reach them through the `macos-signing` environment and live
-  nowhere else.
-- The desktop application's three platform builds differ only in how the icon
-  gets there, and all three derive it from that same committed master.
-  `scripts/desktop-icons.mjs` is a leaf — `node:zlib` and `node:buffer`, no
-  build-time image dependency — that decodes the master, converts Display P3 to
-  sRGB, resamples in linear light and writes a Windows `.ico` and the hicolor
-  PNGs into `dist-desktop/icons/`. Nothing derived is committed, so no size can
-  drift. `deno compile --icon` refuses on any target but Windows, which is why
-  `deno.json` carries a second `compile:windows` task and why
-  `scripts/desktop-build.mjs` — not a `package.json` script — decides which one
-  to run; that script also assembles the Linux tarball under `--package`,
-  reproducibly, because an ELF executable cannot hold an icon and the entry and
-  the icons must travel beside it. `scripts/desktop-smoke.mjs` is the one smoke
-  test of a compiled executable, used by all four jobs that build one: it holds
-  the server's stdin open, because closing it is how the window's death reaches
-  the server and a backgrounded shell copy would hand it `/dev/null`. Do not
-  reintroduce that shell copy, and do not add a signing step for Windows without
-  a certificate scoped the way the Apple secrets are.
-- Nothing is left deferred. `routes.ts`'s `DEFERRED_ROUTES` is **empty**, the
-  `patches.ts` catalog is closed, and every page, route and fragment the contract
-  names is shipped. The mechanism stays for a future phase to declare intent
-  with; the route conventions test pins the shipped table's exact method-and-path
-  surface, so a new route has to be declared in `docs/v1-contract.md` and in that
-  test before it can ship.
-
-## Making changes
-
-- Edit `src/`, tests, and documentation; `dist/` is generated and ignored.
-- Keep `.js` extensions in relative TypeScript imports and retain SPDX headers.
-- Prefer discriminated unions over class hierarchies, and exhaustive `switch`
-  with a `never` default.
-- Runtime dependencies are `commander`, `@starfederation/datastar-sdk`, and the
-  exact pinned public release of `@novamira/cli`;
-  everything else must be a `node:` builtin. Do not use `console.*` in `src/`.
-- Add or update a focused contract test for behavior changes.
-- Run `bun install` when needed and `bun run check` before handoff. Run
-  `bun run pack:inspect` and `bun run package:acceptance` for packaging,
-  installer or release changes.
-- Never expose provider secrets in config JSON, argv, output, errors, logs,
-  tests, or docs; keep JSON stdout machine-parseable and diagnostics redacted.
+- Keep `.js` extensions in relative TypeScript imports and SPDX headers.
+  Runtime dependencies are limited to `commander`, `@starfederation/datastar-sdk`,
+  the pinned `@novamira/cli`, and Node builtins. No `console.*` in `src/`.
+- Commander global option names are reserved throughout the command tree.
+- `dist/` is generated. Do not reformat `src/web/static/`. Deno-specific code
+  belongs in `desktop/`, whose dependency pins must match `package.json`.
+- Contract tests run against `dist/`, isolated under temporary `NOVAMIRA_HQ_HOME`.
+  Add focused contract coverage for behavior changes. Mock provider HTTP and
+  update registry/installer seams. Live provider calls require an explicit env
+  gate and must never run in checks or CI; workflows carry no provider credentials.
+- Run `bun run check` before handoff. For packaging, installer, or release changes,
+  also run `bun run pack:inspect` and `bun run package:acceptance`.
+  Use `bun run desktop:check` for desktop changes and
+  `scripts/desktop-smoke.mjs` for compiled-executable smoke tests (it preserves the
+  server's stdin lifetime). Desktop bundles must work offline without external
+  runtimes/caches; installers must not separately install a global site CLI.
