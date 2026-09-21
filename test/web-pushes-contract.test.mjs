@@ -403,6 +403,9 @@ test("2: saved pushes render as reviewable direction cards", async () => {
 test("push history is a separate view reached from a secondary header button", async () => {
   const { server } = await fixture({ pushes: PUSHES });
   const main = await page(server, "/push");
+  assert.match(main, /<title>Push — Novamira HQ<\/title>/);
+  assert.match(main, /class="skip-link" href="#main">Skip to content/);
+  assert.match(main, /<main id="main" tabindex="-1"/);
   assert.match(main, /class="button secondary" href="\/push\?view=history"/);
   assert.doesNotMatch(main, /<h2>Push history<\/h2>/);
   const history = await page(server, "/push?view=history");

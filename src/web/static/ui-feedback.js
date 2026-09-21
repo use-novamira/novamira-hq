@@ -2,6 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 (function () {
   "use strict";
+  // Reflect full-page and streamed view changes in the browser/screen-reader title.
+  function updatePageTitle() {
+    var heading = document.querySelector("#main h1");
+    if (heading) document.title = heading.textContent.trim() + " — Novamira HQ";
+  }
+  updatePageTitle();
+  if (typeof MutationObserver !== "undefined") {
+    var region = document.querySelector(".main-region");
+    if (region) new MutationObserver(updatePageTitle).observe(region, { childList: true, subtree: true, characterData: true });
+  }
   // Delegated listeners also cover menus inserted by dashboard patches.
   function closeOtherMenus(keep) {
     document.querySelectorAll("details.profile-menu[open]").forEach(function (menu) {
@@ -24,6 +34,12 @@
   });
   document.addEventListener("keydown", function (event) {
     if (event.key !== "Escape") return;
+    var addSite = document.querySelector(".new-button[aria-expanded='true']");
+    if (addSite) {
+      addSite.click();
+      addSite.focus();
+      event.preventDefault();
+    }
     var menus = document.querySelectorAll("details.profile-menu[open]");
     if (!menus.length) return;
     var focused = document.activeElement;

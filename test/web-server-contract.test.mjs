@@ -457,7 +457,9 @@ test("#main carries its per-page class, and renderPlaceholderBody is gone", asyn
     ]) {
       const markup = (await server.dispatch(request(path))).body.markup;
       assert.ok(
-        markup.includes(`<main id="main" class="main main-${page}">`),
+        markup.includes(
+          `<main id="main" tabindex="-1" class="main main-${page}">`,
+        ),
         `${path} is missing its per-page #main class`,
       );
     }

@@ -15,6 +15,7 @@ test("profile menus are exclusive, close outside and on Escape, and return focus
     querySelector: () => ({ focus: () => (focus = id) }),
   }));
   const document = {
+    querySelector: () => null,
     activeElement: 1,
     addEventListener(name, handler) {
       const list = listeners.get(name) ?? [];

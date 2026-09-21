@@ -59,6 +59,7 @@ test("failed dashboard requests produce a dismissible notice without exposing re
     {
       window: {},
       document: {
+        querySelector: () => null,
         createElement: () => ({ setAttribute: () => {} }),
         getElementById: () => target,
         addEventListener: (name, callback) => {

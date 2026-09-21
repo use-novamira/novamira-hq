@@ -1,3 +1,10 @@
+.skip-link { position: fixed; top: 8px; left: 8px; z-index: 10000; padding: 12px 18px; background: #fff; color: #18181b; transform: translateY(-200%); }
+.skip-link:focus { transform: none; outline: 3px solid #8a6414; }
+#main :is(a, button, summary, input, select, textarea, [tabindex]):focus-visible { outline: 2px solid var(--gold-ink); outline-offset: 2px; }
+.sidebar :is(a, button, summary):focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
 @font-face {
   font-family: "Montserrat";
   src: url("/assets/fonts/montserrat-var.woff2") format("woff2");
@@ -352,7 +359,7 @@ select {
 }
 
 .eyebrow {
-  color: #a89b6e;
+  color: var(--gold-ink);
   font-family: var(--font-display);
   font-size: 12px;
   font-weight: 700;
@@ -713,8 +720,8 @@ p {
 
 .provider-choice:hover,
 .provider-choice:focus-visible {
-  border-color: var(--gold);
-  outline: 2px solid var(--gold);
+  border-color: var(--gold-ink);
+  outline: 2px solid var(--gold-ink);
   outline-offset: 1px;
 }
 

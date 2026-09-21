@@ -210,6 +210,11 @@ export function jsBoolean(value: boolean): Expr {
   return makeExpr(value ? "true" : "false");
 }
 
+/** ARIA states require literal strings, not HTML boolean-attribute semantics. */
+export function ariaBoolean(value: Expr): Expr {
+  return makeExpr(`(${renderExpr(value)} ? 'true' : 'false')`);
+}
+
 /** A JavaScript object or array literal, hardened exactly as `jsString` is. */
 export function jsJson(value: JsonValue): Expr {
   return makeExpr(stringifyJson(value));

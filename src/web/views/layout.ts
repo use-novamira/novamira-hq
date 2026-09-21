@@ -58,7 +58,7 @@ import {
   url,
   type Html,
 } from "../html.js";
-import { get, jsBoolean, set, signal, toggle } from "../expr.js";
+import { ariaBoolean, get, jsBoolean, set, signal, toggle } from "../expr.js";
 import { toSignalRecord, type DashboardSignals } from "../signals.js";
 import {
   statusClass,
@@ -94,7 +94,7 @@ export function renderDocument(input: DocumentInput): Html {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Novamira HQ</title>
+<title>${pageTitle(input.page)} — Novamira HQ</title>
 <link rel="stylesheet" href="/assets/app.css">
 <script type="module" src="/assets/datastar.js"></script>
 <script src="/assets/ui-feedback.js" defer></script>
@@ -102,6 +102,7 @@ export function renderDocument(input: DocumentInput): Html {
 <script src="/assets/sites-filter.js" defer></script>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
 <div class="shell"${ds.signals(toSignalRecord(input.signals))}${input.automaticUpdates ? ds.init(get(url("/_dashboard/updates/check", { automatic: true }), { include: [] })) : false}>${renderSidebar(input.view, input.page, input.activeNav)}<div class="main-region">${renderToast(input.page === "providers" ? { level: "neutral", message: "" } : input.notice)}${renderMain(input.page, input.body)}</div></div>
 </body>
 </html>
@@ -123,12 +124,12 @@ export function renderSidebar(
     "click",
     set("sites.newMenuOpen", jsBoolean(false)),
     "outside",
-  )}><button class="button primary new-button" type="button" aria-haspopup="menu"${ds.on(
+  )}><button class="button primary new-button" type="button" aria-expanded="false" aria-controls="add-site-options"${ds.aria("expanded", ariaBoolean(signal("sites.newMenuOpen")))}${ds.on(
     "click",
     toggle("sites.newMenuOpen"),
   )}>Add site</button><div${classAttr(
     "new-pop",
-  )}${ds.classes({ open: signal("sites.newMenuOpen") })} role="menu"><a${hrefAttr(
+  )}${idAttr("add-site-options")}${ds.classes({ open: signal("sites.newMenuOpen") })}><a${hrefAttr(
     url("/sites", { new: "cli" }),
   )}><strong>Manually</strong><span>Connect an existing Novamira site by URL</span></a><a${hrefAttr(
     url("/hosting-accounts", { new: "host" }),
@@ -186,7 +187,26 @@ export function renderMain(page: DashboardPage, body: Html): Html {
   // frozen — and that is fine: it is a hook, and it makes an outer `#main` patch
   // self-describing, so a test can tell "the providers page was patched here"
   // from "some page was patched here" without parsing the body.
-  return html`<main${idAttr("main")}${classAttr("main", `main-${page}`)}>${body}<footer class="mobile-about-footer"><a${hrefAttr(url("/updates"))}${page === "updates" ? attr("aria-current", "page") : false}>App updates</a><a${hrefAttr(url("/about"))}>About Novamira HQ</a></footer></main>`;
+  return html`<main${idAttr("main")} tabindex="-1"${classAttr("main", `main-${page}`)}>${body}<footer class="mobile-about-footer"><a${hrefAttr(url("/updates"))}${page === "updates" ? attr("aria-current", "page") : false}>App updates</a><a${hrefAttr(url("/about"))}>About Novamira HQ</a></footer></main>`;
+}
+
+function pageTitle(page: DashboardPage): string {
+  const titles: Record<DashboardPage, string> = {
+    about: "About",
+    mcp: "AI connection",
+    history: "Hosting history",
+    providers: "Hosting accounts",
+    sites: "Sites",
+    "how-to-use": "Configure your AI",
+    pushes: "Push",
+    "push-new": "New push",
+    "novamira-setup": "Novamira setup",
+    "novamira-pro": "Novamira Pro",
+    diagnostics: "Diagnostics",
+    updates: "App updates",
+    settings: "Settings",
+  };
+  return titles[page];
 }
 
 /**
