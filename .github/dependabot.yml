@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# HQ has exactly two runtime dependencies and pins every action in the
+# publication workflow to a reviewed commit SHA. Both facts make updates cheap
+# to review and expensive to forget, which is what this file is for.
+version: 2
+updates:
+  # Actions are pinned to SHAs, so without this they never move at all — a
+  # pinned action with a known vulnerability stays pinned to it.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+    groups:
+      # The toolchain moves together and is proved by `bun run check`; a
+      # runtime dependency is a separate decision and gets its own pull request.
+      toolchain:
+        dependency-type: development
+        patterns:
+          - "*"
+    ignore:
+      # Node's own types must not outrun the `engines` floor of 22.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]

@@ -12,10 +12,12 @@
  *
  * Deviations from the Go source, each flagged again where it occurs:
  *
- * - Credential resolution (the `WPE_API_PASSWORD` -> `WPENGINE_PASSWORD` and
- *   `WPE_API_USER_ID` -> `WPENGINE_USERNAME` fallbacks that `NewWPEngineClient`
- *   performs itself) lives in `factory.ts`; this module only consumes the
- *   `identity` and `secret` it is handed and never reads the environment.
+ * - Credential resolution lives in `factory.ts`; this module only consumes the
+ *   `identity` and `secret` it is handed and never reads the environment. Go's
+ *   `NewWPEngineClient` also accepted `WPENGINE_PASSWORD` and
+ *   `WPENGINE_USERNAME` as fallbacks. Those are not WP Engine's documented
+ *   variable names — WP Engine documents the `WPE_API_*` pair HQ already uses —
+ *   and the Go program was never published, so the fallbacks are not ported.
  * - HTTP transport, retry and error mapping come from the shared `HttpClient`,
  *   so a non-2xx response raises a taxonomy `CliError` instead of Go's
  *   `WP Engine API request to %s failed with %d: %s` string.
@@ -79,9 +81,9 @@ type JsonRecord = Record<string, unknown>;
 /**
  * Construct the WP Engine client for a hosting profile.
  *
- * The API user id is the profile's `companyId`, else `WPE_API_USER_ID`, else
- * `WPENGINE_USERNAME` — the factory has already applied that order and exposes
- * the winner as `context.identity`.
+ * The API user id is the profile's `companyId`, else `WPE_API_USER_ID` — the
+ * factory has already applied that order and exposes the winner as
+ * `context.identity`.
  */
 export const createWpEngineClient: ProviderClientFactory = (
   context: ProviderClientContext,

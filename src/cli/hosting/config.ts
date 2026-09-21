@@ -50,6 +50,7 @@ import {
 } from "../../config/schema.js";
 import {
   credentialId,
+  type RollbackResult,
   withCredentialTransaction,
 } from "../../credentials/store.js";
 import { CliError } from "../../errors.js";
@@ -153,6 +154,26 @@ function nonEmpty(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
   const trimmed = value.trim();
   return trimmed === "" ? undefined : trimmed;
+}
+
+/**
+ * A secret that could not be put back after a failed save is a warning, not a
+ * failure. The configuration itself is unchanged — that is what rolling back
+ * means — but one stored secret may now hold a value nothing points at, and
+ * only the operator can tell which. Naming the id is the most we can safely
+ * say; the secret itself never reaches a warning.
+ */
+function warnRollbackFailures(
+  result: RollbackResult,
+  warnings: InvocationWarning[],
+): void {
+  for (const failure of result.failures)
+    warnings.push({
+      code: "credential_rollback_failed",
+      message:
+        "A provider secret could not be restored after the configuration save failed.",
+      details: { storedId: failure.id },
+    });
 }
 
 export function createHostingConfigHandlers(
@@ -341,14 +362,7 @@ export function createHostingConfigHandlers(
                 persist(async (id, secret) => transaction.replace(id, secret)),
               {
                 onRollbackFailure: (result) => {
-                  for (const failure of result.failures) {
-                    warnings.push({
-                      code: "credential_rollback_failed",
-                      message:
-                        "A provider secret could not be restored after the configuration save failed.",
-                      details: { storedId: failure.id },
-                    });
-                  }
+                  warnRollbackFailures(result, warnings);
                 },
               },
             );

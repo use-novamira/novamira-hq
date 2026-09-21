@@ -9,7 +9,7 @@
  * because the provider modules land one at a time in Phase 3 and because the
  * composition root must stay testable without live provider calls. Instead the
  * factory owns everything that is provider-neutral — loading the profile,
- * resolving its credential (including WP Engine's legacy environment fallback),
+ * resolving its credential,
  * normalizing the API base URL, and building a configured `HttpClient` — and
  * hands the result to an injected registry of per-provider constructors.
  *
@@ -28,8 +28,6 @@ import {
   type ProviderKind,
   PROVIDER_KINDS,
   credentialSource,
-  defaultCredentialEnv,
-  envCredential,
   isProviderKind,
   profileApiBaseUrl,
   providerDefaults,
@@ -85,10 +83,9 @@ export interface ProviderClientContext {
   readonly companyId: string | undefined;
   /**
    * The non-secret identity half of a two-part credential: the profile's
-   * `companyId`, else the provider's `identityEnv`, else its `fallbackIdentityEnv`
-   * (WP Engine API user id, Rocket.net username, Cloudways email, Pressable
-   * client id). Mirrors the resolution order of the Go constructors. A provider
-   * that requires one raises `credential_missing` when this is `undefined`.
+   * `companyId`, else the provider's `identityEnv` (WP Engine API user id,
+   * Rocket.net username, Cloudways email, Pressable client id). A provider that
+   * requires one raises `credential_missing` when this is `undefined`.
    */
   readonly identity: string | undefined;
   /** OAuth token endpoint from `PROVIDER_DEFAULTS`, when the provider has one. */
@@ -166,7 +163,7 @@ export function createHostingClientFactory(
     const label = providerLabel(provider);
     const defaults = providerDefaults(provider);
     const baseUrl = normalizeBaseUrl(profile, label);
-    const resolved = await resolveProviderSecret(provider, profile, resolver);
+    const resolved = await resolveProviderSecret(profile, resolver);
 
     return {
       transferFetch: shared?.fetch ?? globalThis.fetch,
@@ -179,9 +176,7 @@ export function createHostingClientFactory(
       credentialSource: resolved.source,
       companyId: nonEmpty(profile.companyId),
       identity:
-        nonEmpty(profile.companyId) ??
-        lookupEnv(env, defaults.identityEnv) ??
-        lookupEnv(env, defaults.fallbackIdentityEnv),
+        nonEmpty(profile.companyId) ?? lookupEnv(env, defaults.identityEnv),
       tokenUrl: defaults.tokenUrl,
       env,
       createHttpClient(overrides?: ProviderHttpOptions): HttpClient {
@@ -267,43 +262,19 @@ function requireProviderFactory(
 }
 
 /**
- * Resolve the profile's credential, falling back to the provider's legacy
- * environment variable when the configured reference is the default `env` one
- * and it is unset. Only WP Engine declares a `fallbackCredentialEnv`, so this
- * generalizes `NewWPEngineClient`'s behaviour without special-casing it. The
- * original failure is rethrown when the fallback is unavailable, so the error
- * still names the credential the profile actually points at.
+ * Resolve the profile's credential. The reference in the profile is the only
+ * place looked at: a failure names the credential the profile actually points
+ * at, and there is no second name to try.
  */
 async function resolveProviderSecret(
-  provider: ProviderKind,
   profile: HostingProfile,
   resolver: CredentialResolver,
 ): Promise<{ readonly secret: SecretValue; readonly source: string }> {
   const ref = profile.credential;
-  try {
-    return {
-      secret: await resolver.resolve(ref),
-      source: credentialSource(ref),
-    };
-  } catch (error) {
-    const fallbackEnv = providerDefaults(provider).fallbackCredentialEnv;
-    if (
-      fallbackEnv === undefined ||
-      ref.type !== "env" ||
-      ref.name !== defaultCredentialEnv(provider)
-    ) {
-      throw error;
-    }
-    const fallbackRef = envCredential(fallbackEnv);
-    try {
-      return {
-        secret: await resolver.resolve(fallbackRef),
-        source: credentialSource(fallbackRef),
-      };
-    } catch {
-      throw error;
-    }
-  }
+  return {
+    secret: await resolver.resolve(ref),
+    source: credentialSource(ref),
+  };
 }
 
 function normalizeBaseUrl(profile: HostingProfile, label: string): string {

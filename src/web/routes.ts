@@ -306,325 +306,325 @@ export const PAGE_ROUTE_PATHS: readonly string[] = Object.freeze(
 );
 
 /** Build the shipped table. */
-export function createRouteTable(context: RouteContext): readonly Route[] {
-  const assetHandler: RouteHandler = async (request) => {
-    const response = await serveAsset(
-      request.path,
-      request.method,
-      request.headers["if-none-match"],
-    );
-    if (response === undefined) {
-      throw new CliError("not_found", "No such dashboard asset.");
-    }
-    return response;
-  };
+/** Serves a dashboard asset, or reports that there is no such asset. */
+const assetHandler: RouteHandler = async (request) => {
+  const response = await serveAsset(
+    request.path,
+    request.method,
+    request.headers["if-none-match"],
+  );
+  if (response === undefined) {
+    throw new CliError("not_found", "No such dashboard asset.");
+  }
+  return response;
+};
 
-  /**
-   * The per-page extras, read from process-local state only.
-   *
-   * Neither push page may trigger a provider call — Go's did not either
-   * (`server.go:782`, `:931`) — so both of those are `Map` lookups that return
-   * "we have not looked yet" rather than going and looking, and the setup page
-   * is a lookup in the job registry. An absent value is a state each renderer
-   * has words for, not a hole to fill with invented data.
-   *
-   * A returned `notice` is the page-load notice — currently only "Setup job not
-   * found." — and reaches both the toast and the model. Everything else is a
-   * `PageModel` field.
-   */
-  const pageExtras = (
-    page: DashboardPage,
-    request: DashboardRequest,
-  ): Partial<PageModel> => {
-    if (
-      request.path === "/backup-restore" ||
-      request.path === "/backup-create"
-    ) {
-      const id = request.query.get("job");
-      const job = id ? context.restore?.snapshot(id) : undefined;
+/**
+ * The per-page extras, read from process-local state only.
+ *
+ * Neither push page may trigger a provider call — Go's did not either
+ * (`server.go:782`, `:931`) — so both of those are `Map` lookups that return
+ * "we have not looked yet" rather than going and looking, and the setup page
+ * is a lookup in the job registry. An absent value is a state each renderer
+ * has words for, not a hole to fill with invented data.
+ *
+ * A returned `notice` is the page-load notice — currently only "Setup job not
+ * found." — and reaches both the toast and the model. Everything else is a
+ * `PageModel` field.
+ */
+function pageExtras(
+  context: RouteContext,
+  page: DashboardPage,
+  request: DashboardRequest,
+): Partial<PageModel> {
+  if (request.path === "/backup-restore" || request.path === "/backup-create") {
+    const id = request.query.get("job");
+    const job = id ? context.restore?.snapshot(id) : undefined;
+    return {
+      restore: {
+        create:
+          request.path === "/backup-create" &&
+          (!job || job.review.operation === "create"),
+        target: {
+          profile: request.query.get("profile") ?? "",
+          site: request.query.get("site") ?? "",
+          env: request.query.get("env") ?? "",
+        },
+        ...(job ? { job } : {}),
+        ...(id && !job
+          ? {
+              error:
+                "This job is no longer available in this session. Check Activity and the hosting provider before retrying.",
+            }
+          : {}),
+        jobs: context.restore?.list() ?? [],
+      },
+    };
+  }
+  if (page === "settings") {
+    const tab = request.query.get("tab");
+    return {
+      settingsTab: tab === "uninstall" || tab === "pro" ? tab : "general",
+    };
+  }
+  if (page === "updates") {
+    return { updatesAvailable: context.updates.available !== false };
+  }
+  if (page === "pushes") {
+    const warm = context.sites.warm(ALL_PROFILES_SENTINEL, true);
+    const jobId = request.query.get("job");
+    const job = jobId ? context.pushExecution?.snapshot(jobId) : undefined;
+    return {
+      ...(job ? { pushJob: job } : {}),
+      ...(jobId && !job
+        ? {
+            notice: {
+              level: "warn" as const,
+              message:
+                "This job was not found in saved history. Check History and your hosting provider before retrying.",
+            },
+          }
+        : {}),
+      pushJobs: context.pushExecution?.list() ?? [],
+      pushes: {
+        groups: warm?.groups ?? [],
+        cacheWarm: warm !== undefined,
+      },
+    };
+  }
+  if (page === "push-new") {
+    const profile = (request.query.get("profile") ?? "").trim();
+    const siteId = (request.query.get("site") ?? "").trim();
+    const site = context.sites.resolveSite(profile, siteId);
+    const requestedSource = (request.query.get("source") ?? "").trim();
+    const sourceEnvId = site?.envs.some(
+      (environment) => environment.id === requestedSource,
+    )
+      ? requestedSource
+      : "";
+    const requestedTarget = (request.query.get("target") ?? "").trim();
+    const targetEnvId =
+      sourceEnvId !== "" &&
+      requestedTarget !== sourceEnvId &&
+      site?.envs.some((environment) => environment.id === requestedTarget)
+        ? requestedTarget
+        : sourceEnvId !== "" && site?.envs.length === 2
+          ? (site.envs.find((environment) => environment.id !== sourceEnvId)
+              ?.id ?? "")
+          : "";
+    return {
+      pushNew: {
+        profile,
+        siteId,
+        // Go fell back to the raw site id so the page still names its target
+        // when the cache is cold (`server.go:926`).
+        siteLabel: site?.label ?? siteId,
+        envs: site?.envs ?? [],
+        sourceEnvId,
+        targetEnvId,
+      },
+    };
+  }
+  if (page === "mcp") {
+    const client = request.query.get("client");
+    return isMcpPageClient(client) ? { mcpClient: client } : {};
+  }
+  if (page === "novamira-setup") {
+    return setupExtras(context, request);
+  }
+  return {};
+}
+
+/**
+ * Go's `setupViewFromRequest` (`server.go:959-983`), minus `?siteprofile=`
+ * and `?replace=`, which went with the site-profile surface — and with them
+ * the "running job only" branch, which existed solely to keep a replace from
+ * attaching to a finished install.
+ *
+ * The precedence is Go's: an explicit `?job=` wins, then the latest job for
+ * `(profile, env)`, then a fresh view built from the link's four values.
+ */
+function setupExtras(
+  context: RouteContext,
+  request: DashboardRequest,
+): Partial<PageModel> {
+  const query = (name: string): string =>
+    (request.query.get(name) ?? "").trim();
+  const profile = query("profile");
+  const envId = query("env");
+  const labels = { siteLabel: query("site"), envName: query("envname") };
+
+  const jobId = query("job");
+  if (jobId !== "") {
+    const job = context.setupJobs.snapshot(jobId);
+    if (job === undefined) {
+      const notice: DashboardNotice = {
+        level: "danger",
+        message: "Setup job not found.",
+      };
       return {
-        restore: {
-          create:
-            request.path === "/backup-create" &&
-            (!job || job.review.operation === "create"),
+        notice,
+        setup: { profile, envId, ...labels, jobId, job: null },
+      };
+    }
+    return { setup: setupViewForJob(job, labels) };
+  }
+
+  if (profile !== "" && envId !== "") {
+    const job = context.setupJobs.latestForTarget(profile, envId);
+    if (job !== undefined) return { setup: setupViewForJob(job, labels) };
+  }
+  return { setup: { profile, envId, ...labels, jobId: "", job: null } };
+}
+
+function pageHandler(context: RouteContext, page: DashboardPage): RouteHandler {
+  return async (request) => {
+    const view = await context.loadConfigView();
+    const reviewNotice = request.query.get("review-notice") === "1";
+    if (
+      reviewNotice ||
+      (context.appAcknowledgement &&
+        !(await context.appAcknowledgement.accepted()))
+    ) {
+      const signals = defaultDashboardSignals(context.token);
+      return htmlResponse(
+        renderDocument({
+          page,
+          view,
+          signals,
+          notice: EMPTY_NOTICE,
+          activeNav: false,
+          body: renderAcknowledgement(reviewNotice),
+        }),
+      );
+    }
+    let renderedPage = page;
+    if (page === "pushes") await context.pushExecution?.refresh(false);
+    // Existing bookmarks still reach the dedicated page, with Updates active.
+    if (page === "settings" && request.query.get("tab") === "updates") {
+      renderedPage = "updates";
+    }
+    let providerOnboarding = false;
+    if (request.path === "/") {
+      if (view.profiles.length === 0) {
+        // The site CLI's own list, asked directly rather than through the
+        // sites service: the question is "has this operator configured
+        // anything at all", and a warm hosting inventory cannot answer it.
+        const listing = await context.integration.listProfiles();
+        providerOnboarding = listing.profiles.length === 0;
+      }
+      if (!providerOnboarding) renderedPage = "sites";
+    }
+    // Go accepted `?new=host` and `?new=site`. The second opened the site
+    // form, which no longer exists; an unknown value is ignored in silence
+    // rather than turned into an error page, because the only way to send one
+    // is a stale bookmark.
+    let cliSiteUrl = "";
+    if (page === "sites" && request.query.get("new") === "cli") {
+      const candidate = request.query.get("site_url");
+      if (candidate && candidate.length <= 2048) {
+        try {
+          cliSiteUrl = normalizeSiteUrl(candidate, {}, "--url").siteUrl;
+        } catch {
+          /* Never reflect invalid URLs or embedded credentials. */
+        }
+      }
+    }
+    const signals = defaultDashboardSignals(context.token, {
+      cliSiteUrl,
+      openProviderForm: request.query.get("new") === "host",
+      openCliSiteForm: request.query.get("new") === "cli",
+      // Go's `defaultProviderFormSignals` preselected `providerKinds()[0]`,
+      // so the provider `<select>`, the metadata expressions and the reset
+      // expression all start on the same kind.
+      firstProviderKind: PROVIDER_KINDS[0],
+    });
+    const extras = pageExtras(context, renderedPage, request);
+    if (request.path === "/hosting-tools") {
+      const profile = request.query.get("profile") ?? "";
+      const provider = view.profiles.find(
+        (entry) => entry.name === profile,
+      )?.provider;
+      Object.assign(extras, {
+        hostingTools: {
           target: {
-            profile: request.query.get("profile") ?? "",
+            profile,
             site: request.query.get("site") ?? "",
             env: request.query.get("env") ?? "",
           },
-          ...(job ? { job } : {}),
-          ...(id && !job
-            ? {
-                error:
-                  "This job is no longer available in this session. Check Activity and the hosting provider before retrying.",
-              }
-            : {}),
-          jobs: context.restore?.list() ?? [],
+          ...(provider && isProviderKind(provider) ? { provider } : {}),
         },
-      };
-    }
-    if (page === "settings") {
-      const tab = request.query.get("tab");
-      return {
-        settingsTab: tab === "uninstall" || tab === "pro" ? tab : "general",
-      };
-    }
-    if (page === "updates") {
-      return { updatesAvailable: context.updates.available !== false };
-    }
-    if (page === "pushes") {
-      const warm = context.sites.warm(ALL_PROFILES_SENTINEL, true);
-      const jobId = request.query.get("job");
-      const job = jobId ? context.pushExecution?.snapshot(jobId) : undefined;
-      return {
-        ...(job ? { pushJob: job } : {}),
-        ...(jobId && !job
-          ? {
-              notice: {
-                level: "warn" as const,
-                message:
-                  "This job was not found in saved history. Check History and your hosting provider before retrying.",
-              },
-            }
-          : {}),
-        pushJobs: context.pushExecution?.list() ?? [],
-        pushes: {
-          groups: warm?.groups ?? [],
-          cacheWarm: warm !== undefined,
-        },
-      };
-    }
-    if (page === "push-new") {
-      const profile = (request.query.get("profile") ?? "").trim();
-      const siteId = (request.query.get("site") ?? "").trim();
-      const site = context.sites.resolveSite(profile, siteId);
-      const requestedSource = (request.query.get("source") ?? "").trim();
-      const sourceEnvId = site?.envs.some(
-        (environment) => environment.id === requestedSource,
-      )
-        ? requestedSource
-        : "";
-      const requestedTarget = (request.query.get("target") ?? "").trim();
-      const targetEnvId =
-        sourceEnvId !== "" &&
-        requestedTarget !== sourceEnvId &&
-        site?.envs.some((environment) => environment.id === requestedTarget)
-          ? requestedTarget
-          : sourceEnvId !== "" && site?.envs.length === 2
-            ? (site.envs.find((environment) => environment.id !== sourceEnvId)
-                ?.id ?? "")
-            : "";
-      return {
-        pushNew: {
-          profile,
-          siteId,
-          // Go fell back to the raw site id so the page still names its target
-          // when the cache is cold (`server.go:926`).
-          siteLabel: site?.label ?? siteId,
-          envs: site?.envs ?? [],
-          sourceEnvId,
-          targetEnvId,
-        },
-      };
-    }
-    if (page === "mcp") {
-      const client = request.query.get("client");
-      return isMcpPageClient(client) ? { mcpClient: client } : {};
-    }
-    if (page === "novamira-setup") {
-      return setupExtras(request);
-    }
-    return {};
-  };
-
-  /**
-   * Go's `setupViewFromRequest` (`server.go:959-983`), minus `?siteprofile=`
-   * and `?replace=`, which went with the site-profile surface — and with them
-   * the "running job only" branch, which existed solely to keep a replace from
-   * attaching to a finished install.
-   *
-   * The precedence is Go's: an explicit `?job=` wins, then the latest job for
-   * `(profile, env)`, then a fresh view built from the link's four values.
-   */
-  const setupExtras = (request: DashboardRequest): Partial<PageModel> => {
-    const query = (name: string): string =>
-      (request.query.get(name) ?? "").trim();
-    const profile = query("profile");
-    const envId = query("env");
-    const labels = { siteLabel: query("site"), envName: query("envname") };
-
-    const jobId = query("job");
-    if (jobId !== "") {
-      const job = context.setupJobs.snapshot(jobId);
-      if (job === undefined) {
-        const notice: DashboardNotice = {
-          level: "danger",
-          message: "Setup job not found.",
-        };
-        return {
-          notice,
-          setup: { profile, envId, ...labels, jobId, job: null },
-        };
-      }
-      return { setup: setupViewForJob(job, labels) };
-    }
-
-    if (profile !== "" && envId !== "") {
-      const job = context.setupJobs.latestForTarget(profile, envId);
-      if (job !== undefined) return { setup: setupViewForJob(job, labels) };
-    }
-    return { setup: { profile, envId, ...labels, jobId: "", job: null } };
-  };
-
-  const pageHandler = (page: DashboardPage): RouteHandler => {
-    return async (request) => {
-      const view = await context.loadConfigView();
-      const reviewNotice = request.query.get("review-notice") === "1";
-      if (
-        reviewNotice ||
-        (context.appAcknowledgement &&
-          !(await context.appAcknowledgement.accepted()))
-      ) {
-        const signals = defaultDashboardSignals(context.token);
-        return htmlResponse(
-          renderDocument({
-            page,
-            view,
-            signals,
-            notice: EMPTY_NOTICE,
-            activeNav: false,
-            body: renderAcknowledgement(reviewNotice),
-          }),
-        );
-      }
-      let renderedPage = page;
-      if (page === "pushes") await context.pushExecution?.refresh(false);
-      // Existing bookmarks still reach the dedicated page, with Updates active.
-      if (page === "settings" && request.query.get("tab") === "updates") {
-        renderedPage = "updates";
-      }
-      let providerOnboarding = false;
-      if (request.path === "/") {
-        if (view.profiles.length === 0) {
-          // The site CLI's own list, asked directly rather than through the
-          // sites service: the question is "has this operator configured
-          // anything at all", and a warm hosting inventory cannot answer it.
-          const listing = await context.integration.listProfiles();
-          providerOnboarding = listing.profiles.length === 0;
-        }
-        if (!providerOnboarding) renderedPage = "sites";
-      }
-      // Go accepted `?new=host` and `?new=site`. The second opened the site
-      // form, which no longer exists; an unknown value is ignored in silence
-      // rather than turned into an error page, because the only way to send one
-      // is a stale bookmark.
-      let cliSiteUrl = "";
-      if (page === "sites" && request.query.get("new") === "cli") {
-        const candidate = request.query.get("site_url");
-        if (candidate && candidate.length <= 2048) {
-          try {
-            cliSiteUrl = normalizeSiteUrl(candidate, {}, "--url").siteUrl;
-          } catch {
-            /* Never reflect invalid URLs or embedded credentials. */
-          }
-        }
-      }
-      const signals = defaultDashboardSignals(context.token, {
-        cliSiteUrl,
-        openProviderForm: request.query.get("new") === "host",
-        openCliSiteForm: request.query.get("new") === "cli",
-        // Go's `defaultProviderFormSignals` preselected `providerKinds()[0]`,
-        // so the provider `<select>`, the metadata expressions and the reset
-        // expression all start on the same kind.
-        firstProviderKind: PROVIDER_KINDS[0],
       });
-      const extras = pageExtras(renderedPage, request);
-      if (request.path === "/hosting-tools") {
-        const profile = request.query.get("profile") ?? "";
-        const provider = view.profiles.find(
-          (entry) => entry.name === profile,
-        )?.provider;
-        Object.assign(extras, {
-          hostingTools: {
-            target: {
-              profile,
-              site: request.query.get("site") ?? "",
-              env: request.query.get("env") ?? "",
-            },
-            ...(provider && isProviderKind(provider) ? { provider } : {}),
-          },
-        });
-      }
-      const actionProfile = request.query.get("actions");
-      if (renderedPage === "providers" && actionProfile !== null) {
-        const profile = view.profiles.find(
-          (profile) => profile.name === actionProfile,
-        );
-        if (!profile)
-          throw new CliError("not_found", "Hosting account not found.");
-        let capabilities: unknown;
-        try {
-          capabilities = await context.providers.capabilities(profile.name);
-        } catch {
-          // Do not expose credential references or adapter diagnostics here.
-          capabilities = undefined;
-        }
-        Object.assign(extras, {
-          providerActions: {
-            profile: profile.name,
-            provider: profile.provider,
-            capabilities,
-          },
-        });
-      }
-      // The extras go first so the three fields every page must have cannot be
-      // overwritten by one, and so the notice reaching the toast and the notice
-      // reaching the body are one value.
-      const notice = extras.notice ?? EMPTY_NOTICE;
-      const sitesSnapshot =
-        renderedPage === "sites"
-          ? context.sites.snapshot(ALL_PROFILES_SENTINEL, true)
-          : undefined;
-      const model: PageModel = {
-        ...((renderedPage === "settings" || renderedPage === "novamira-pro") &&
-        context.pro
-          ? {
-              pro: await context.pro.view(
-                request.query.get("site") ?? undefined,
-              ),
-            }
-          : {}),
-        ...(sitesSnapshot ? { sitesSnapshot } : {}),
-        ...extras,
-        view,
-        notice,
-        signals,
-        providerOnboarding,
-        ...(renderedPage === "mcp" && context.mcpConnection
-          ? {
-              mcp: context.mcpConnection.configuration(),
-            }
-          : {}),
-        ...(renderedPage === "history"
-          ? {
-              history: await context.history.list(),
-              historyProfile: request.query.get("profile") ?? "",
-            }
-          : {}),
-      };
-      return htmlResponse(
-        renderDocument({
-          page: renderedPage,
-          view,
-          signals,
-          notice,
-          activeNav: !providerOnboarding,
-          body: renderPageBody(renderedPage, model),
-        }),
+    }
+    const actionProfile = request.query.get("actions");
+    if (renderedPage === "providers" && actionProfile !== null) {
+      const profile = view.profiles.find(
+        (profile) => profile.name === actionProfile,
       );
+      if (!profile)
+        throw new CliError("not_found", "Hosting account not found.");
+      let capabilities: unknown;
+      try {
+        capabilities = await context.providers.capabilities(profile.name);
+      } catch {
+        // Do not expose credential references or adapter diagnostics here.
+        capabilities = undefined;
+      }
+      Object.assign(extras, {
+        providerActions: {
+          profile: profile.name,
+          provider: profile.provider,
+          capabilities,
+        },
+      });
+    }
+    // The extras go first so the three fields every page must have cannot be
+    // overwritten by one, and so the notice reaching the toast and the notice
+    // reaching the body are one value.
+    const notice = extras.notice ?? EMPTY_NOTICE;
+    const sitesSnapshot =
+      renderedPage === "sites"
+        ? context.sites.snapshot(ALL_PROFILES_SENTINEL, true)
+        : undefined;
+    const model: PageModel = {
+      ...((renderedPage === "settings" || renderedPage === "novamira-pro") &&
+      context.pro
+        ? {
+            pro: await context.pro.view(request.query.get("site") ?? undefined),
+          }
+        : {}),
+      ...(sitesSnapshot ? { sitesSnapshot } : {}),
+      ...extras,
+      view,
+      notice,
+      signals,
+      providerOnboarding,
+      ...(renderedPage === "mcp" && context.mcpConnection
+        ? {
+            mcp: context.mcpConnection.configuration(),
+          }
+        : {}),
+      ...(renderedPage === "history"
+        ? {
+            history: await context.history.list(),
+            historyProfile: request.query.get("profile") ?? "",
+          }
+        : {}),
     };
+    return htmlResponse(
+      renderDocument({
+        page: renderedPage,
+        view,
+        signals,
+        notice,
+        activeNav: !providerOnboarding,
+        body: renderPageBody(renderedPage, model),
+      }),
+    );
   };
+}
 
+export function createRouteTable(context: RouteContext): readonly Route[] {
   const routes: Route[] = [
     {
       method: "GET",
@@ -646,7 +646,7 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
       method: "GET",
       path,
       auth: "public",
-      handler: pageHandler(page),
+      handler: pageHandler(context, page),
     });
   }
   routes.push(

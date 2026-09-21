@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+name: Feature request
+description: Something HQ should be able to do and cannot.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Some things are excluded on purpose, not by omission: site or
+        environment deletion, site reset, backup or domain deletion, DNS writes,
+        SSH/SFTP credential management, and anything that would have HQ hold a
+        WordPress site token. See `SECURITY.md`. A request for one of those is
+        a request to change the product's safety contract — say why, and expect
+        the discussion to be about that rather than about the implementation.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do, and where HQ stops you.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like HQ to do
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do today instead

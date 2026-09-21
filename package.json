@@ -33,6 +33,7 @@
     "legal:check": "node scripts/legal-notices.mjs --check",
     "legal:desktop-check": "node scripts/legal-notices.mjs --check-desktop",
     "test": "bun run build && node --test test/*.test.mjs",
+    "coverage": "bun run build && node --test --experimental-test-coverage --test-coverage-exclude=test/** --test-coverage-exclude=scripts/** --test-coverage-lines=93 --test-coverage-branches=85 --test-coverage-functions=92 test/*.test.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -40,6 +41,7 @@
     "check": "bun run lint && bun run format:check && bun run test",
     "pack:inspect": "bun run build && bun pm pack --dry-run --ignore-scripts",
     "package:acceptance": "bun run build && node scripts/package-acceptance.mjs",
+    "providers:live": "bun run build && node scripts/provider-live.mjs",
     "desktop:check": "bun run build && deno fmt --check desktop && deno lint desktop && deno check desktop/main.ts",
     "desktop:build": "bun run build && node scripts/desktop-build.mjs",
     "keychain:build": "node scripts/macos-keychain-build.mjs"

@@ -64,6 +64,8 @@ import {
   type DashboardUpdates,
 } from "../web/index.js";
 import type { CommandDependencies } from "./commands.js";
+import type { CommandIo } from "./inputs.js";
+import type { Renderer } from "../output/render.js";
 import { runLocalCommand } from "./hosting-command.js";
 import type { GlobalOptions } from "./program.js";
 
@@ -310,6 +312,77 @@ function implicitDashboardAddresses(): readonly BoundAddress[] {
   });
 }
 
+/**
+ * Everything the dashboard server is handed, built in one place.
+ *
+ * It is built per listen attempt rather than once, because a bound server owns
+ * the services in this record and a failed attempt must not hand a second
+ * server the first one's. `io.env` rather than `process.env` throughout: the
+ * injected environment is what makes `NOVAMIRA_HQ_SITE_CLI` and `PATH` resolve
+ * the way every other command resolves them.
+ */
+function dashboardServerDependencies(
+  dependencies: CommandDependencies,
+  overrides: DashboardCommandOverrides,
+  io: CommandIo,
+  renderer: Renderer,
+  http: HttpFetch,
+): Parameters<typeof createDashboardServer>[0] {
+  return {
+    pro: createProService({
+      paths: dependencies.paths,
+      security: dependencies.security,
+      credentials: dependencies.credentials,
+      profiles: () =>
+        createDashboardIntegration(io.env, overrides).listProfiles(),
+      operations: createSiteOperations({
+        spawn: overrides.spawn ?? nodeSpawnChild,
+        resolve:
+          overrides.resolveSiteCli ??
+          createSiteCliResolver({
+            environment: io.env,
+            platform: process.platform,
+            isFile: nodeIsFile,
+          }),
+        environment: io.env,
+      }),
+      fetch,
+    }),
+    version: dependencies.version,
+    paths: dependencies.paths,
+    store: dependencies.store,
+    hosting: dependencies.hosting,
+    history: dependencies.history,
+    appAcknowledgement: withComponentSetup({
+      acknowledgement: createAppAcknowledgement(
+        dependencies.paths,
+        dependencies.security,
+      ),
+      probe: dependencies.probeSiteCli,
+      install: componentInstaller(io.env, process.platform),
+    }),
+    ...(dependencies.mcpConnection
+      ? { mcpConnection: dependencies.mcpConnection }
+      : {}),
+    credentials: dependencies.credentials,
+    environment: io.env,
+    fetch: http,
+    now: overrides.now ?? (() => Date.now()),
+    // Built here, where the injected environment record exists, so
+    // `NOVAMIRA_HQ_SITE_CLI` and `PATH` come from the same place every
+    // other command reads them from.
+    integration: createDashboardIntegration(io.env, overrides),
+    doctor: createDashboardDoctor(dependencies, io.env, overrides),
+    updates: createDashboardUpdates(dependencies, overrides),
+    ...(overrides.randomToken === undefined
+      ? {}
+      : { randomToken: overrides.randomToken }),
+    onDiagnostic: (label, payload) => {
+      renderer.diagnostic(label, payload);
+    },
+  };
+}
+
 export function createDashboardHandlers(
   dependencies: CommandDependencies,
   overrides: DashboardCommandOverrides = {},
@@ -388,62 +461,15 @@ export function createDashboardHandlers(
           async ({ renderer, io }) => {
             let lastConflict: CliError | undefined;
             for (const candidate of candidates) {
-              const started = createServer({
-                pro: createProService({
-                  paths: dependencies.paths,
-                  security: dependencies.security,
-                  credentials: dependencies.credentials,
-                  profiles: () =>
-                    createDashboardIntegration(
-                      io.env,
-                      overrides,
-                    ).listProfiles(),
-                  operations: createSiteOperations({
-                    spawn: overrides.spawn ?? nodeSpawnChild,
-                    resolve:
-                      overrides.resolveSiteCli ??
-                      createSiteCliResolver({
-                        environment: io.env,
-                        platform: process.platform,
-                        isFile: nodeIsFile,
-                      }),
-                    environment: io.env,
-                  }),
-                  fetch,
-                }),
-                version: dependencies.version,
-                paths: dependencies.paths,
-                store: dependencies.store,
-                hosting: dependencies.hosting,
-                history: dependencies.history,
-                appAcknowledgement: withComponentSetup({
-                  acknowledgement: createAppAcknowledgement(
-                    dependencies.paths,
-                    dependencies.security,
-                  ),
-                  probe: dependencies.probeSiteCli,
-                  install: componentInstaller(io.env, process.platform),
-                }),
-                ...(dependencies.mcpConnection
-                  ? { mcpConnection: dependencies.mcpConnection }
-                  : {}),
-                credentials: dependencies.credentials,
-                environment: io.env,
-                fetch: http,
-                now: overrides.now ?? (() => Date.now()),
-                // Built here, where the injected environment record exists, so
-                // `NOVAMIRA_HQ_SITE_CLI` and `PATH` come from the same place every
-                // other command reads them from.
-                integration: createDashboardIntegration(io.env, overrides),
-                doctor: createDashboardDoctor(dependencies, io.env, overrides),
-                updates: createDashboardUpdates(dependencies, overrides),
-                ...(overrides.randomToken === undefined
-                  ? {}
-                  : { randomToken: overrides.randomToken }),
-                onDiagnostic: (label, payload) => {
-                  renderer.diagnostic(label, payload);
-                },
-              });
+              const started = createServer(
+                dashboardServerDependencies(
+                  dependencies,
+                  overrides,
+                  io,
+                  renderer,
+                  http,
+                ),
+              );
               try {
                 bound = await started.listen(candidate);
                 server = started;
