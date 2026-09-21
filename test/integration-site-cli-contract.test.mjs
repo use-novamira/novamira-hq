@@ -267,7 +267,7 @@ test("near_expiry is connected too", async () => {
   assert.equal(result.state, "connected");
 });
 
-test("absent, invalid and expired credentials are reconnect_required", async () => {
+test("only absent and invalid credentials require reconnection; expiry is not revocation", async () => {
   for (const payload of [
     { credentialState: "absent", restReachable: null },
     { credentialState: "invalid", restReachable: null },
@@ -285,7 +285,13 @@ test("absent, invalid and expired credentials are reconnect_required", async () 
     );
     assert.deepEqual(
       result,
-      { state: "reconnect_required", profiles: ["prod"] },
+      payload.credentialState === "expired"
+        ? {
+            state: "unavailable",
+            profiles: ["prod"],
+            reason: "token_refresh_pending",
+          }
+        : { state: "reconnect_required", profiles: ["prod"] },
       payload.credentialState,
     );
   }
@@ -1283,7 +1289,7 @@ test("listProfiles lists once, then asks auth status per profile", async () => {
     listing.profiles.map((profile) => [profile.name, profile.state]),
     [
       ["prod", "connected"],
-      ["staging", "reconnect_required"],
+      ["staging", "connected"],
     ],
   );
   assert.equal(listing.profiles[0].siteUrl, "https://example.com");
@@ -1504,7 +1510,7 @@ test("reauthorization does not open login for unreachable or malformed status", 
   }
 });
 
-test("reauthorization proceeds for an expired authorization", async () => {
+test("token expiry alone never launches interactive reauthorization", async () => {
   const { integration, calls } = harness((invocation) =>
     exited(
       success(
@@ -1520,10 +1526,10 @@ test("reauthorization proceeds for an expired authorization", async () => {
     ),
   );
   assert.deepEqual(await integration.connect(PROFILE.siteUrl, "prod"), {
-    kind: "connected",
+    kind: "failed",
+    reason: "token_refresh_pending",
   });
-  assert.equal(calls.length, 2);
-  assert.deepEqual(calls[1].args, authLoginArgs(PROFILE.siteUrl, "prod"));
+  assert.equal(calls.length, 1);
 });
 
 test("siteInventory lists once and derives matched and CLI-only profiles together", async () => {

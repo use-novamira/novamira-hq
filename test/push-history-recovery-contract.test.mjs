@@ -16,6 +16,43 @@ import { platformPaths } from "../dist/config/paths.js";
 import { createPushExecutionService } from "../dist/web/services/push-execution.js";
 import { renderPushJob, renderPushJobs } from "../dist/web/views/push-job.js";
 import { renderHtml } from "../dist/web/html.js";
+import { renderPushesPage } from "../dist/web/views/pushes.js";
+
+test("Push history hides removed hosting profiles without deleting saved jobs", () => {
+  const jobs = ["active", "removed"].map((profile) => ({
+    confirmation: {
+      id: profile,
+      name: profile,
+      profile,
+      sourceUrl: `${profile}-source.example.com`,
+      targetUrl: `${profile}-target.example.com`,
+    },
+    status: "completed",
+    startedAt: 1000,
+    finishedAt: 2000,
+  }));
+  const view = {
+    profiles: [{ name: "active", provider: "instawp" }],
+    pushes: [],
+    version: "test",
+    configFile: "test",
+  };
+  const render = (profiles) =>
+    renderHtml(
+      renderPushesPage(
+        { ...view, profiles },
+        { level: "neutral", message: "" },
+        undefined,
+        jobs,
+      ),
+    );
+  const markup = render(view.profiles);
+  assert.match(markup, /active-source.example.com/);
+  assert.ok(!markup.includes("removed-source.example.com"));
+  assert.ok(!render([]).includes("Push history"));
+  assert.equal(jobs.length, 2);
+  assert.equal(jobs[1].confirmation.profile, "removed");
+});
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "hq-push-recovery-"));

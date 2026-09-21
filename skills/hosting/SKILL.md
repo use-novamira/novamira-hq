@@ -25,7 +25,7 @@ novamira-hq --json --profile <hosting-profile> hosting envs list --site <site_id
 novamira-hq --json --profile <hosting-profile> hosting ops get <operation_id>
 ```
 
-HQ deliberately implements no site deletion/reset, environment deletion, backup deletion, domain deletion, DNS record writes, or SSH/SFTP access management. Backup restore is the sole recovery exception: it verifies the backup in the target environment, creates a fresh safety backup, and requires explicit destructive approval. Capability output is governed by a positive public allowlist.
+HQ deliberately implements no site deletion/reset, environment deletion, backup deletion, domain deletion, DNS record writes, or SSH/SFTP access management. Backup restore is the sole recovery exception: it verifies the backup in the target environment, requires explicit destructive approval. Capability output is governed by a positive public allowlist.
 
 InstaWP exposes each site as one synthetic environment. Credential validation, site list/get, site creation from scratch or template, task polling, and WP-CLI command execution are available. Saved command IDs are still accepted for provider-native workflows.
 
@@ -72,7 +72,7 @@ novamira-hq --json --profile <hosting-profile> hosting envs push --site <site_id
 novamira-hq --json --profile <hosting-profile> hosting envs push --site <site_id> --source-env <source_env_id> --target-env <target_env_id> --file wp-content/uploads
 ```
 
-Environment push has no implicit scope. Select `--db`, `--all-files`, or one or more `--file` paths; `--all-files` and `--file` are mutually exclusive, and `--search-replace` requires `--db`. HQ verifies both environments and provider support, then creates and waits for a safety backup of the target before it starts the push. `--from-json` is intentionally unavailable for this command. The safe granular contract is currently advertised only by Kinsta; Rocket.net's all-or-nothing publish and Cloudways' provider-native sync are not exposed as HQ push operations.
+Environment push has no implicit scope. Select `--db`, `--all-files`, or one or more `--file` paths; `--all-files` and `--file` are mutually exclusive, and `--search-replace` requires `--db`. HQ verifies both environments and provider support, then starts only the requested native push. Backup creation is a separate explicit action. `--from-json` is intentionally unavailable for this command. The safe granular contract is currently advertised only by Kinsta; Rocket.net's all-or-nothing publish and Cloudways' provider-native sync are not exposed as HQ push operations.
 
 ## Maintenance
 

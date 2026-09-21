@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { attr, hrefAttr, html, url, type Html } from "../html.js";
+import { hrefAttr, html, url, type Html } from "../html.js";
 import type { ConfigView } from "./types.js";
 import type { ProView } from "../../pro/service.js";
 import { renderPro } from "./pro.js";
-import { pageHeader, panel } from "./components.js";
+import { pageHeader, panel, tabs, filePath } from "./components.js";
 
 export type SettingsTab = "general" | "uninstall" | "pro";
 
@@ -16,8 +16,15 @@ export function renderSettingsPage(
 ): Html {
   if (tab === "uninstall")
     return html`<section class="page flow-page"><header class="page-head"><div><h1>Uninstall Novamira HQ</h1><a class="text-link"${hrefAttr(url("/about"))}>← About Novamira HQ</a></div></header>${renderUninstallHelp()}</section>`;
-  const tabs = html`<nav class="ui-tabs" aria-label="Settings sections"><a${hrefAttr(url("/settings"))}${tab === "general" ? attr("aria-current", "page") : false}>General</a><a${hrefAttr(url("/settings", { tab: "pro" }))}${tab === "pro" ? attr("aria-current", "page") : false}>Novamira Pro</a></nav>`;
-  return html`<section class="page flow-page">${pageHeader("Settings")}${tabs}${tab === "pro" ? (pro ? renderPro(pro) : panel(html`<p>Plugin license settings are unavailable in this instance.</p>`)) : panel(html`<dl class="details-list"><div><dt>Path</dt><dd><code>${view.configFile}</code></dd></div></dl>`, { title: "Configuration file", description: "Where Novamira HQ stores your hosting profiles and pushes." })}</section>`;
+  const navigation = tabs("Settings sections", [
+    { label: "General", href: url("/settings"), selected: tab === "general" },
+    {
+      label: "Novamira Pro",
+      href: url("/settings", { tab: "pro" }),
+      selected: tab === "pro",
+    },
+  ]);
+  return html`<section class="page flow-page">${pageHeader("Settings")}${navigation}${tab === "pro" ? (pro ? renderPro(pro) : panel(html`<p>Plugin license settings are unavailable in this instance.</p>`)) : panel(filePath(view.configFile), { title: "Configuration file", description: "Stores hosting account settings and saved push configurations. Credentials are stored separately." })}</section>`;
 }
 
 /** Instructions only: no uninstall command or credential action is executed. */

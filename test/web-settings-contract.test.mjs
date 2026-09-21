@@ -208,6 +208,9 @@ test("Settings isolates configuration from updates and uninstall instructions", 
   ]) {
     const markup = await page(server, path);
     assert.ok(markup.includes("Configuration file"));
+    assert.ok(markup.includes("Credentials are stored separately."));
+    assert.ok(markup.includes('class="ui-file-path"'));
+    assert.ok(!markup.includes('class="details-list"'));
     assert.ok(!markup.includes('id="updates-card"'));
     assert.ok(!markup.includes("npm uninstall"));
     assert.ok(markup.includes('aria-current="page"'));

@@ -70,6 +70,7 @@
  */
 
 import type { ConnectionSnapshot } from "../../connection-state.js";
+import { itemCount, connectionStatus } from "./components.js";
 import type {
   SiteProfileListing,
   SiteProfileSummary,
@@ -82,7 +83,11 @@ import {
   type HostingSite,
 } from "../../hosting/types.js";
 import * as ds from "../datastar.js";
-import { ALL_PROFILES_SENTINEL, MANUAL_PROFILES_SENTINEL } from "../signals.js";
+import {
+  ALL_PROFILES_SENTINEL,
+  MANUAL_PROFILES_SENTINEL,
+  dynamicSignalPath,
+} from "../signals.js";
 import { get, hideSite, post, signal } from "../expr.js";
 import {
   attr,
@@ -272,9 +277,7 @@ function renderCliOnly(
   view: SitesResultView,
 ): Html | false {
   if (profiles.length === 0) return false;
-  return html`<section class="provider-sites cli-sites"><details class="inventory-group" open${attr("id", "inventory-manual")}><summary class="group-head"><div class="inventory-group-heading"><h2>Manually added sites</h2><p>Sites not linked to a hosting account.</p></div><span class="pill">${String(
-    profiles.length,
-  )} ${profiles.length === 1 ? "site" : "sites"}</span></summary><div class="site-grid cli-site-grid">${profiles.map(
+  return html`<section class="provider-sites cli-sites"><details class="inventory-group" open${attr("id", "inventory-manual")}><summary class="group-head"><div class="inventory-group-heading"><h2>Manually added sites</h2><p>Sites not linked to a hosting account.</p></div>${itemCount(profiles.length, "site", "sites")}</summary><div class="site-grid cli-site-grid">${profiles.map(
     (profile) =>
       renderSiteProfileRow(siteProfileRowView(profile), {
         profile: view.profile,
@@ -306,9 +309,7 @@ function renderSiteGroup(group: SiteGroup, view: SitesResultView): Html {
   if (group.error !== undefined && group.error !== "") {
     return html`<section class="provider-sites"><details class="inventory-group" open${attr("id", `inventory-hosting-${encodeURIComponent(group.profile)}`)}>${head}<span class="pill danger">error</span></summary><div class="empty error">${group.error}</div></details></section>`;
   }
-  return html`<section class="provider-sites"><details class="inventory-group" open${attr("id", `inventory-hosting-${encodeURIComponent(group.profile)}`)}>${head}<span class="pill">${String(
-    group.sites.length,
-  )} ${group.sites.length === 1 ? "site" : "sites"}</span></summary>${
+  return html`<section class="provider-sites"><details class="inventory-group" open${attr("id", `inventory-hosting-${encodeURIComponent(group.profile)}`)}>${head}${itemCount(group.sites.length, "site", "sites")}</summary>${
     group.sites.length === 0
       ? html`<div class="empty">No sites returned by this provider.</div>`
       : html`<div class="site-grid">${group.sites.map((site) =>
@@ -487,7 +488,7 @@ function renderStateCell(
 
   switch (connection.state) {
     case "connected":
-      return html`<span class="pill ok">Access authorized</span>${renderProfileLink(
+      return html`${connectionStatus("connected")}${renderProfileLink(
         connection,
         view,
         group,
@@ -502,12 +503,10 @@ function renderStateCell(
         env,
         siteLabel,
       );
-      return profiles === false
-        ? html`<span class="pill warn">Authorization required</span>`
-        : profiles;
+      return html`${connectionStatus("reconnect_required")}${profiles}`;
     }
     case "not_configured":
-      return html`${renderConnectButton(
+      return html`${connectionStatus("not_configured")}${renderConnectButton(
         connection,
         address,
         view,
@@ -516,9 +515,9 @@ function renderStateCell(
         siteLabel,
       )}`;
     case "unavailable":
-      return html`<span class="pill"${titleAttr(
-        connection.hint,
-      )}>${connection.reason === "site_incompatible" ? "Novamira not ready" : "Access not verified"}</span>${renderProfileLink(connection, view, group, env, siteLabel)}${renderCheckAccess()}`;
+      if (connection.reason === "token_refresh_pending")
+        return connectionStatus("configured", connection.hint);
+      return html`${connectionStatus("unavailable", connection.hint)}${renderProfileLink(connection, view, group, env, siteLabel)}${renderCheckAccess()}`;
   }
 }
 
@@ -609,7 +608,7 @@ function renderConnectButton(
   if (address === "") {
     return html`<button class="button tiny" type="button"${flagAttr(
       "disabled",
-    )}${attr("title", NO_DOMAIN_TITLE)}>Set up access</button>`;
+    )}${attr("title", NO_DOMAIN_TITLE)}>Connect</button>`;
   }
   if (
     connection.state === "unavailable" &&
@@ -617,7 +616,7 @@ function renderConnectButton(
   ) {
     return html`<button class="button tiny" type="button"${flagAttr(
       "disabled",
-    )}${titleAttr(connection.hint)}>Set up access</button>`;
+    )}${titleAttr(connection.hint)}>Connect</button>`;
   }
   const action = post(
     url("/_dashboard/connect", {
@@ -633,10 +632,14 @@ function renderConnectButton(
     }),
     { include: [] },
   );
+  const busy = dynamicSignalPath(
+    "connecting",
+    JSON.stringify([group.profile, env.id, address]),
+  );
   return html`<button class="button tiny" type="button"${attr(
     "title",
     `Check Novamira, then authorize access in your browser. novamira auth login ${address}`,
-  )}${ds.indicator("cliSites.loading")}${ds.attrs({ disabled: signal("cliSites.loading") })}${ds.on("click", action)}>Set up access</button>`;
+  )}${ds.indicator(busy)}${ds.attrs({ disabled: signal(busy) })}${ds.on("click", action)}><span${ds.classes({ hidden: signal(busy) })}>Connect</span><span class="loading-inline ds-toggle"${ds.classes({ open: signal(busy) })} role="status">Preparing connection…</span></button>`;
 }
 
 /**

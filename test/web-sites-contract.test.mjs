@@ -780,7 +780,7 @@ test("6: a multi-environment site is a <details>, a single one a plain row", asy
   assert.ok(markup.includes(">Single Site<"));
   // The zero-environment site falls back to its id for a title.
   assert.ok(markup.includes(">s3<"));
-  assert.ok(markup.includes('<span class="pill">3 sites</span>'));
+  assert.ok(markup.includes('<span class="ui-item-count">3 sites</span>'));
 });
 
 test("7: every .site-row carries data-nm-state, and only the two frozen values", async () => {
@@ -822,13 +822,17 @@ test("8: the four connection states render their documented pill and actions", a
       "env-p1": "unavailable",
     },
   });
-  assert.ok(markup.includes('<span class="pill ok">Access authorized</span>'));
   assert.ok(
-    markup.includes('<span class="pill warn">Authorization required</span>'),
+    markup.includes('<span class="connection-status">Connected</span>'),
+  );
+  assert.ok(
+    markup.includes(
+      '<span class="connection-status">Access renewal required</span>',
+    ),
   );
   assert.ok(!markup.includes('<span class="pill">Not connected</span>'));
-  assert.ok(markup.includes(">Set up access</button>"));
-  assert.ok(markup.includes(">Access not verified</span>"));
+  assert.ok(markup.includes(">Connect</span>"));
+  assert.ok(markup.includes(">Connection not verified</span>"));
   assert.ok(markup.includes("novamira auth login https://env-c.example.com"));
   assert.ok(markup.includes("/_dashboard/connect?url="));
   // `connected` offers nothing; the Setup CTA belongs to the two unconnected
@@ -841,14 +845,14 @@ test("8: the four connection states render their documented pill and actions", a
     cliAvailable: false,
     states: { "env-a": "connected" },
   });
-  assert.ok(!absent.markup.includes('class="pill ok">Access authorized'));
+  assert.ok(!absent.markup.includes('class="connection-status">Connected'));
   assert.equal(
-    absent.markup.split(">Access not verified</span>").length - 1,
+    absent.markup.split(">Connection not verified</span>").length - 1,
     5,
     "one per environment",
   );
   assert.ok(absent.markup.includes(SITE_CLI_INSTALL_HINT));
-  assert.equal(absent.markup.split(">Check access</button>").length - 1, 5);
+  assert.equal(absent.markup.split(">Check connection</span>").length - 1, 5);
 });
 
 test("9: Push from here appears on each environment of a push-capable multi-env site", async () => {
@@ -874,7 +878,14 @@ test("10: supported hosting rows have one connect action with inspection context
     ...markup.matchAll(/class="button link setup-cta" href="([^"]*)"/g),
   ].map((match) => match[1]);
   assert.equal(links.length, 0);
-  assert.equal(markup.split(">Set up access</button>").length - 1, 5);
+  assert.equal((markup.match(/>Connect<\/(?:button|span)>/g) ?? []).length, 5);
+  assert.ok(!markup.includes('data-indicator="cliSites.loading"'));
+  const indicators = [
+    ...markup.matchAll(/data-indicator="(connecting_[^"]+)"/g),
+  ].map((match) => match[1]);
+  assert.ok(indicators.length > 1);
+  assert.equal(new Set(indicators).size, indicators.length);
+  assert.match(markup, /Preparing connection…/);
   assert.equal(markup.split("hosting_profile=prod").length - 1, 3);
   assert.ok(!markup.includes("hosting_profile=plain"));
   assert.ok(!markup.includes("Install / check Novamira"));
@@ -1287,10 +1298,10 @@ test("a CLI profile on a site without a compatible Novamira setup is explicit", 
     cliAvailable: true,
   };
   const { markup } = await resultMarkup({ siteProfiles });
-  assert.ok(markup.includes("Novamira not ready"));
+  assert.ok(markup.includes("Connection not verified"));
   assert.ok(markup.includes("plugin may be missing"));
-  assert.ok(markup.includes(">Check access</button>"));
-  assert.ok(!markup.includes(">Authorize again</span>"));
+  assert.ok(markup.includes(">Check connection</span>"));
+  assert.ok(!markup.includes(">Renew access</span>"));
   assert.ok(!markup.includes('class="status-action'));
   assert.ok(!markup.includes(">Unknown</span>"));
 });

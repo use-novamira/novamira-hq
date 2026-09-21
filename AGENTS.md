@@ -55,8 +55,9 @@ exposed at launch; there are no access presets.
 Backup restore is the recovery-only exception. The CLI requires `--yes` plus an
 explicit full-content acknowledgement; MCP requires a short-lived, session-local, one-use
 plan/apply confirmation. Both surfaces verify the backup in the target
-environment's catalog and create and wait for a fresh target safety backup
-before restoring. Neither accepts provider-native JSON for restore, and backup
+environment's catalog and execute only the requested restore. Backup creation is
+a separate explicit action, never an HQ prerequisite or automatic step of restore.
+Neither accepts provider-native JSON for restore, and backup
 deletion remains absent everywhere.
 
 ## Storage namespace

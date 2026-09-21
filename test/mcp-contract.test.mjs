@@ -545,7 +545,7 @@ test("recovery is available by default and restores through a one-use guarded pl
   const planned = JSON.parse(messages[1].result.content[0].text);
   assert.equal(planned.confirmationId, "restore-confirmation-id");
   assert.equal(planned.plan.scope, "all-content");
-  assert.equal(planned.plan.safetyBackup, "required");
+  assert.ok(!("safetyBackup" in planned.plan));
   assert.equal(messages[2].result.isError, undefined);
   assert.equal(messages[3].result.isError, true);
   assert.equal(
@@ -558,11 +558,6 @@ test("recovery is available by default and restores through a one-use guarded pl
     { kind: "backups", envId: "env-target" },
     { kind: "capabilities" },
     { kind: "backups", envId: "env-target" },
-    {
-      kind: "create-backup",
-      envId: "env-target",
-      body: { tag: "novamira-hq pre-restore safety backup" },
-    },
     {
       kind: "restore-backup",
       targetEnvId: "env-target",

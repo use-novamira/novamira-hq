@@ -11,6 +11,10 @@ view, but do not duplicate the structural HTML of these components:
 - `operationStatus`: running/result text with accessible status semantics.
 - `endpoint`: readable source/destination, with wrapping and no display scheme.
 - `technicalDetails`: secondary IDs and diagnostic details, collapsed by default.
+- `tabs`: section navigation and selected-tab semantics.
+- `filePath`: compact, wrapping local path display.
+- `secretEditor`: masked stored-key hint, replacement form and optional removal;
+  accepts typed actions and signal paths, never the stored secret itself.
 
 Only typed `Html`, `Url`, `Expr` and signal helpers cross component boundaries.
 Never insert raw HTML or manually construct Datastar attributes. Shared styling

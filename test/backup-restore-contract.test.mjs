@@ -94,8 +94,8 @@ test("restore planning validates destructive acknowledgement before provider rea
   assert.deepEqual(provider.calls, []);
 });
 
-test("restore planning requires list, create, and restore capabilities", async () => {
-  for (const missing of ["backups.list", "backups.create", "backups.restore"]) {
+test("restore planning requires list and restore capabilities", async () => {
+  for (const missing of ["backups.list", "backups.restore"]) {
     const provider = client({
       provider: "wpengine",
       capabilities: [
@@ -137,11 +137,11 @@ test("restore planning refuses an id absent from the target catalog", async () =
   ]);
 });
 
-test("a failed pre-restore safety backup prevents the restore", async () => {
+test("a failed restore is reported without creating any backup", async () => {
   const provider = client({
     action: () => ({
       provider: "kinsta",
-      action: "backups.create",
+      action: "backups.restore",
       status: 202,
       operationId: "safety-operation",
       raw: null,
@@ -171,28 +171,28 @@ test("a failed pre-restore safety backup prevents the restore", async () => {
     { kind: "capabilities" },
     { kind: "backups", envId: "target" },
     {
-      kind: "create-backup",
-      envId: "target",
-      body: { tag: "novamira-hq pre-restore safety backup" },
+      kind: "restore-backup",
+      targetEnvId: "target",
+      body: { backup_id: 42, notified_user_id: "user-7" },
     },
     { operationStatus: "safety-operation" },
   ]);
 });
 
-test("successful restore always creates a safety backup first", async () => {
-  const provider = client();
+test("restore works without create capability and never creates a backup", async () => {
+  const provider = client({
+    capabilities: [
+      { name: "backups.list", supported: true },
+      { name: "backups.create", supported: false },
+      { name: "backups.restore", supported: true },
+    ],
+  });
   const plan = await prepareBackupRestore(provider, SELECTION);
   provider.calls.length = 0;
   await executeBackupRestore(provider, plan);
   assert.deepEqual(provider.calls, [
     { kind: "capabilities" },
     { kind: "backups", envId: "target" },
-    {
-      kind: "create-backup",
-      envId: "target",
-      body: { tag: "novamira-hq pre-restore safety backup" },
-    },
-    { operationStatus: "create-backup" },
     {
       kind: "restore-backup",
       targetEnvId: "target",

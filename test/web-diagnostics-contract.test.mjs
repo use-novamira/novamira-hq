@@ -331,6 +331,8 @@ test("4: the doctor route patches the panel then the toast, with pretty JSON", a
     panel.includes('<pre id="diagnostics-report" class="code-output">'),
   );
   assert.ok(panel.includes("Copy report"));
+  assert.ok(panel.includes('id="diagnostics-shareable-report" hidden'));
+  assert.ok(panel.includes("Copy report includes check results only"));
   // Two-space indentation, and the report verbatim.
   assert.ok(panel.includes("&quot;integration.site_cli&quot;"));
   assert.ok(panel.includes("\n  &quot;version&quot;: 1,"));

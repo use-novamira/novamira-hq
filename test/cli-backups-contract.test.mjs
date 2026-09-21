@@ -580,7 +580,7 @@ test("denied-ips set sends an empty list when no --ip was given", async () => {
   });
 });
 
-test("backup restore requires explicit overwrite approval and creates a safety backup", async () => {
+test("backup restore requires explicit overwrite approval and creates no backup", async () => {
   await isolated(async (root) => {
     const state = await harness(root, {
       read: (request) =>
@@ -630,11 +630,6 @@ test("backup restore requires explicit overwrite approval and creates a safety b
       { kind: "backups", envId: "env-1" },
       { kind: "capabilities" },
       { kind: "backups", envId: "env-1" },
-      {
-        kind: "create-backup",
-        envId: "env-1",
-        body: { tag: "novamira-hq pre-restore safety backup" },
-      },
       {
         kind: "restore-backup",
         targetEnvId: "env-1",

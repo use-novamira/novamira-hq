@@ -61,6 +61,7 @@ export type ConnectionState =
   "not_configured" | "connected" | "reconnect_required" | "unavailable";
 
 export type UnavailableReason =
+  | "token_refresh_pending"
   | "cli_absent"
   | "cli_incompatible"
   | "cli_timeout"
@@ -146,6 +147,8 @@ export const SITE_CLI_INSTALL_HINT =
  * is the whole point of answering with a reason enum instead of a message.
  */
 const UNAVAILABLE_HINTS: Readonly<Record<UnavailableReason, string>> = {
+  token_refresh_pending:
+    "The site connection is saved. The CLI handles token renewal when used; token expiry alone does not require signing in again. Reachability has not been verified.",
   cli_absent: SITE_CLI_INSTALL_HINT,
   cli_incompatible:
     "Update the Novamira site CLI: the installed version does not support the commands Novamira HQ uses.",
