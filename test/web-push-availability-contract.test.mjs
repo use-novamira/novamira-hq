@@ -57,6 +57,14 @@ test("main push page does not offer individual directions", () => {
   assert.ok(markup.includes('href="/push/new">New push</a>'));
   assert.ok(!markup.includes("source=live"));
   assert.ok(!markup.includes("Set up a push</a>"));
+  const cold = renderHtml(
+    renderPushesPage(view, {}, { groups: [], cacheWarm: false }),
+  );
+  assert.match(
+    cold,
+    /<header class="page-head">[\s\S]*href="\/push\/new">New push<\/a><\/header>/,
+  );
+  assert.ok(!cold.includes("Load sites to continue"));
   const unsupported = renderHtml(
     renderPushesPage(
       { ...view, profiles: [{ name: "plain", provider: "pantheon" }] },

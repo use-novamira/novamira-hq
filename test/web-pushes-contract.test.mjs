@@ -335,12 +335,10 @@ test("1: the empty page exposes the next useful action for every state", async (
   // Capable host, cache never warmed: the page must not go and look.
   const cold = await fixture();
   assert.ok(
-    (await line(cold.server)).includes(
-      "Load your sites to choose where to copy content. Previous pushes remain below.",
-    ),
+    (await line(cold.server)).includes('href="/push/new">New push</a>'),
   );
-  assert.ok((await line(cold.server)).includes("Load sites to continue"));
-  assert.ok((await line(cold.server)).includes(">Open Sites</a>"));
+  assert.ok(!(await line(cold.server)).includes("Load sites to continue"));
+  assert.ok(!(await line(cold.server)).includes(">Open Sites</a>"));
   assert.equal(cold.listCalls.length, 0, "a page render lists no sites");
 
   // Warm cache with an eligible site.
@@ -366,7 +364,7 @@ test("1: the empty page exposes the next useful action for every state", async (
   const single = await fixture({ kinstaSites: [KINSTA_SITES[1]] });
   await warmCache(single.server);
   assert.ok(
-    (await line(single.server)).includes(
+    (await page(single.server, "/push/new")).includes(
       "Your push-capable host(s) prod (Kinsta) have no site with more than one environment yet",
     ),
   );

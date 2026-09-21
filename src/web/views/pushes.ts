@@ -161,7 +161,10 @@ export function renderPushesPage(
   const visibleJobs = jobs.filter((job) =>
     profiles.has(job.confirmation.profile),
   );
-  return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Copy content between environments.</p></div></header>${view.pushes.length ? html`<div class="push-card-list">${view.pushes.map((push) => renderPushCard(push))}</div>` : false}${renderAvailableDirections(view, warm)}${renderPushJobs(visibleJobs)}</section>`;
+  const canCreate = view.profiles.some((profile) =>
+    environmentPushSupported(profile.provider),
+  );
+  return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Copy content between environments.</p></div>${canCreate ? html`<a class="button primary"${hrefAttr(url("/push/new"))}>New push</a>` : false}</header>${view.pushes.length ? html`<div class="push-card-list">${view.pushes.map((push) => renderPushCard(push))}</div>` : canCreate ? html`<p class="empty">No saved pushes yet.</p>` : false}${canCreate ? false : renderAvailableDirections(view, warm)}${renderPushJobs(visibleJobs)}</section>`;
 }
 
 /** One offered push: these two environments of this site, in this direction. */
