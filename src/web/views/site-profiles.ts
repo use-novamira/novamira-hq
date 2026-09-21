@@ -184,7 +184,7 @@ export function renderSiteProfileRow(
   );
 
   if (listContext !== undefined) {
-    return html`<article class="site-row cli-site-row"${ds.novamiraState(
+    return html`<article class="site-row cli-site-row"${ds.connectionFilter([row.state === "reconnect_required" ? "attention" : "saved"])}${ds.novamiraState(
       row.state === "connected" ? "installed" : "install",
     )}><strong class="cli-site-name">${row.name}</strong><small class="cli-site-url">${row.siteUrl.replace(/^https?:\/\//i, "")}</small><div class="site-state">${renderConnectionControl(
       row,

@@ -138,7 +138,7 @@ function browser(storage, blocked = false, failDisconnect = false) {
   };
 }
 
-test("hosting visibility survives reload, excludes hidden rows from counts, and can be restored", async () => {
+test("hosting visibility survives reload and can be restored", async () => {
   const storage = new Map();
   const first = browser(storage);
   first.click();
@@ -146,7 +146,6 @@ test("hosting visibility survives reload, excludes hidden rows from counts, and 
   await first.approve();
   assert.ok(first.rows[0].classList.contains("sf-hidden"));
   assert.ok(!first.rows[1].classList.contains("sf-hidden"));
-  assert.equal(first.counters.with.textContent, "1");
   const reloaded = browser(storage);
   assert.ok(reloaded.rows[0].classList.contains("sf-hidden"));
   reloaded.show();

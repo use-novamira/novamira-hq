@@ -411,7 +411,7 @@ test("1: the toolbar refreshes in background on mount and offers one Refresh act
     ">Refresh</button>",
     "Last updated: never",
     'class="spinner"',
-    '<option value="__all__">All sites</option>',
+    '<option value="__all__">All hosting accounts</option>',
     '<option value="__manual__">Manually added sites</option>',
     ">prod (Kinsta)<",
   ])
@@ -432,20 +432,19 @@ test("1: the toolbar refreshes in background on mount and offers one Refresh act
   assert.ok(!/application[-_ ]?password/i.test(markup));
 });
 
-test("2: the segmented control carries the five frozen data-sf-* values", async () => {
+test("2: status dropdown uses factual categories without counters", async () => {
   const { server } = await fixture();
   const markup = await page(server, "/sites");
   for (const want of [
-    'data-sf-status="all"',
-    'data-sf-status="with"',
-    'data-sf-status="without"',
-    'data-sf-count="with"',
-    'data-sf-count="without"',
-    "Authorized ",
-    "Not verified ",
-    'class="seg-btn on"',
+    'class="sites-status-filter"',
+    'value="all"',
+    'value="saved"',
+    'value="missing"',
+    'value="attention"',
   ])
     assert.ok(markup.includes(want), want);
+  assert.ok(!markup.includes("data-sf-count"));
+  assert.ok(!markup.includes('class="seg-btn'));
 });
 
 test("3: the search box is the selector sites-filter.js delegates on", async () => {
@@ -454,7 +453,19 @@ test("3: the search box is the selector sites-filter.js delegates on", async () 
   assert.ok(markup.includes('data-bind="sites.search"'));
   assert.ok(markup.includes('<div id="sites-result" class="results empty">'));
   assert.ok(markup.includes('<div id="sites-status" class="sites-status">'));
-  assert.ok(markup.includes('<div class="sites-filter-bar"><div class="seg"'));
+  assert.ok(!markup.includes('class="sites-filter-bar"'));
+  assert.ok(markup.includes("<span>Connection</span>"));
+  assert.ok(markup.includes('<option value="all">All states</option>'));
+  const toolbar = markup.match(
+    /<form class="toolbar sites-toolbar"[\s\S]*?<\/form>/,
+  )?.[0];
+  assert.ok(toolbar?.includes('class="sites-status-filter"'));
+  assert.ok(toolbar?.includes('class="show-hidden-sites"'));
+  assert.ok(toolbar?.includes('<label class="search"><span>Search</span>'));
+  assert.match(
+    toolbar,
+    /class="sites-toolbar-meta">[\s\S]*id="sites-status"[\s\S]*class="show-hidden-sites"/,
+  );
   assert.ok(
     markup.includes(
       'class="hosting-hidden-toggle" title="Visibility preferences are saved in this browser"',
@@ -776,7 +787,7 @@ test("6: a multi-environment site is a <details>, a single one a plain row", asy
   );
   assert.ok(markup.includes(">env-a display<"));
   // The single-environment site is a div with no summary of its own.
-  assert.ok(markup.includes('<div class="site-row" data-hosting-site-key='));
+  assert.match(markup, /<div class="site-row"[^>]+data-hosting-site-key=/);
   assert.ok(markup.includes(">Single Site<"));
   // The zero-environment site falls back to its id for a title.
   assert.ok(markup.includes(">s3<"));
@@ -813,6 +824,15 @@ test("7: every .site-row carries data-nm-state, and only the two frozen values",
   assert.deepEqual(partialValues.filter((v) => v === "installed").length, 1);
 });
 
+test("saved but unavailable connections are not classified as needing attention", async () => {
+  const { markup } = await resultMarkup({
+    states: { "env-a": "unavailable", "env-b": "unavailable" },
+    profiles: { "env-a": ["saved-profile"] },
+  });
+  assert.ok(markup.includes('data-connection-filter="saved unknown"'));
+  assert.ok(!markup.includes('data-connection-filter="attention"'));
+});
+
 test("8: the four connection states render their documented pill and actions", async () => {
   const { markup } = await resultMarkup({
     states: {
@@ -822,6 +842,9 @@ test("8: the four connection states render their documented pill and actions", a
       "env-p1": "unavailable",
     },
   });
+  assert.ok(markup.includes('data-connection-filter="saved attention"'));
+  assert.ok(markup.includes('data-connection-filter="missing"'));
+  assert.ok(markup.includes('data-connection-filter="unknown"'));
   assert.ok(
     markup.includes('<span class="connection-status">Connected</span>'),
   );

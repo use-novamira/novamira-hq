@@ -1540,12 +1540,7 @@ test("41: the four non-Datastar helpers emit exactly their frozen attributes", a
     new URL("../src/web/static/sites-filter.js", import.meta.url),
     "utf8",
   );
-  for (const literal of [
-    '"installed"',
-    "data-sf-status",
-    '[data-sf-count="with"]',
-    '[data-sf-count="without"]',
-  ])
+  for (const literal of ["data-connection-filter", ".sites-status-filter"])
     assert.ok(filter.includes(literal), literal);
   const relative = await readFile(
     new URL("../src/web/static/relative-time.js", import.meta.url),

@@ -484,18 +484,18 @@ test("4: the table hides itself while the form is open, on both paints", async (
   assert.ok(open.includes('data-class="{hidden: $providerForm.open}"'));
 });
 
-test("5: the details row renders the credential reference, never a value", async () => {
+test("5: hosting rows omit technical details and credential references", async () => {
   const { server } = await fixture({ config: PROFILE_CONFIG });
   const markup = await page(server, "/hosting-accounts");
-  assert.ok(markup.includes(">Details</button>"));
-  assert.ok(markup.includes("<dt>Credential storage</dt>"));
-  assert.ok(markup.includes("env:KINSTA_API_KEY"));
-  assert.ok(markup.includes("<dt>Account</dt>"));
-  assert.ok(markup.includes("<dt>Base URL</dt>"));
+  assert.ok(!markup.includes(">Details</button>"));
+  assert.ok(!markup.includes("<dt>Credential storage</dt>"));
+  assert.ok(!markup.includes("env:KINSTA_API_KEY"));
+  assert.ok(!markup.includes("<dt>Account</dt>"));
+  assert.ok(!markup.includes("<dt>Base URL</dt>"));
   assert.ok(markup.includes("https://api.example.test/v2"));
   assert.ok(!markup.includes(SECRET));
   // The per-row signals are hex, so `a-b` and `ab` cannot share one.
-  assert.match(markup, /\$details_[0-9a-f]+ = !\$details_[0-9a-f]+/);
+  assert.doesNotMatch(markup, /\$details_[0-9a-f]+ = !\$details_[0-9a-f]+/);
   assert.match(markup, /data-indicator="checking_[0-9a-f]+"/);
 });
 

@@ -170,34 +170,24 @@ export function renderSitesPage(
     true,
     true,
     false,
-  )}<form class="toolbar"${ds.indicator(
+  )}<form class="toolbar sites-toolbar"${ds.indicator(
     "sites.loading",
-  )}${ds.init(load)}${ds.on("change", load)}${ds.onSubmit(
+  )}${ds.init(load)}${ds.onSubmit(
     refresh,
-  )}><label class="search"><input type="search"${ds.bind(
+  )}><label class="search"><span>Search</span><input type="search"${ds.bind(
     "sites.search",
-  )} placeholder="Search by name or domain…"></label><label><span>Site source</span><select${ds.bind(
+  )} placeholder="Search by name or domain…"></label><label><span>Hosting</span><select${ds.on("change", load)}${ds.bind(
     "sites.profile",
-  )}><option value="__all__">All sites</option><option value="__manual__">Manually added sites</option>${view.profiles.map(
+  )}><option value="__all__">All hosting accounts</option><option value="__manual__">Manually added sites</option>${view.profiles.map(
     (profile) =>
       html`<option${attr("value", profile.name)}>${profile.name} (${providerLabelFor(
         profile.provider,
       )})</option>`,
-  )}</select></label><div class="sites-refresh"><button class="button secondary" type="submit">Refresh</button><div${idAttr(
+  )}</select></label><label><span>Connection</span><select class="sites-status-filter"><option value="all">All states</option><option value="saved">Connection saved</option><option value="missing">Not connected</option><option value="attention">Needs attention</option></select></label><button class="button secondary" type="submit">Refresh</button><div class="sites-toolbar-meta"><div${idAttr(
     "sites-status",
   )} class="sites-status">${renderSitesStatus(
     snapshot?.storedAt ?? null,
-  )}</div></div></form><div class="sites-filter-bar"><div class="seg" role="group" aria-label="Novamira status"><button type="button" class="seg-btn on"${ds.sitesFilterStatus(
-    "all",
-  )}>All</button><button type="button" class="seg-btn"${ds.sitesFilterStatus(
-    "with",
-  )}>Authorized <span class="seg-count"${ds.sitesFilterCount(
-    "with",
-  )}>0</span></button><button type="button" class="seg-btn"${ds.sitesFilterStatus(
-    "without",
-  )}>Not verified <span class="seg-count"${ds.sitesFilterCount(
-    "without",
-  )}>0</span></button></div><label class="hosting-hidden-toggle" title="Visibility preferences are saved in this browser"><input type="checkbox" class="show-hidden-sites"> Show hidden sites</label></div>${snapshot ? renderSitesResult({ ...snapshot, notice: { level: "neutral", message: "" } }) : html`<div${idAttr("sites-result")} class="results empty">Loading sites…</div>`}</section>`;
+  )}</div><label class="hosting-hidden-toggle" title="Visibility preferences are saved in this browser"><input type="checkbox" class="show-hidden-sites"> Show hidden sites</label></div></form>${snapshot ? renderSitesResult({ ...snapshot, notice: { level: "neutral", message: "" } }) : html`<div${idAttr("sites-result")} class="results empty">Loading sites…</div>`}</section>`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -328,13 +318,26 @@ function renderSiteItem(
   const domain = site.primaryDomain ?? "";
   const envs = site.environments ?? [];
   const state = novamiraRowState(group, site, view);
+  const filters = ds.connectionFilter(
+    envs.map((env) => {
+      const result = view.connections?.byKey.get(
+        connectionKey(group.profile, site.id, env.id),
+      );
+      if (!result) return "unknown";
+      if (result.state === "reconnect_required") return "attention";
+      if (result.state === "connected" || result.profiles.length)
+        return "saved";
+      if (result.state === "not_configured") return "missing";
+      return "unknown";
+    }),
+  );
   const visibility = renderVisibility(group, site, view);
 
   if (envs.length > 1) {
     return html`<details${classAttr(
       "site-row",
       "site-row-multi",
-    )}${ds.hostingSiteKey(group.profile, site.id)}${ds.novamiraState(
+    )}${filters}${ds.hostingSiteKey(group.profile, site.id)}${ds.novamiraState(
       state,
     )}><summary class="site-main"><span class="site-chevron"></span><span class="site-name">${title}</span><span class="site-domain">${domain}</span><span class="site-state"><span class="pill">${String(
       envs.length,
@@ -344,7 +347,7 @@ function renderSiteItem(
   }
 
   const only = envs[0];
-  return html`<div class="site-row"${ds.hostingSiteKey(group.profile, site.id)}${ds.novamiraState(
+  return html`<div class="site-row"${filters}${ds.hostingSiteKey(group.profile, site.id)}${ds.novamiraState(
     state,
   )}><span class="site-name">${title}</span><span class="site-domain">${domain}</span><span class="site-state">${
     only === undefined ? false : renderStateCell(group, site, only, title, view)

@@ -531,11 +531,12 @@ test("history view explains uncertainty and escapes targets", async () => {
       updatedAt: "2026-09-08T12:00:00.000Z",
     },
   ]).markup;
-  assert.match(markup, /Needs attention \(1\)/);
+  assert.match(markup, /Some results could not be confirmed/);
   assert.match(markup, /&lt;script&gt;/);
   assert.doesNotMatch(markup, /<script>bad/);
   assert.match(markup, /does not check the provider or repeat operations/);
   assert.doesNotMatch(markup, /<table/);
-  assert.match(markup, /Request details/);
+  assert.match(markup, /Technical details/);
+  assert.doesNotMatch(markup, /Completion has not been confirmed/);
   assert.match(markup, /Copy report/);
 });

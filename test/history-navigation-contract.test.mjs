@@ -20,7 +20,7 @@ test("account activity filters requests, attention and the copyable report", () 
     updatedAt: "2026-09-17T10:00:00.000Z",
   }));
   const markup = renderHtml(renderHistoryPage(entries, "first", ["empty"]));
-  assert.match(markup, /Needs attention \(1\)/);
+  assert.match(markup, /Some results could not be confirmed/);
   assert.equal((markup.match(/class="history-request"/g) ?? []).length, 1);
   assert.match(markup, /id="request-first"/);
   assert.doesNotMatch(markup, /id="request-second"|"profile": "second"/);

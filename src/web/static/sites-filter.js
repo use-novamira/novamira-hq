@@ -3,7 +3,7 @@
   var CAP = 12;
   var obsTarget = null;
   var observer = null;
-  var status = "all"; // all | with | without
+  var status = "all"; // all | saved | missing | attention
   var HIDDEN_KEY = "novamira-hq.hidden-hosting-sites.v1";
   var hiddenSites = new Set();
   var COLLAPSED_KEY = "novamira-hq.collapsed-site-groups.v1";
@@ -67,9 +67,7 @@
 
   function matchesStatus(row) {
     if (status === "all") return true;
-    var st = row.getAttribute("data-nm-state");
-    if (status === "with") return st === "installed";
-    return st === "install"; // without
+    return (row.getAttribute("data-connection-filter") || "").split(" ").indexOf(status) !== -1;
   }
 
   function applyFilters(q) {
@@ -91,19 +89,6 @@
     });
     if (query !== "" || status !== "all") expandAll();
     else paginate();
-  }
-
-  function updateCounts() {
-    var withN = 0, withoutN = 0;
-    document.querySelectorAll("#sites-result .site-row[data-nm-state]").forEach(function (row) {
-      if (isHidden(row) && !showHidden()) return;
-      if (row.getAttribute("data-nm-state") === "installed") withN++;
-      else withoutN++;
-    });
-    var w = document.querySelector('[data-sf-count="with"]');
-    var o = document.querySelector('[data-sf-count="without"]');
-    if (w) w.textContent = String(withN);
-    if (o) o.textContent = String(withoutN);
   }
 
   function expandAll() {
@@ -141,7 +126,8 @@
   function refilter() {
     pauseObserver(function () {
       restoreGroups();
-      updateCounts();
+      var select = document.querySelector(".sites-status-filter");
+      if (select) select.value = status;
       applyFilters(currentQuery());
     });
   }
@@ -186,18 +172,11 @@
     }
   });
 
-  // Segmented status buttons: delegated click.
-  document.addEventListener("click", function (e) {
-    var btn = e.target && e.target.closest ? e.target.closest(".seg-btn[data-sf-status]") : null;
-    if (!btn) return;
-    status = btn.getAttribute("data-sf-status");
-    document.querySelectorAll(".seg-btn[data-sf-status]").forEach(function (b) {
-      b.classList.toggle("on", b === btn);
-    });
-    refilter();
-  });
-
   document.addEventListener("change", function (e) {
+    if (e.target && e.target.matches && e.target.matches(".sites-status-filter")) {
+      status = e.target.value;
+      refilter();
+    }
     if (e.target && e.target.matches && e.target.matches(".show-hidden-sites")) refilter();
   });
 

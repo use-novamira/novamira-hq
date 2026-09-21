@@ -70,7 +70,6 @@ import {
   seq,
   set,
   signal,
-  toggle,
   type Expr,
   type JsonValue,
 } from "../expr.js";
@@ -84,11 +83,7 @@ import {
   type Html,
 } from "../html.js";
 import { connCellId } from "../patches.js";
-import {
-  connCheckingSignal,
-  providerDetailsSignal,
-  dynamicSignalPath,
-} from "../signals.js";
+import { connCheckingSignal, dynamicSignalPath } from "../signals.js";
 import { renderNotice } from "./layout.js";
 import {
   renderProviderActionsPage,
@@ -489,31 +484,17 @@ export function renderProviderTable(
  * and the whole table stays one fragment.
  */
 export function renderProviderRow(profile: HostingProfileView): Html {
-  const details = providerDetailsSignal(profile.name);
   return html`<tr><td><strong>${profile.name}</strong></td><td>${providerLabelFor(
     profile.provider,
   )}</td><td class="actions"><details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", "More actions for " + profile.name)}>⋯</summary><div class="profile-menu-popover"><a class="button tiny quiet profile-menu-action"${hrefAttr(url("/hosting-accounts", { actions: profile.name }))}>Available actions</a><a class="button tiny quiet profile-menu-action"${hrefAttr(url("/hosting-activity", { profile: profile.name }))}>Activity</a><button class="button tiny quiet profile-menu-action" type="button"${ds.on(
     "click",
     editProviderForm(profile),
-  )}>Edit</button><button class="button tiny quiet profile-menu-action" type="button"${ds.on(
-    "click",
-    toggle(details),
-  )}>Details</button>${renderCheckConnectionButton(
+  )}>Edit</button>${renderCheckConnectionButton(
     profile.name,
   )}<hr><button class="button tiny quiet profile-menu-action danger" type="button"${ds.on(
     "click",
     providerAction("/_dashboard/providers/remove", profile.name),
-  )}>Remove</button></div></details></td></tr><tr class="details-row ds-toggle"${ds.classes(
-    {
-      open: signal(details),
-    },
-  )}><td colspan="3"><dl class="details-list"><div><dt>Credential storage</dt><dd>${
-    profile.credential
-  }</dd></div><div><dt>Account</dt><dd>${
-    profile.companyId ?? "—"
-  }</dd></div><div><dt>Base URL</dt><dd>${
-    profile.apiBaseUrl ?? "default"
-  }</dd></div></dl></td></tr>`;
+  )}>Remove</button></div></details></td></tr>`;
 }
 
 function renderCheckConnectionButton(profile: string): Html {

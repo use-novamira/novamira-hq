@@ -234,6 +234,13 @@ export function novamiraState(state: NovamiraRowState): Attr {
   return attr("data-nm-state", state);
 }
 
+/** Factual connection categories; multiple environments may match different filters. */
+export function connectionFilter(
+  states: readonly ("saved" | "missing" | "attention" | "unknown")[],
+): Attr {
+  return attr("data-connection-filter", [...new Set(states)].join(" "));
+}
+
 /** `data-sf-status` — the segmented control's three buttons. */
 export type SitesFilterStatus = "all" | "with" | "without";
 
