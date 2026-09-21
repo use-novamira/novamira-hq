@@ -389,6 +389,7 @@ function pageExtras(
           }
         : {}),
       pushJobs: context.pushExecution?.list() ?? [],
+      pushHistory: request.query.get("view") === "history",
       pushes: {
         groups: warm?.groups ?? [],
         cacheWarm: warm !== undefined,

@@ -44,6 +44,7 @@ test("Push history hides removed hosting profiles without deleting saved jobs", 
         { level: "neutral", message: "" },
         undefined,
         jobs,
+        true,
       ),
     );
   const markup = render(view.profiles);
@@ -53,7 +54,7 @@ test("Push history hides removed hosting profiles without deleting saved jobs", 
   assert.match(markup, /<article class="push-job-link">/);
   assert.match(markup, />View push<\/a>/);
   assert.ok(!markup.includes("removed-source.example.com"));
-  assert.ok(!render([]).includes("Push history"));
+  assert.match(render([]), /No previous pushes/);
   assert.equal(jobs.length, 2);
   assert.equal(jobs[1].confirmation.profile, "removed");
 });

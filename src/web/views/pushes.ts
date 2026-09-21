@@ -156,6 +156,7 @@ export function renderPushesPage(
   _notice: DashboardNotice,
   warm: WarmSitesView = COLD,
   jobs: readonly PushJob[] = [],
+  history = false,
 ): Html {
   const profiles = new Set(view.profiles.map((profile) => profile.name));
   const visibleJobs = jobs.filter((job) =>
@@ -164,7 +165,9 @@ export function renderPushesPage(
   const canCreate = view.profiles.some((profile) =>
     environmentPushSupported(profile.provider),
   );
-  return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Copy content between environments.</p></div>${canCreate ? html`<a class="button primary"${hrefAttr(url("/push/new"))}>New push</a>` : false}</header>${view.pushes.length ? html`<div class="push-card-list">${view.pushes.map((push) => renderPushCard(push))}</div>` : canCreate ? html`<p class="empty">No saved pushes yet.</p>` : false}${canCreate ? false : renderAvailableDirections(view, warm)}${renderPushJobs(visibleJobs)}</section>`;
+  if (history)
+    return html`<section class="page"><header class="page-head"><div><h1>Push history</h1></div><a class="button secondary"${hrefAttr(url("/push"))}>Back to Push</a></header>${renderPushJobs(visibleJobs) || html`<p class="empty">No previous pushes.</p>`}</section>`;
+  return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Copy content between environments.</p></div><div class="button-row"><a class="button secondary"${hrefAttr(url("/push", { view: "history" }))}>Push history</a>${canCreate ? html`<a class="button primary"${hrefAttr(url("/push/new"))}>New push</a>` : false}</div></header>${view.pushes.length ? html`<div class="push-card-list">${view.pushes.map((push) => renderPushCard(push))}</div>` : canCreate ? html`<p class="empty">No saved pushes yet.</p>` : false}${canCreate ? false : renderAvailableDirections(view, warm)}</section>`;
 }
 
 /** One offered push: these two environments of this site, in this direction. */

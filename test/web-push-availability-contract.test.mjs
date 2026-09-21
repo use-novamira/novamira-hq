@@ -62,7 +62,7 @@ test("main push page does not offer individual directions", () => {
   );
   assert.match(
     cold,
-    /<header class="page-head">[\s\S]*href="\/push\/new">New push<\/a><\/header>/,
+    /<header class="page-head">[\s\S]*href="\/push\/new">New push<\/a><\/div><\/header>/,
   );
   assert.ok(!cold.includes("Load sites to continue"));
   const unsupported = renderHtml(

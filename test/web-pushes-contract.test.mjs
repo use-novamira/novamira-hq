@@ -400,6 +400,18 @@ test("2: saved pushes render as reviewable direction cards", async () => {
   );
 });
 
+test("push history is a separate view reached from a secondary header button", async () => {
+  const { server } = await fixture({ pushes: PUSHES });
+  const main = await page(server, "/push");
+  assert.match(main, /class="button secondary" href="\/push\?view=history"/);
+  assert.doesNotMatch(main, /<h2>Push history<\/h2>/);
+  const history = await page(server, "/push?view=history");
+  assert.match(history, /<h1>Push history<\/h1>/);
+  assert.match(history, /Back to Push/);
+  assert.match(history, /No previous pushes/);
+  assert.doesNotMatch(history, /push-card-list/);
+});
+
 test("3: environments resolve from the warm cache, then the stored name, then the id", async () => {
   const { server } = await fixture({ pushes: PUSHES });
   await warmCache(server);

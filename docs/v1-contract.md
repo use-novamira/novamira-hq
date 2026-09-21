@@ -1623,6 +1623,10 @@ form to itself and no page reloads.
   different agent; the dashboard does not spawn that interactive third-party
   installer itself.
 - **Push** (`/push`, `/push/new`) — the saved environment push configurations
+  have a secondary “Push history” header button opening `/push?view=history`.
+  History is not rendered below the saved configurations; its separate view
+  includes a Back to Push action and an explicit empty state.
+  The configurations appear
   as direction cards with resolved environment names, domains and scope. Sites
   and the Push page offer configuration entry points. Push lists unsaved ordered
   source/target pairs from the warm inventory, with URLs; the reverse is a

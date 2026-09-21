@@ -91,6 +91,7 @@ export interface PageModel {
   readonly pushConfirmation?: PushConfirmation;
   readonly pushJob?: PushJob;
   readonly pushJobs?: readonly PushJob[];
+  readonly pushHistory?: boolean;
   readonly mcp?: McpConfiguration;
   readonly mcpClient?: McpPageClient;
   readonly mcpSetup?: McpSetupState;
@@ -176,6 +177,7 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
               model.notice,
               model.pushes,
               model.pushJobs,
+              model.pushHistory,
             );
     case "push-new":
       return renderPushNewPage(model.pushNew, model.view, model.pushes);
