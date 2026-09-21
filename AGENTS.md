@@ -18,7 +18,7 @@ executed. The port is complete — every module named below exists — so treat
 ## Boundary rule
 
 > HQ never holds a WordPress site token, never calls a WordPress REST route on a
-> configured site's behalf directly. WordPress MCP tools delegate to the optional
+> configured site's behalf directly. WordPress MCP tools delegate to the bundled
 > Novamira CLI exclusively through `src/integration/`.
 
 HQ operates hosting resources and provisions the plugin. Its MCP also delegates
@@ -76,19 +76,37 @@ segment by hand.
 
 ## Site CLI integration
 
-`@novamira/cli` is an optional integration, never a runtime, package, or peer
-dependency. Hosting inventory, actions, provisioning, and plugin-installed
-status must work with `novamira` absent. Doctor warns and the dashboard disables
-connected-state detection with an install hint; nothing else degrades. HQ never
-reads the site CLI's config or credential storage and couples only to its public
-v1 command grammar and JSON output.
+`@novamira/cli` is an exact-version runtime dependency pinned to a public npm
+release with a supported callable launch export and embedded-distribution mode.
+Both npm and desktop distributions ship the same release and required package
+data; an unpublished sibling checkout is not a release pin.
 
-`install.sh` and `install.ps1` install it by default as a **separate global npm
-package**, which is a convenience of the install step and changes none of the
-above. Do not turn that into a dependency: it belongs in no field of
-`package.json`, and the runtime must keep behaving exactly as it does when
-`novamira` is absent, because a user can uninstall it or install HQ with plain
-`npm i -g @novamira/hq`.
+Site commands execute in separate child processes through `src/integration/`.
+For npm, an integration-owned wrapper imports the supported launch export using
+Node. For desktop, a desktop-only `--site-cli` role imports it using embedded
+Deno. HQ's parent process never executes site commands in-process. All consumers
+share launch-target resolution, prefer the packaged target, and honor the explicit
+`NOVAMIRA_HQ_SITE_CLI` override with documented supported external launch forms.
+Never silently fall back to PATH or assume a desktop executable is Node.
+
+Hosting inventory, actions, provisioning, and plugin-installed status remain
+usable when site-CLI invocation fails. Doctor and dashboard provide actionable
+repair/update guidance for damaged packaged installations. HQ never reads the
+site CLI's config or credential storage and couples only to its supported launch
+interface, public v1 command grammar, and output. Bundled and standalone CLI
+invocations share the existing site-CLI namespace, separate from HQ's namespace.
+
+`novamira-hq site-cli <arguments...>` forwards arguments without HQ consuming
+child flags, preserves stdin/stdout/stderr and exit codes, and supplies the public
+handoff path. Integration calls retain cancellation, timeouts, bounded captured
+output, and process-tree termination; terminal forwarding inherits streams.
+Managed invocations suppress automatic CLI update notices and disable independent
+package-manager self-update. Updating HQ updates its managed CLI; standalone CLI
+installations remain independently managed.
+
+`install.sh` and `install.ps1` install HQ with its dependency, without a separate
+global site-CLI installation or `NOVAMIRA_HQ_SKIP_SITE_CLI` option. Preserve HQ
+smoke tests, skill registration, and desktop launchers.
 
 ## Provider API calls
 
@@ -108,7 +126,7 @@ calls just to test.
   anywhere** — there is no `skills install` and no `setup` command, because
   registering a skill with an agent is `npx skills add`'s job. There is no `site`
   bundle: site guidance ships with `@novamira/cli`, and the hosting bundle's
-  prose must never describe site access — it names `novamira auth login` as the
+  prose must never describe site access — it names `novamira-hq site-cli auth login` as the
   step after provisioning and stops. `package.json`'s `files` ships `skills/`;
   `scripts/copy-static.mjs` must not be taught about it, because that script
   exists only for assets that live _inside_ `src/`.
@@ -120,7 +138,7 @@ calls just to test.
   those call _it_. Four rules are contract, not preference: a produced report is
   a successful invocation whatever its status; `profile.credentials`,
   `integration.site_cli` and `update.available` can never be `fail`, because one
-  bad credential reference, a missing `@novamira/cli` and an out-of-date install
+  bad credential reference, an unavailable site CLI and an out-of-date install
   are all normal; `--fix` may only repair private-path permissions and create
   the state directory; and `--offline` **removes** `update.available` from the
   list rather than running it and recording a skip.
@@ -183,7 +201,7 @@ calls just to test.
   the RFC 6901 pointer lookup, for the same reason.
 - `src/provisioning/` installs and configures the Novamira plugin over provider
   WP-CLI, checks the site against HQ's own copy of the site CLI's v1
-  compatibility matrix, and emits the `novamira auth login` handoff. It is the
+  compatibility matrix, and emits the `novamira-hq site-cli auth login` handoff. It is the
   layer Phase 6's dashboard calls directly, so it must never import from
   `src/cli/`; `src/cli/` imports from it.
 - `src/web/` is the local dashboard: `html.ts`'s branded tagged template and
@@ -205,7 +223,7 @@ calls just to test.
   five-minute provider-listing cache and the single `connectionStates` round per
   listing. The push pages read the cache **warm only** and must never
   trigger a provider call, and `/_dashboard/connect` spawns
-  `novamira auth login <url>` through `src/integration/` and renders no child
+  the resolved site-CLI target with `auth login <url>` through `src/integration/` and renders no child
   output, ever. `/sites` is one unified inventory: hosting environments include
   matched profiles held by the **site CLI**, and unmatched profiles appear in a
   final CLI-only group. `views/site-profiles.ts` provides those rows and controls;
@@ -242,7 +260,7 @@ calls just to test.
   executable resolution, total origin normalization, and the two-stage
   `sites list` then `auth status` algorithm behind the four states
   `not_configured` / `connected` / `reconnect_required` / `unavailable`, plus
-  `connect.ts`'s Connect action (`novamira auth login <url>`, the non-secret URL
+  `connect.ts`'s Connect action (`auth login <url>` on the resolved target, the non-secret URL
   as its only argument) and `classify.ts`, the child-outcome classification both
   share. The spawn seam's termination is directed at the child's whole process
   tree — a group-directed signal on POSIX, `taskkill /T` on Windows — so a
@@ -259,8 +277,9 @@ calls just to test.
   failure mode is a state, never a hosting error — the one exception is a
   profile name the site CLI's grammar cannot represent, which throws
   `usage_error` before anything is spawned, because that is a caller bug and not
-  an unreachable CLI. `@novamira/cli` is never
-  imported and never a dependency of any kind; the site CLI's config,
+  an unreachable CLI. Only the integration-owned child wrapper and desktop's
+  site-CLI child role may import `@novamira/cli`'s supported launch export;
+  the site CLI's config,
   credential storage and `NOVAMIRA_HOME` are never read; child output is never
   persisted or logged. Adding another command means adding an argv builder to
   `site-cli.ts` and a method to `profiles.ts` — never a spawn anywhere else. It
@@ -288,10 +307,8 @@ calls just to test.
   GitHub release. They install the package with `--ignore-scripts`, smoke-test it
   with `novamira-hq doctor --offline` — which is why a `warn` report must exit 0
   — then register the bundled skill with an exactly pinned `skills@x.y.z`, and
-  finally install `@novamira/cli` globally: last, unpinned (same publisher, same
-  trust domain — the exact pin is for the third-party `skills` CLI alone),
-  skippable with `NOVAMIRA_HQ_SKIP_SITE_CLI`, and **non-fatal**, because HQ is
-  already installed and smoke-tested by then. Neither installer ever runs the
+  rely on HQ's exact pinned `@novamira/cli` dependency for site features.
+  Neither installer separately installs a global CLI or runs the
   `novamira` executable. `install.sh` creates the macOS application
   `/Applications/Novamira HQ.app` when that directory is writable, otherwise
   falling back to `~/Applications`, and a Linux freedesktop entry below
@@ -311,7 +328,13 @@ package:acceptance` runs it, and all three packaging jobs plus the release job
   `deno lint` and `deno check` own it, through `bun run desktop:check`), and
   `bun run desktop:build` compiles it with `dist/` and `skills/` embedded into
   `dist-desktop/`. It contains no dashboard logic and no second server: the
-  executable re-spawns itself as `--serve`, which runs `dist/main.js`'s `main`
+  executable supports a `--site-cli` child role that loads the pinned CLI's
+  supported launch export in managed-distribution mode, propagates its exit code,
+  and opens no window or server. Its JavaScript, dependencies, and package data
+  must be embedded and usable offline without external runtimes or caches.
+  Inject this executable with the fixed role prefix as the shared site-CLI target,
+  including development launch arguments when uncompiled.
+  For the dashboard, the executable re-spawns itself as `--serve`, which runs `dist/main.js`'s `main`
   with `dashboard --json --listen 127.0.0.1:0` under Deno's Node compatibility,
   and the window is a `@webview/webview` pointed at the URL in the envelope.
   `Webview.run()` blocks the thread, which is why the server is a child rather
@@ -363,7 +386,8 @@ package:acceptance` runs it, and all three packaging jobs plus the release job
 - Keep `.js` extensions in relative TypeScript imports and retain SPDX headers.
 - Prefer discriminated unions over class hierarchies, and exhaustive `switch`
   with a `never` default.
-- Runtime dependencies are exactly `commander` and `@starfederation/datastar-sdk`;
+- Runtime dependencies are `commander`, `@starfederation/datastar-sdk`, and the
+  exact pinned public release of `@novamira/cli`;
   everything else must be a `node:` builtin. Do not use `console.*` in `src/`.
 - Add or update a focused contract test for behavior changes.
 - Run `bun install` when needed and `bun run check` before handoff. Run
