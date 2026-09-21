@@ -20,6 +20,14 @@ test("DMG contains an untouched application and Applications shortcut with Finde
   assert.match(layout, /background picture/);
   assert.match(layout, /Novamira HQ.app.*190, 290/);
   assert.match(layout, /Applications.*530, 290/);
+  assert.match(layout, /icon size of viewOptions to 128/);
+  const background = await source("scripts/macos/dmg-background.swift");
+  assert.match(background, /novamira-hq-logo\.svg/);
+  assert.match(background, /pixelsWide: 1440/);
+  assert.match(
+    await source("scripts/macos/novamira-hq-logo.svg"),
+    /viewBox="0 0 87.64 8.83"/,
+  );
   assert.match(
     await source("scripts/macos/dmg-background.swift"),
     /Drag Novamira HQ to Applications/,
