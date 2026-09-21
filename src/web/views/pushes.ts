@@ -213,6 +213,7 @@ function siteDirections(
 function renderAvailableDirections(
   view: ConfigView,
   warm: WarmSitesView,
+  choosing = false,
 ): Html {
   const capable = view.profiles.filter((profile) =>
     environmentPushSupported(profile.provider),
@@ -250,6 +251,8 @@ function renderAvailableDirections(
       ? html`<a class="button secondary"${hrefAttr(url("/sites"))}>Open Sites</a>`
       : false;
   if (available.length) {
+    if (!choosing)
+      return html`<section class="empty empty-block">${view.pushes.length ? false : html`<p>No saved pushes yet.</p>`}<a class="button primary"${hrefAttr(url("/push/new"))}>New push</a></section>`;
     return html`<section class="panel"><div class="panel-head"><div><h2>New push</h2><p>Choose the source and destination. You will confirm before anything is copied.</p></div></div>${incomplete ? html`<div class="empty">${loadNotice}</div>` : false}<div class="compact-list">${available.map((direction) => html`<article><div><strong>${direction.siteLabel} · ${displayLabel(direction.source.displayName, direction.source.name, direction.source.id)} → ${displayLabel(direction.target.displayName, direction.target.name, direction.target.id)}</strong><small>${direction.profile} · From: ${direction.source.primaryDomain ?? "URL unavailable"} → To: ${direction.target.primaryDomain ?? "URL unavailable"}</small></div><a class="button secondary"${hrefAttr(url("/push/new", { profile: direction.profile, site: direction.siteId, source: direction.source.id, target: direction.target.id }))}>Set up a push</a></article>`)}</div></section>`;
   }
   let title: string;
@@ -379,7 +382,11 @@ const EMPTY_PUSH_NEW: PushNewView = Object.freeze({
   targetEnvId: "",
 });
 
-export function renderPushNewPage(view: PushNewView = EMPTY_PUSH_NEW): Html {
+export function renderPushNewPage(
+  view: PushNewView = EMPTY_PUSH_NEW,
+  config?: ConfigView,
+  warm: WarmSitesView = COLD,
+): Html {
   const head = html`<header class="page-head"><div><h1>Set up a push</h1>${
     view.siteLabel === ""
       ? false
@@ -389,6 +396,8 @@ export function renderPushNewPage(view: PushNewView = EMPTY_PUSH_NEW): Html {
   )}>Back to Push</a></header>`;
 
   if (view.envs.length < 2) {
+    if (!view.profile && config)
+      return html`<section class="page">${head}${renderAvailableDirections(config, warm, true)}</section>`;
     return html`<section class="page">${head}<div class="empty empty-block"><p>Open this from Sites, expand a site with more than one environment, then choose “Configure push…” beside the source environment.</p><a class="button primary"${hrefAttr(
       url("/sites"),
     )}>Open Sites</a></div></section>`;

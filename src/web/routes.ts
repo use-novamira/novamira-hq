@@ -393,6 +393,7 @@ function pageExtras(
     };
   }
   if (page === "push-new") {
+    const warm = context.sites.warm(ALL_PROFILES_SENTINEL, true);
     const profile = (request.query.get("profile") ?? "").trim();
     const siteId = (request.query.get("site") ?? "").trim();
     const site = context.sites.resolveSite(profile, siteId);
@@ -413,6 +414,7 @@ function pageExtras(
               ?.id ?? "")
           : "";
     return {
+      pushes: { cacheWarm: warm !== undefined, groups: warm?.groups ?? [] },
       pushNew: {
         profile,
         siteId,

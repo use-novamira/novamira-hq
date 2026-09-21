@@ -177,7 +177,7 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
               model.pushJobs,
             );
     case "push-new":
-      return renderPushNewPage(model.pushNew);
+      return renderPushNewPage(model.pushNew, model.view, model.pushes);
     case "novamira-setup":
       return renderSetupPage(model.setup);
     case "diagnostics":

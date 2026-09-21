@@ -346,7 +346,10 @@ test("1: the empty page exposes the next useful action for every state", async (
   // Warm cache with an eligible site.
   const warm = await fixture();
   await warmCache(warm.server);
-  const warmMarkup = await line(warm.server);
+  const listMarkup = await line(warm.server);
+  assert.ok(listMarkup.includes('href="/push/new">New push</a>'));
+  assert.ok(!listMarkup.includes(">Set up a push</a>"));
+  const warmMarkup = unescapeHtml(await page(warm.server, "/push/new"));
   assert.ok(warmMarkup.includes("New push"));
   assert.ok(warmMarkup.includes("Multi Site"));
   assert.ok(
@@ -386,7 +389,7 @@ test("2: saved pushes render as reviewable direction cards", async () => {
     ">Files</span>",
     ">No content selected</span>",
     ">Review and run</button>",
-    ">Set up a push</a>",
+    ">New push</a>",
     'title="Review the target and scope before pushing"',
     'title="Push is not available in Novamira HQ for this hosting account"',
     "/_dashboard/pushes/remove?push=stage-to-live",
@@ -638,7 +641,14 @@ test("5: without two resolvable environments the page is guidance, not a form", 
     "/push/new?profile=prod&site=nope",
   ]) {
     const markup = await page(server, path);
-    assert.ok(markup.includes("Open this from Sites"), path);
+    assert.ok(
+      markup.includes(
+        path === "/push/new"
+          ? "Load sites to continue"
+          : "Open this from Sites",
+      ),
+      path,
+    );
     assert.ok(!markup.includes("pushForm.sourceEnvId"), path);
   }
   // A single-environment site is still fewer than two.

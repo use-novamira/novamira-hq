@@ -4,7 +4,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderHtml } from "../dist/web/html.js";
-import { renderPushesPage } from "../dist/web/views/pushes.js";
+import {
+  renderPushesPage,
+  renderPushNewPage,
+} from "../dist/web/views/pushes.js";
 
 const environments = [
   { id: "live", name: "Live", primaryDomain: "example.test" },
@@ -40,8 +43,29 @@ const render = (
   profiles = view.profiles,
 ) =>
   renderHtml(
-    renderPushesPage({ ...view, profiles, pushes }, {}, { groups, cacheWarm }),
+    renderPushNewPage(
+      undefined,
+      { ...view, profiles, pushes },
+      { groups, cacheWarm },
+    ),
   );
+
+test("main push page does not offer individual directions", () => {
+  const markup = renderHtml(
+    renderPushesPage(view, {}, { groups: [group], cacheWarm: true }),
+  );
+  assert.ok(markup.includes('href="/push/new">New push</a>'));
+  assert.ok(!markup.includes("source=live"));
+  assert.ok(!markup.includes("Set up a push</a>"));
+  const unsupported = renderHtml(
+    renderPushesPage(
+      { ...view, profiles: [{ name: "plain", provider: "pantheon" }] },
+      {},
+      { groups: [], cacheWarm: true },
+    ),
+  );
+  assert.ok(!unsupported.includes('href="/push/new"'));
+});
 
 test("saved forward direction leaves the reverse available, then both exhaust the inventory", () => {
   const forward = push("live", "test");
@@ -53,7 +77,7 @@ test("saved forward direction leaves the reverse available, then both exhaust th
   const full = render([forward, push("test", "live")]);
   assert.ok(full.includes("All directions are already configured"));
   assert.ok(!full.includes("Set up a push</a>"));
-  assert.ok(full.includes("Review and run"));
+  assert.ok(!full.includes(">New push</a>"));
 });
 
 test("cold, failed and incomplete inventory never claim all directions are configured", () => {
