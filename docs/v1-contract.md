@@ -443,7 +443,7 @@ behaves:
 | `NOVAMIRA_HQ_HOME` | isolation root holding `config.json`, `state/`, `cache/` and `credentials/` directly |
 | `NOVAMIRA_HQ_CONFIG` | override the configuration file path only; state, cache and credentials keep their platform locations |
 | `NOVAMIRA_HQ_SITE_CLI` | absolute path to the `novamira` executable, for connected-state detection and the doctor's `integration.site_cli` check |
-| `NOVAMIRA_HQ_ALLOW_INSECURE_HTTP` | `1` accepts a plain-HTTP site URL in `hosting novamira setup` and a plain-HTTP **loopback** package registry; one opt-in, not two |
+| `NOVAMIRA_HQ_ALLOW_INSECURE_HTTP` | `1` accepts a plain-HTTP site URL in setup and dashboard connections, enables HTTP in site-CLI children, and accepts a plain-HTTP **loopback** package registry |
 | `NOVAMIRA_HQ_UPDATE_CHECK` | `0` or `false` disables the background release notice entirely — no request, no state write |
 | `NOVAMIRA_HQ_REGISTRY` | the npm registry `update`, the dashboard's update card and the background notice consult |
 | `NO_COLOR` | disables ANSI color, exactly like `--no-color` |
@@ -479,6 +479,9 @@ process on HQ's behalf. The one exception is deliberate and narrow: when HQ
 spawns `novamira` through `src/integration/`, that child inherits the ambient
 environment it would have had anyway, with `NOVAMIRA_UPDATE_CHECK=0` to suppress
 independent update notices. Packaged launch entries also select managed mode.
+When `NOVAMIRA_HQ_ALLOW_INSECURE_HTTP=1`, integration also sets
+`NOVAMIRA_ALLOW_INSECURE_HTTP=1` in the child environment so the site CLI accepts
+the same development URLs as HQ. The parent environment is unchanged.
 
 `NOVAMIRA_HQ_AGENT` (with `NOVAMIRA_AGENT` as a fallback) is read by the
 installers, not by `novamira-hq`; it selects the agent `npx skills add`

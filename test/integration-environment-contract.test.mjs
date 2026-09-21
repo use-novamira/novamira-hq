@@ -7,6 +7,27 @@ import { siteCliEnvironment } from "../dist/integration/environment.js";
 import { createSiteCliResolver } from "../dist/integration/resolve.js";
 import { envelopeReason } from "../dist/integration/classify.js";
 
+test("HQ's HTTP opt-in reaches site CLI children without changing the parent", () => {
+  for (const platform of ["darwin", "linux", "win32"]) {
+    const environment = { NOVAMIRA_HQ_ALLOW_INSECURE_HTTP: "1" };
+    const child = siteCliEnvironment(environment, platform);
+    assert.equal(child.NOVAMIRA_ALLOW_INSECURE_HTTP, "1");
+    assert.deepEqual(environment, { NOVAMIRA_HQ_ALLOW_INSECURE_HTTP: "1" });
+    for (const value of [undefined, "0", "true", ""]) {
+      assert.equal(
+        siteCliEnvironment({ NOVAMIRA_HQ_ALLOW_INSECURE_HTTP: value }, platform)
+          .NOVAMIRA_ALLOW_INSECURE_HTTP,
+        undefined,
+      );
+    }
+    assert.equal(
+      siteCliEnvironment({ NOVAMIRA_ALLOW_INSECURE_HTTP: "1" }, platform)
+        .NOVAMIRA_ALLOW_INSECURE_HTTP,
+      "1",
+    );
+  }
+});
+
 test("Finder PATH supports explicit script overrides without global CLI discovery", async () => {
   const environment = { PATH: "/usr/bin:/bin:/usr/sbin:/sbin" };
   const resolve = createSiteCliResolver({

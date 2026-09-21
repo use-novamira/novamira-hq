@@ -154,7 +154,7 @@ const UNAVAILABLE_HINTS: Readonly<Record<UnavailableReason, string>> = {
     "Update Novamira HQ or its explicitly selected external site CLI: this CLI version does not support the required commands.",
   cli_timeout: "The Novamira site CLI did not answer in time; try again.",
   cli_failed:
-    "The site CLI could not be run. Repair or update Novamira HQ, or check its explicit external CLI override.",
+    "The site CLI could not complete the operation. For connection failures, run the bundled site CLI's auth login command in a terminal to see the underlying error.",
   malformed_output:
     "The site CLI returned unreadable output. Repair or update Novamira HQ, or check its explicit external CLI override.",
   output_truncated:

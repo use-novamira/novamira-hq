@@ -8,6 +8,11 @@ export function siteCliEnvironment(
 ): NodeJS.ProcessEnv {
   const result = { ...environment };
   result.NOVAMIRA_UPDATE_CHECK = "0";
+  // HQ validates dashboard URLs with its own opt-in. Translate it for the
+  // child so an accepted development URL also passes the CLI's validation.
+  if (environment.NOVAMIRA_HQ_ALLOW_INSECURE_HTTP === "1") {
+    result.NOVAMIRA_ALLOW_INSECURE_HTTP = "1";
+  }
   // An explicitly empty PATH is an intentional isolated environment.
   if (platform === "darwin" && environment.PATH !== "") {
     const entries = (environment.PATH ?? "").split(":").filter(Boolean);
