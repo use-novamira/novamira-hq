@@ -339,7 +339,7 @@ select {
 .provider-actions-table { width: 100%; border-collapse: collapse; }
 .provider-actions-table caption { text-align: left; padding: 16px 20px; font-weight: 700; }
 .provider-actions-table th, .provider-actions-table td { padding: 12px 20px; border-top: 1px solid var(--border); text-align: left; }
-.provider-actions-table tbody th { font-weight: 500; }
+.provider-actions-table tbody th { font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--text); }
 .provider-actions-table td { white-space: nowrap; }
 .provider-actions-table .action-available { font-weight: 600; }
 .about-page .text-link { color: inherit; text-decoration: underline; text-underline-offset: 0.15em; }

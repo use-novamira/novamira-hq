@@ -9,7 +9,7 @@ import type {
 } from "../services/restore.js";
 import { html, hrefAttr, attr, url, type Html } from "../html.js";
 import * as ds from "../datastar.js";
-import { getStream, post } from "../expr.js";
+import { getStream, post, signal, not, or } from "../expr.js";
 import { renderBackupCreate } from "./backup-create.js";
 
 export interface RestoreView {
@@ -53,6 +53,17 @@ export function renderRestore(view: RestoreView): Html {
       }),
       busy: "restoreForm.submitting",
       pending: "Please wait…",
+      ...(form
+        ? {
+            disabled: or(
+              not(signal("restoreForm.allContent")),
+              not(signal("restoreForm.backupId")),
+              ...(view.catalog?.provider === "kinsta"
+                ? [not(signal("restoreForm.notifiedUserId"))]
+                : []),
+            ),
+          }
+        : {}),
     });
   let body: Html;
   const { job, review, catalog } = view;

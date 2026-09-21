@@ -59,9 +59,11 @@ export function backupChoices(value: unknown): { id: string; label: string }[] {
         const date =
           row.created_at ?? row.createdAt ?? row.timestamp ?? row.date;
         const parsed =
-          typeof date === "string" && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(date)
+          typeof date === "number" && Number.isFinite(date)
             ? new Date(date)
-            : null;
+            : typeof date === "string" && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(date)
+              ? new Date(date)
+              : null;
         const label =
           parsed && Number.isFinite(parsed.getTime())
             ? new Intl.DateTimeFormat("en-GB", {

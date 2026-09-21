@@ -11,7 +11,7 @@ import {
   type Url,
 } from "../html.js";
 import * as ds from "../datastar.js";
-import { signal, seq, set, jsBoolean, type Expr } from "../expr.js";
+import { signal, seq, set, jsBoolean, or, type Expr } from "../expr.js";
 import type { SignalPath } from "../signals.js";
 
 export function connectionStatus(
@@ -65,9 +65,16 @@ export function actionButton(options: {
   action: Expr;
   busy: SignalPath;
   pending?: string;
+  inlinePending?: boolean;
+  disabled?: Expr;
   tone?: "primary" | "secondary";
 }): Html {
-  return html`<div class="ui-action"><button${classAttr("button", options.tone ?? "primary")} type="button"${ds.attrs({ disabled: signal(options.busy) })}${ds.indicator(options.busy)}${ds.on("click", seq(set(options.busy, jsBoolean(true)), options.action))}>${options.label}</button><span class="ds-toggle"${ds.classes({ open: signal(options.busy) })} role="status">${options.pending ?? "Please wait…"}</span></div>`;
+  const disabled = options.disabled
+    ? or(signal(options.busy), options.disabled)
+    : signal(options.busy);
+  if (options.inlinePending)
+    return html`<div class="ui-action"><button${classAttr("button", options.tone ?? "primary")} type="button"${ds.attrs({ disabled: disabled })}${ds.indicator(options.busy)}${ds.on("click", seq(set(options.busy, jsBoolean(true)), options.action))}><span${ds.classes({ hidden: signal(options.busy) })}>${options.label}</span><span class="ds-toggle"${ds.classes({ open: signal(options.busy) })} role="status">${options.pending ?? "Please wait…"}</span></button></div>`;
+  return html`<div class="ui-action"><button${classAttr("button", options.tone ?? "primary")} type="button"${ds.attrs({ disabled: disabled })}${ds.indicator(options.busy)}${ds.on("click", seq(set(options.busy, jsBoolean(true)), options.action))}>${options.label}</button><span class="ds-toggle"${ds.classes({ open: signal(options.busy) })} role="status">${options.pending ?? "Please wait…"}</span></div>`;
 }
 
 export function actionBar(content: Html): Html {
@@ -116,5 +123,6 @@ export function secretEditor(options: {
   save: Expr;
   remove?: Expr;
 }): Html {
-  return html`<form class="ui-secret-editor"${ds.onSubmit(options.save)}${ds.indicator(options.busy)}>${field(options.label, html`<input type="password" autocomplete="off"${attr("placeholder", options.last4 ? `••••••••${options.last4}` : options.placeholder)}${ds.bind(options.value)} required>`, options.last4 ? "Enter a new key to replace it." : undefined)}<p class="field-help">${options.help}</p>${actionBar(html`<button class="button secondary" type="submit"${ds.attrs({ disabled: signal(options.busy) })}>Save</button>${options.remove ? html`<button class="button quiet" type="button"${ds.attrs({ disabled: signal(options.busy) })}${ds.on("click", options.remove)}>Remove</button>` : false}<span class="ds-toggle"${ds.classes({ open: signal(options.busy) })} role="status">Updating…</span>`)}</form>`;
+  const disabled = signal(options.busy);
+  return html`<form class="ui-secret-editor"${ds.onSubmit(options.save)}${ds.indicator(options.busy)}>${field(options.label, html`<input type="password" autocomplete="off"${attr("placeholder", options.last4 ? `••••••••${options.last4}` : options.placeholder)}${ds.bind(options.value)} required>`, options.last4 ? "Enter a new key to replace it." : undefined)}<p class="field-help">${options.help}</p>${actionBar(html`<button class="button secondary" type="submit"${ds.attrs({ disabled: disabled })}>Save</button>${options.remove ? html`<button class="button quiet" type="button"${ds.attrs({ disabled: disabled })}${ds.on("click", options.remove)}>Remove</button>` : false}<span class="ds-toggle"${ds.classes({ open: signal(options.busy) })} role="status">Updating…</span>`)}</form>`;
 }

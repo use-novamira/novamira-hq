@@ -77,6 +77,16 @@ function fixture(createOnly = false) {
     disable: () => (supported = false),
   };
 }
+test("Kinsta millisecond timestamps become readable UTC dates", () => {
+  assert.deepEqual(
+    backupChoices({
+      environment: {
+        backups: [{ id: 123, created_at: Date.UTC(2026, 8, 21, 9, 4) }],
+      },
+    }),
+    [{ id: "123", label: "21 Sept 2026, 09:04 UTC" }],
+  );
+});
 test("dashboard restore catalog is read-only and shows only backup entries", async () => {
   const f = fixture();
   const catalog = await f.service.catalog(target);
@@ -193,6 +203,9 @@ test("restore form uses explicit boolean acknowledgement and escaped labels", as
   const markup = renderHtml(renderRestore({ target, catalog }));
   assert.match(markup, /Kinsta user ID/);
   assert.match(markup, /restoreForm.allContent/);
+  assert.match(markup, /!\$restoreForm.allContent/);
+  assert.match(markup, /!\$restoreForm.backupId/);
+  assert.match(markup, /!\$restoreForm.notifiedUserId/);
   assert.match(markup, /Continue/);
   const review = await f.service.plan(target, "42", true, "user");
   assert.match(

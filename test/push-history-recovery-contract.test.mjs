@@ -48,6 +48,10 @@ test("Push history hides removed hosting profiles without deleting saved jobs", 
     );
   const markup = render(view.profiles);
   assert.match(markup, /active-source.example.com/);
+  assert.match(markup, /active-target.example.com/);
+  assert.ok(!markup.includes("site deleted"));
+  assert.match(markup, /<article class="push-job-link">/);
+  assert.match(markup, />View push<\/a>/);
   assert.ok(!markup.includes("removed-source.example.com"));
   assert.ok(!render([]).includes("Push history"));
   assert.equal(jobs.length, 2);
@@ -218,7 +222,11 @@ test("changed provider and missing operation IDs cannot be probed or replayed", 
     "Source environment (name unavailable)",
   );
   assert.deepEqual(f.counts(), { reads: 0, writes: 1 });
-  assert.match(renderHtml(renderPushJobs(service.list())), /Push history/);
+  const markup = renderHtml(renderPushJobs(service.list()));
+  assert.match(markup, /Push history/);
+  assert.ok(!markup.includes("name unavailable"));
+  assert.match(markup, /Push · .* UTC/);
+  assert.match(markup, />Check result<\/a>/);
 });
 
 test("browser elapsed labels tick each second and freeze on the observed finish time", async () => {

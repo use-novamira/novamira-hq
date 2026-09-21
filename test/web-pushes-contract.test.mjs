@@ -336,18 +336,18 @@ test("1: the empty page exposes the next useful action for every state", async (
   const cold = await fixture();
   assert.ok(
     (await line(cold.server)).includes(
-      "Available directions could not be determined from the current inventory.",
+      "Load your sites to choose where to copy content. Previous pushes remain below.",
     ),
   );
   assert.ok((await line(cold.server)).includes("Load sites to continue"));
-  assert.ok((await line(cold.server)).includes(">Refresh hosting sites</a>"));
+  assert.ok((await line(cold.server)).includes(">Open Sites</a>"));
   assert.equal(cold.listCalls.length, 0, "a page render lists no sites");
 
   // Warm cache with an eligible site.
   const warm = await fixture();
   await warmCache(warm.server);
   const warmMarkup = await line(warm.server);
-  assert.ok(warmMarkup.includes("Available directions"));
+  assert.ok(warmMarkup.includes("New push"));
   assert.ok(warmMarkup.includes("Multi Site"));
   assert.ok(
     warmMarkup.includes("From: staging.example.com → To: live.example.com"),

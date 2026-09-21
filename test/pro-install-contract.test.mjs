@@ -39,7 +39,8 @@ test("Pro separates app settings from site installation", () => {
   assert.ok(!settings.includes('value="••••••••1234"'));
   assert.ok(!settings.includes("Review installation"));
   const page = renderHtml(renderProPage({ site: "example", last4: "1234" }));
-  assert.match(page, /Review installation/);
+  assert.match(page, /Check site/);
+  assert.doesNotMatch(page, /Do not close|Check the site before reviewing/);
   assert.match(page, /Back to Sites/);
   assert.ok(!page.includes('href="/settings'));
   const completed = renderHtml(

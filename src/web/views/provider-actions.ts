@@ -11,7 +11,7 @@ import {
   ENVIRONMENT_PUSH_PROVIDERS,
   NOVAMIRA_SETUP_PROVIDERS,
 } from "../../hosting/types.js";
-import { html, hrefAttr, classAttr, url, type Html } from "../html.js";
+import { html, hrefAttr, classAttr, attr, url, type Html } from "../html.js";
 import {
   EMPTY_NOTICE,
   providerLabelFor,
@@ -176,7 +176,7 @@ function actionTable(
     }),
   ];
   const availability = (available: boolean): Html =>
-    html`<span${classAttr(available ? "action-available" : "muted")}>${available ? "Available" : "Not available"}</span>`;
+    html`<span${classAttr(available ? "action-available" : "muted")}${attr("aria-label", available ? "Available" : "Not available")}>${available ? "✓" : "—"}</span>`;
   return html`<section class="panel provider-actions-table-wrap"><table class="provider-actions-table"><caption>Available actions in Novamira HQ</caption><thead><tr><th scope="col">Action</th><th scope="col">In the app</th><th scope="col">With your AI</th></tr></thead><tbody>${labels.map((label) => html`<tr><th scope="row">${label}</th><td>${availability(groups.app.includes(label))}</td><td>${availability(groups.ai.includes(label))}</td></tr>`)}</tbody></table></section>`;
 }
 
@@ -187,7 +187,7 @@ export function renderProviderActionsPage(
   const groups = providerActionGroups(view);
   return html`<section class="page flow-page provider-actions-page"><header class="page-head"><div><h1>${view.added ? "Hosting account ready" : "Available actions"}</h1><p>${view.profile} · ${providerLabelFor(view.provider)}</p></div><a class="button secondary"${hrefAttr(url("/hosting-accounts"))}>Back to Hosting accounts</a></header>${view.added && notice.level === "ok" ? false : renderNotice(notice)}<p>Here’s what you can do with this hosting account.</p>${
     groups
-      ? html`${actionTable(view, groups)}<p class="field-help">Use the site’s action menu in Sites, or configure your AI client to use the available AI actions. AI pushes use routes saved in the app.</p>`
+      ? html`${actionTable(view, groups)}<p class="field-help">Open Sites to use these actions. AI pushes use routes saved in the app.</p>`
       : html`<section class="empty empty-block"><h2>Available actions could not be loaded</h2><p>The account remains saved. Open Available actions from this account's menu to try again.</p></section>`
-  }<section class="panel"><div class="panel-head"><div><h2>Connect your sites separately</h2><p>Adding a hosting account does not authorize access to WordPress. In Sites, set up Novamira where supported and authorize each site in your browser. Your AI can use site tools only after that separate connection, and only for the abilities the site exposes.</p><p>Hosting credentials stay on this computer. Do not paste them into an AI conversation.</p></div></div></section><div class="button-row"><a class="button primary"${hrefAttr(url("/sites"))}>View sites</a><a class="button secondary"${hrefAttr(url("/configure-ai"))}>Configure your AI</a></div></section>`;
+  }<section class="panel"><div class="panel-head"><div><h2>Connect your sites separately</h2><p>Adding a hosting account does not authorize access to WordPress. In Sites, set up Novamira where supported and authorize each site in your browser. Your AI can use site tools only after that separate connection, and only for the abilities the site exposes.</p><p>Hosting credentials stay on this computer. Do not paste them into an AI conversation.</p></div></div></section><div class="button-row"><a class="button primary"${hrefAttr(url("/sites"))}>View sites</a></div></section>`;
 }
