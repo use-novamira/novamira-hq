@@ -104,6 +104,13 @@ async function fixture(options = {}) {
       throw new Error("the settings suite runs no doctor report");
     },
     updates: {
+      desktop: options.desktop,
+      automatic: options.automatic,
+      refresh: async () => {
+        calls.push("refresh");
+        if (options.checkThrows) throw options.checkThrows;
+        return options.status;
+      },
       available: options.available ?? true,
       check: async () => {
         calls.push("check");
@@ -187,6 +194,51 @@ async function sse(server, incoming) {
   await response.run(recorder.stream);
   return { response, recorder };
 }
+
+test("desktop launch checks are nonblocking, opt-out aware, and offer downloads instead of npm", async () => {
+  const status = {
+    current: "1.0.0",
+    latest: "1.1.0",
+    updateAvailable: true,
+    checkedAt: "2026-09-21T00:00:00.000Z",
+    downloadUrl:
+      "https://github.com/use-novamira/novamira-hq/releases/download/v1.1.0/novamira-hq-desktop-macos-arm64.dmg",
+    releaseUrl:
+      "https://github.com/use-novamira/novamira-hq/releases/tag/v1.1.0",
+  };
+  const { server, calls } = await fixture({
+    desktop: true,
+    automatic: true,
+    status,
+  });
+  const markup = await page(server, "/updates");
+  assert.match(markup, /automatic=true/);
+  assert.doesNotMatch(markup, /This installation uses npm/);
+  assert.deepEqual(calls, []);
+  const automatic = await sse(
+    server,
+    authorized("/_dashboard/updates/check?automatic=true"),
+  );
+  assert.deepEqual(automatic.recorder.order, ["toast/outer"]);
+  assert.match(automatic.recorder.find("toast").markup, /1.1.0 is available/);
+  const manual = await sse(server, authorized("/_dashboard/updates/check"));
+  const card = manual.recorder.find("updates-card").markup;
+  assert.match(card, /Download update/);
+  assert.match(card, /Release notes/);
+  assert.doesNotMatch(card, /Install update|npm/);
+  for (const options of [
+    { automatic: false },
+    { automatic: true, checkThrows: new Error("offline") },
+  ]) {
+    const fixtureResult = await fixture({ desktop: true, ...options });
+    const result = await sse(
+      fixtureResult.server,
+      authorized("/_dashboard/updates/check?automatic=true"),
+    );
+    assert.deepEqual(result.recorder.order, []);
+    if (!options.automatic) assert.deepEqual(fixtureResult.calls, []);
+  }
+});
 
 async function page(server, path) {
   const response = await server.dispatch(request(path));

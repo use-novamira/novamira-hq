@@ -515,6 +515,18 @@ export function cursorInstallHref(configuration: string): Attr {
 
 const SAFE_PATH = /^\/[A-Za-z0-9\-._~!$&'()*+,;=:@%/]*$/;
 
+/** Only this product's HTTPS release pages and artifacts may be update links. */
+export function desktopReleaseHref(target: string): Attr {
+  if (
+    !/^https:\/\/github\.com\/use-novamira\/novamira-hq\/releases\/(?:tag|download)\/[A-Za-z0-9._%+/-]+$/.test(
+      target,
+    )
+  ) {
+    throw internalError("Invalid desktop release link.");
+  }
+  return attr("href", target);
+}
+
 /** Fixed product links; no caller-supplied external URLs. */
 export function aboutHref(link: "website" | "source" | "license"): Attr {
   return attr(

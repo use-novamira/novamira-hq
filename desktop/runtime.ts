@@ -97,3 +97,39 @@ export const MCP_DOWNLOAD_SCRIPT =
   window.novamiraDownloadMcp().catch(() => { link.textContent = 'Download could not start. Try again.'; });
   setTimeout(() => { link.textContent = original; }, 8000);
 }, true);`;
+
+/** Open only HQ release links in the system browser, including download links. */
+export function openDesktopRelease(target: unknown): void {
+  if (
+    typeof target !== "string" ||
+    !/^https:\/\/github\.com\/use-novamira\/novamira-hq\/releases\/(?:tag|download)\/[A-Za-z0-9._%+/-]+$/
+      .test(target)
+  ) {
+    throw new Error("Invalid desktop release link");
+  }
+  const command = Deno.build.os === "darwin"
+    ? "/usr/bin/open"
+    : Deno.build.os === "windows"
+    ? "rundll32.exe"
+    : "xdg-open";
+  const args = Deno.build.os === "windows"
+    ? ["url.dll,FileProtocolHandler", target]
+    : [target];
+  const result = new Deno.Command(command, {
+    args,
+    stdin: "null",
+    stdout: "null",
+    stderr: "null",
+  }).outputSync();
+  if (!result.success) {
+    throw new Error("Could not open the release in your browser.");
+  }
+}
+
+export const DESKTOP_RELEASE_SCRIPT =
+  `document.addEventListener('click', (event) => {
+  const link = event.target.closest?.('a[href^="https://github.com/use-novamira/novamira-hq/releases/"]');
+  if (!link || event.defaultPrevented || !event.isTrusted) return;
+  event.preventDefault();
+  window.novamiraOpenRelease(link.href).catch(() => { link.textContent = 'Could not open your browser. Try again.'; });
+}, true);`;

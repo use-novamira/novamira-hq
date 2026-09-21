@@ -101,6 +101,22 @@ export function createUpdateCheckHandler(context: RouteContext): RouteHandler {
   return (request): DashboardResponse => ({
     kind: "sse",
     run: async (stream) => {
+      if (isSilent(request.query.get("automatic"))) {
+        try {
+          if (context.updates.automatic) {
+            const status = await context.updates.refresh?.();
+            if (status?.updateAvailable)
+              patchToast(stream, {
+                level: "warn",
+                message: `Novamira HQ ${status.latest} is available. Open App updates to download it.`,
+              });
+          }
+        } catch {
+          /* Automatic checks never interrupt the dashboard. */
+        }
+        stream.close();
+        return;
+      }
       if (context.updates.available === false) {
         patchUpdateCard(
           stream,
@@ -119,6 +135,13 @@ export function createUpdateCheckHandler(context: RouteContext): RouteHandler {
       try {
         const status = await context.updates.check();
         const view: UpdateCardView = {
+          desktop: context.updates.desktop === true,
+          ...(status.downloadUrl === undefined
+            ? {}
+            : { downloadUrl: status.downloadUrl }),
+          ...(status.releaseUrl === undefined
+            ? {}
+            : { releaseUrl: status.releaseUrl }),
           checked: true,
           current: status.current,
           latest: status.latest,
@@ -150,6 +173,7 @@ export function createUpdateCheckHandler(context: RouteContext): RouteHandler {
             current: context.version,
             updateAvailable: false,
             error: boundedMessage(cliError),
+            desktop: context.updates.desktop === true,
           },
           silent
             ? EMPTY_NOTICE
@@ -232,6 +256,7 @@ export function createUpdateInstallHandler(
             current: context.version,
             updateAvailable: false,
             error: boundedMessage(cliError),
+            desktop: context.updates.desktop === true,
           },
           { level: "danger", message: "Update install failed." },
         );

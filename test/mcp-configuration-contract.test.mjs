@@ -315,11 +315,14 @@ test("one-click ChatGPT setup checks first, then uses the official codex command
 test("standalone desktop never delegates its updater to npm", async () => {
   const updates = createDashboardUpdates({
     distribution: "desktop",
+    paths: { stateDir: "/unused" },
+    version: "1.0.0",
     createUpdateChecker: () => {
       throw new Error("must not inspect npm");
     },
   });
-  await assert.rejects(updates.check(), /standalone desktop/);
+  assert.equal(updates.desktop, true);
+  assert.equal(typeof updates.refresh, "function");
   await assert.rejects(updates.install(), /standalone desktop/);
 });
 

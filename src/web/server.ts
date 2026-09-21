@@ -210,6 +210,11 @@ export type DashboardDoctor = () => Promise<unknown>;
  * the update card's buttons wired to nothing.
  */
 export interface DashboardUpdates {
+  readonly desktop?: boolean;
+  readonly automatic?: boolean;
+  refresh?(): Promise<
+    Awaited<ReturnType<DashboardUpdates["check"]>> | undefined
+  >;
   /** False until this distribution has a configured update backend. */
   readonly available?: boolean;
   check(): Promise<{
@@ -219,6 +224,8 @@ export interface DashboardUpdates {
     readonly checkedAt: string;
     /** Origin and path only; never a URL carrying credentials. */
     readonly registry?: string;
+    readonly releaseUrl?: string;
+    readonly downloadUrl?: string;
   }>;
   install(): Promise<{
     readonly updated: boolean;

@@ -80,6 +80,7 @@ import type { ConfigView, DashboardNotice, DashboardPage } from "./types.js";
 export interface PageModel {
   readonly pro?: import("../../pro/service.js").ProView;
   readonly updatesAvailable?: boolean;
+  readonly desktopUpdates?: boolean;
   readonly hostingTools?: HostingToolsView;
   readonly restore?: RestoreView;
   readonly providerActions?: ProviderActionsView;
@@ -187,7 +188,11 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
     case "novamira-pro":
       return renderProPage(model.pro ?? {});
     case "updates":
-      return renderUpdatesPage(model.view.version, model.updatesAvailable);
+      return renderUpdatesPage(
+        model.view.version,
+        model.updatesAvailable,
+        model.desktopUpdates,
+      );
     default: {
       const unexpected: never = page;
       throw new CliError(

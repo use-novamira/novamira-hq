@@ -15,8 +15,8 @@
  * result over the running binary (update.go:396-520). Under npm-only
  * distribution every premise of that machinery is gone: there is no release
  * archive, no checksums file, no single-file binary, and exactly one install
- * method. All of it is deleted rather than ported, and **HQ makes no request to
- * GitHub at all**.
+ * method. The npm updater does not query GitHub. Desktop release discovery
+ * lives separately in `desktop.ts` and does not replace executables in place.
  *
  * **What HQ does instead.** It mirrors `@novamira/cli`'s `src/update/registry.ts`
  * so that an operator's two Novamira tools update the same way and the two

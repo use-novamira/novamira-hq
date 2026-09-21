@@ -450,9 +450,15 @@ per-hosting permission, has no revocation switch, and is not required by CLI or
 MCP. New plugin installations enable abilities automatically; existing
 installations preserve them unless explicitly requested.
 
-Native desktop updates require installing a newer desktop release. The npm
-updater only updates a separately installed CLI and is unavailable in the
-standalone app.
+The desktop app automatically checks for updates when it opens, at most once
+every 24 hours, and shows a notification when a compatible release is available.
+Open **App updates** to check now, read release notes, or download the update in
+your browser. Quit the app and replace it with the downloaded release; saved
+settings and credentials are stored separately. Stable builds receive stable
+releases, while preview builds also receive newer previews.
+
+Set `NOVAMIRA_HQ_UPDATE_CHECK=0` to disable automatic checks. Offline checks never
+block startup. The npm updater updates only the separately installed CLI.
 
 Novamira HQ can be configured as a local stdio MCP server in AI agents. The server writes
 only newline-delimited JSON-RPC messages to stdout and performs no background

@@ -3,14 +3,24 @@
 
 /**
  * Dedicated Updates page. The injected backend determines availability:
- * npm retains its existing updater; desktop stays explicit and inactive until
- * the public, verified release catalog is configured.
+ * npm retains its installer; desktop checks published releases and offers
+ * matching platform downloads through the system browser.
  */
 import * as ds from "../datastar.js";
 import { confirmThen, get, or, post, signal } from "../expr.js";
-import { classAttr, html, idAttr, url, type Html } from "../html.js";
+import {
+  classAttr,
+  desktopReleaseHref,
+  html,
+  idAttr,
+  url,
+  type Html,
+} from "../html.js";
 
 export interface UpdateCardView {
+  readonly desktop?: boolean;
+  readonly releaseUrl?: string;
+  readonly downloadUrl?: string;
   /** No check or install controls when this distribution has no backend. */
   readonly unavailable?: boolean;
   /** False only before the first check has answered. */
@@ -85,7 +95,7 @@ export function renderUpdateCard(view: UpdateCardView): Html {
   }><div class="panel-head"><div class="updates-heading"><h2>Software updates</h2><span${classAttr(
     "pill",
     pill.modifier,
-  )}>${pill.text}</span></div><p>Updates are never installed automatically. This installation uses npm or Bun. Check for a newer version and choose when to install it.</p></div><dl class="details-list">${detailRow(
+  )}>${pill.text}</span></div><p>${view.desktop ? "Check for a newer desktop release. To update, download it, quit Novamira HQ, and replace the application. Your settings and credentials are stored separately." : "Updates are never installed automatically. This installation uses npm or Bun. Check for a newer version and choose when to install it."}</p></div><dl class="details-list">${detailRow(
     "Current version",
     view.current,
   )}${detailRow("Latest version", view.latest)}${detailRow(
@@ -106,16 +116,18 @@ export function renderUpdateCard(view: UpdateCardView): Html {
   )}><span${ds.classes({ hidden: signal("updates.loading") })}>Check now</span><span class="loading-inline ds-toggle"${ds.classes(
     { open: signal("updates.loading") },
   )}><span class="spinner"></span>Checking</span></button>${
-    view.updateAvailable
-      ? html`<button class="button primary" type="button"${ds.indicator(
-          "updates.installing",
-        )}${ds.attrs({ disabled: busy })}${ds.on(
-          "click",
-          install,
-        )}><span${ds.classes({ hidden: signal("updates.installing") })}>Install update</span><span class="loading-inline ds-toggle"${ds.classes(
-          { open: signal("updates.installing") },
-        )}><span class="spinner"></span>Installing</span></button>`
-      : false
+    view.updateAvailable && view.desktop
+      ? html`${view.downloadUrl ? html`<a class="button primary" target="_blank" rel="noopener noreferrer"${desktopReleaseHref(view.downloadUrl)}>Download update</a>` : false}${view.releaseUrl ? html`<a class="button secondary" target="_blank" rel="noopener noreferrer"${desktopReleaseHref(view.releaseUrl)}>Release notes</a>` : false}`
+      : view.updateAvailable
+        ? html`<button class="button primary" type="button"${ds.indicator(
+            "updates.installing",
+          )}${ds.attrs({ disabled: busy })}${ds.on(
+            "click",
+            install,
+          )}><span${ds.classes({ hidden: signal("updates.installing") })}>Install update</span><span class="loading-inline ds-toggle"${ds.classes(
+            { open: signal("updates.installing") },
+          )}><span class="spinner"></span>Installing</span></button>`
+        : false
   }</div></section>`;
 }
 
@@ -123,7 +135,15 @@ function renderUnavailableCard(current: string): Html {
   return html`<section${idAttr("updates-card")} class="panel updates-panel"><div class="panel-head"><div><h2>Novamira HQ</h2><p>Desktop application</p></div><span class="pill">Manual updates</span></div><dl class="details-list">${detailRow("Current version", current)}</dl><div class="updates-help"><p>Update checks are not available in this build yet. This does not mean your app is up to date.</p><p>To update now, quit Novamira HQ and replace it with a newer desktop release for your operating system and architecture. Your saved settings and credentials are stored separately.</p><p>Automatic checking and installation are not enabled. No update server has been contacted.</p></div></section>`;
 }
 
-export function renderUpdatesPage(current: string, available = true): Html {
-  const card = { ...initialUpdateCardView(current), unavailable: !available };
+export function renderUpdatesPage(
+  current: string,
+  available = true,
+  desktop = false,
+): Html {
+  const card = {
+    ...initialUpdateCardView(current),
+    unavailable: !available,
+    desktop,
+  };
   return html`<section class="page flow-page updates-page"><header class="page-head"><div><h1>Novamira HQ updates</h1><p>Update this application, not your sites’ WordPress plugins or themes.</p></div></header>${renderUpdateCard(card)}</section>`;
 }

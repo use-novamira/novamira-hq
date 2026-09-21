@@ -52,6 +52,8 @@ import { globalHttpFetch, type HttpFetch } from "../provisioning/http.js";
 import { CliError } from "../errors.js";
 import { createProService } from "../pro/service.js";
 import { installVersion, type InstallRunner } from "../update/index.js";
+import { DesktopUpdateChecker } from "../update/desktop.js";
+import { updateCheckEnabled } from "../update/index.js";
 import {
   createDashboardServer,
   parseListenAddress,
@@ -223,8 +225,16 @@ const DASHBOARD_UPDATE_INSTALL_TIMEOUT_MS = 180_000;
 export function createDashboardUpdates(
   dependencies: CommandDependencies,
   overrides: DashboardCommandOverrides = {},
+  environment: NodeJS.ProcessEnv = process.env,
 ): DashboardUpdates {
   if (dependencies.distribution === "desktop") {
+    const checker = new DesktopUpdateChecker(
+      dependencies.paths.stateDir,
+      dependencies.security,
+      {
+        current: dependencies.version,
+      },
+    );
     const unavailable = (): Promise<never> => {
       return Promise.reject(
         new CliError(
@@ -233,7 +243,21 @@ export function createDashboardUpdates(
         ),
       );
     };
-    return { available: false, check: unavailable, install: unavailable };
+    return {
+      desktop: true,
+      automatic: updateCheckEnabled(environment),
+      refresh: () => checker.check(),
+      check: async () => {
+        const status = await checker.check(true);
+        if (!status)
+          throw new CliError(
+            "network_error",
+            "Desktop update check failed. Try again later.",
+          );
+        return status;
+      },
+      install: unavailable,
+    };
   }
   if (overrides.updates !== undefined) return overrides.updates;
   return {
@@ -368,7 +392,7 @@ function dashboardServerDependencies(
     // other command reads them from.
     integration: createDashboardIntegration(io.env, overrides),
     doctor: createDashboardDoctor(dependencies, io.env, overrides),
-    updates: createDashboardUpdates(dependencies, overrides),
+    updates: createDashboardUpdates(dependencies, overrides, io.env),
     ...(overrides.randomToken === undefined
       ? {}
       : { randomToken: overrides.randomToken }),

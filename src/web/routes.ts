@@ -368,7 +368,10 @@ function pageExtras(
     };
   }
   if (page === "updates") {
-    return { updatesAvailable: context.updates.available !== false };
+    return {
+      updatesAvailable: context.updates.available !== false,
+      desktopUpdates: context.updates.desktop === true,
+    };
   }
   if (page === "pushes") {
     const warm = context.sites.warm(ALL_PROFILES_SENTINEL, true);
@@ -491,6 +494,7 @@ function pageHandler(context: RouteContext, page: DashboardPage): RouteHandler {
       const signals = defaultDashboardSignals(context.token);
       return htmlResponse(
         renderDocument({
+          automaticUpdates: context.updates.automatic === true,
           page,
           view,
           signals,
@@ -615,6 +619,7 @@ function pageHandler(context: RouteContext, page: DashboardPage): RouteHandler {
     };
     return htmlResponse(
       renderDocument({
+        automaticUpdates: context.updates.automatic === true,
         page: renderedPage,
         view,
         signals,

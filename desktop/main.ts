@@ -27,7 +27,9 @@
  */
 
 import {
+  DESKTOP_RELEASE_SCRIPT,
   MCP_DOWNLOAD_SCRIPT,
+  openDesktopRelease,
   openMcpDownload,
   prepareBundledWebview,
   prepareCommandPath,
@@ -201,6 +203,11 @@ async function window(): Promise<number> {
     const view = new Webview(true);
     view.title = WINDOW_TITLE;
     view.size = { width: 1280, height: 860, hint: SizeHint.NONE };
+    view.bind("novamiraOpenRelease", (target: unknown) => {
+      openDesktopRelease(target);
+      return true;
+    });
+    view.init(DESKTOP_RELEASE_SCRIPT);
     if (Deno.build.os === "darwin") {
       installMacMenus();
       view.bind("novamiraDownloadMcp", () => {

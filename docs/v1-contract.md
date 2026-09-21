@@ -1657,15 +1657,17 @@ form to itself and no page reloads.
   For npm/Bun installations the card checks the npm registry on first render,
   shows the current and published versions, the registry consulted and the
   command that ran, and offers Install only when something newer exists. It
-  renders no external link — the CSP is `default-src 'self'` — and no installer
-  output.
+  renders no installer output. Desktop offers allowlisted GitHub release and
+  platform download links, opened in the system browser by the native shell.
   Uninstall instructions are linked from About, with separate desktop, package,
   AI-connector and local-data guidance. The existing `?tab=uninstall` URL remains
   supported, but it is no longer a Settings tab. Updates never install silently;
-  desktop release checks/automatic notifications are not implemented. Desktop
-  renders a neutral manual-update explanation, not a failing self-check or an
-  up-to-date claim, and offers no inactive check/install controls. Even direct
-  authorized update requests do not invoke an unavailable backend.
+  desktop checks run asynchronously when its dashboard opens, with a separate
+  private 24-hour cache (including failed attempts). `NOVAMIRA_HQ_UPDATE_CHECK=0`
+  or `false` disables automatic checks before requests or cache writes.
+  `GET /_dashboard/updates/check?automatic=true` only patches an update-available
+  notice; failures remain silent. Check now bypasses the cache and reports errors
+  without claiming the app is up to date. Desktop never invokes npm installation.
 
 Below 1000px the sidebar becomes a compact brand/Menu header. Menu expands the
 connection action, navigation and About together, with `aria-expanded` reflecting
@@ -1847,10 +1849,15 @@ redacted stderr diagnostic per non-passing check.
 `@novamira/cli`'s grammar so an operator learns it once. There is no `upgrade`
 alias and no `update check` / `update install` subcommand.
 
-This updater applies to the **npm distribution only**. The standalone desktop
-app refuses these dashboard update actions with an explanatory message before
-any registry read or package-manager spawn; updating its separate binary requires
-a newer desktop release. The published npm version is read from the npm
+Self-install applies to the **npm distribution only**. Desktop dashboard checks
+use an anonymous HTTPS request to the public GitHub releases API for
+`use-novamira/novamira-hq`, bounded to 5 seconds and 2 MiB, without redirects.
+The latest 100 releases are considered in SemVer order, excluding drafts and
+requiring an uploaded, nonempty artifact for the current OS and architecture.
+Stable builds exclude previews; preview builds accept previews and stable releases.
+An empty matching catalog is an unavailable check, never an up-to-date claim.
+Users download the release and replace the desktop app themselves.
+The published npm version is read from the npm
 registry's dist-tag endpoint for `@novamira/hq` — one anonymous `GET` over
 HTTPS, carrying `Accept` and nothing else: no cookie, no `Authorization`, no npm
 token, and **no profile, credential, provider or telemetry data**. Redirects are
@@ -1858,7 +1865,7 @@ refused rather than followed, the response is read incrementally and abandoned a
 64 KiB, and a `latest` that is not a valid SemVer is a `network_error` rather
 than an install specifier. Plain HTTP is refused except for a loopback registry
 with `NOVAMIRA_HQ_ALLOW_INSECURE_HTTP=1`; a registry URL carrying credentials is
-a `usage_error`. HQ makes no request to GitHub.
+a `usage_error`. The npm updater makes no request to GitHub.
 
 Installing runs a package manager and never replaces an executable in place:
 `npm install --global --ignore-scripts --registry <registry> @novamira/hq@<version>`

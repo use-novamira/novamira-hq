@@ -58,7 +58,7 @@ import {
   url,
   type Html,
 } from "../html.js";
-import { jsBoolean, set, signal, toggle } from "../expr.js";
+import { get, jsBoolean, set, signal, toggle } from "../expr.js";
 import { toSignalRecord, type DashboardSignals } from "../signals.js";
 import {
   statusClass,
@@ -68,6 +68,7 @@ import {
 } from "./types.js";
 
 export interface DocumentInput {
+  readonly automaticUpdates?: boolean;
   readonly page: DashboardPage;
   readonly view: ConfigView;
   readonly signals: DashboardSignals;
@@ -101,7 +102,7 @@ export function renderDocument(input: DocumentInput): Html {
 <script src="/assets/sites-filter.js" defer></script>
 </head>
 <body>
-<div class="shell"${ds.signals(toSignalRecord(input.signals))}>${renderSidebar(input.view, input.page, input.activeNav)}<div class="main-region">${renderToast(input.page === "providers" ? { level: "neutral", message: "" } : input.notice)}${renderMain(input.page, input.body)}</div></div>
+<div class="shell"${ds.signals(toSignalRecord(input.signals))}${input.automaticUpdates ? ds.init(get(url("/_dashboard/updates/check", { automatic: true }), { include: [] })) : false}>${renderSidebar(input.view, input.page, input.activeNav)}<div class="main-region">${renderToast(input.page === "providers" ? { level: "neutral", message: "" } : input.notice)}${renderMain(input.page, input.body)}</div></div>
 </body>
 </html>
 `;

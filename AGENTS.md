@@ -58,8 +58,10 @@ output, configuration, and security contract.
   `profile.credentials`, `integration.site_cli`, and `update.available` cannot
   fail. `--fix` only repairs private-path permissions and creates the state
   directory; `--offline` omits the update check entirely.
-- Update is npm-only. Scripted, piped, JSON, quiet, dashboard, and offline-doctor
-  invocations must suppress background checks before any request or state write.
+- Self-install is npm-only. The desktop dashboard checks GitHub releases on
+  launch (24-hour cache, opt-out via `NOVAMIRA_HQ_UPDATE_CHECK=0`) and offers
+  platform downloads. Scripted, piped, JSON, quiet, npm-dashboard, and offline-doctor
+  invocations must suppress CLI background checks before any request or state write.
 
 ## Dashboard conventions
 
