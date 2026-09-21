@@ -142,35 +142,5 @@ try {
 
 Write-Output "`nNovamira HQ and its agent skill installed successfully."
 
-# The site CLI is installed by default; see install.sh for why it is a separate
-# global package rather than a dependency, and why a failure here is reported
-# and not fatal. `Invoke-Checked` is deliberately not used: this is the one step
-# whose failure must not fail the script. The try/catch pairs with the
-# $LASTEXITCODE test because PowerShell 7.4+ throws on a nonzero native exit
-# under $ErrorActionPreference = "Stop", while older hosts only set the code.
-$sitePackage = "@novamira/cli"
-$skipSiteCli = [Environment]::GetEnvironmentVariable("NOVAMIRA_HQ_SKIP_SITE_CLI")
-if (-not [string]::IsNullOrWhiteSpace($skipSiteCli)) {
-  Write-Output "`nSkipping the site CLI (NOVAMIRA_HQ_SKIP_SITE_CLI is set)."
-  Write-Output "Install it later with: npm install -g $sitePackage"
-} else {
-  Write-Output "`nInstalling the site CLI for connected-state detection..."
-  Write-Output "Novamira CLI is an independent component and remains installed if you remove Novamira HQ."
-  Write-Output "Optional removal later: npm uninstall -g @novamira/cli"
-  Write-Output "This does not remove WordPress plugins or guarantee cleanup of saved profiles and credentials. See HQ Settings > Uninstalling."
-  $siteCliInstalled = $false
-  try {
-    & $npm @("install", "--global", "--ignore-scripts", $sitePackage)
-    $siteCliInstalled = ($LASTEXITCODE -eq 0)
-  } catch {
-    $siteCliInstalled = $false
-  }
-  if ($siteCliInstalled) {
-    Write-Output "`nThe site CLI is installed. Connect a provisioned site with:"
-    Write-Output "  novamira auth login <url>"
-  } else {
-    Write-Warning "The site CLI could not be installed. Novamira HQ is unaffected:"
-    Write-Warning "only the connected-state detection and Connect action need it."
-    Write-Warning "Retry with: npm install -g $sitePackage"
-  }
-}
+Write-Output "`nThe site CLI is bundled with HQ. Connect a provisioned site with:"
+Write-Output "  novamira-hq site-cli auth login <url>"

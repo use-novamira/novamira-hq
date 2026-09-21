@@ -33,20 +33,13 @@ test("uninstall help separates executable removal from optional disconnection", 
   );
 });
 
-test("both installers disclose the independent CLI before installing it", async () => {
+test("both installers explain the bundled CLI without installing a standalone copy", async () => {
   for (const path of ["install.sh", "install.ps1"]) {
     const source = await readFile(
       new URL(`../${path}`, import.meta.url),
       "utf8",
     );
-    assert.ok(source.includes("remains installed if you remove Novamira HQ"));
-    assert.ok(source.includes("npm uninstall -g @novamira/cli"));
-    const installation =
-      path === "install.sh"
-        ? 'if npm install --global --ignore-scripts "$site_package"'
-        : '& $npm @("install", "--global", "--ignore-scripts", $sitePackage)';
-    assert.ok(
-      source.indexOf("remains installed") < source.indexOf(installation),
-    );
+    assert.ok(source.includes("site CLI is bundled"));
+    assert.ok(!source.includes("npm uninstall -g @novamira/cli"));
   }
 });

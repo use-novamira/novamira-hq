@@ -281,6 +281,8 @@ export function renderConnectForm(
     include: unified ? ["cliSites", "sites"] : ["cliSites"],
   });
   const disabled = usable ? false : flagAttr("disabled");
+  const busy = signal("cliSites.loading");
+  const busyDisabled = usable ? ds.attrs({ disabled: busy }) : false;
   return html`<form${classAttr(
     "panel",
     "form-panel",
@@ -289,9 +291,9 @@ export function renderConnectForm(
     open && "open",
   )}${ds.classes({ open: signal("cliSites.open") })}${ds.onSubmit(
     submit,
-  )}><div class="panel-head"><div><h2>Add site manually</h2><p>Your browser will open so you can authorize the connection. The connection will be saved on your computer.</p></div></div><div class="form-grid"><label><span>Site URL</span><input type="url"${ds.bind(
+  )}${ds.indicator("cliSites.loading")}><div class="panel-head"><div><h2>Add site manually</h2><p>Your browser will open so you can authorize the connection. The connection will be saved on your computer.</p></div></div><div class="form-grid"><label><span>Site URL</span><input type="url"${ds.bind(
     "cliSites.url",
-  )} placeholder="https://example.com" required${disabled}></label><label><span>Custom name <small>(optional)</small></span><input type="text"${ds.bind(
+  )} placeholder="https://example.com" required${disabled}${busyDisabled}></label><label><span>Custom name <small>(optional)</small></span><input type="text"${ds.bind(
     "cliSites.name",
-  )} placeholder="Defaults to the domain" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" maxlength="64"${disabled}><small class="field-help">Letters, digits, dots, underscores, and hyphens.</small></label></div><div class="button-row"><button class="button primary" type="submit"${disabled}>Connect</button></div></form>`;
+  )} placeholder="Defaults to the domain" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" maxlength="64"${disabled}${busyDisabled}><small class="field-help">Letters, digits, dots, underscores, and hyphens.</small></label></div><div class="button-row"><button class="button primary" type="submit"${disabled}${busyDisabled}><span${ds.classes({ hidden: busy })}>Connect</span><span class="ds-toggle"${ds.classes({ open: busy })}>Connecting…</span></button></div><p class="field-help ds-toggle"${ds.classes({ open: busy })} role="status">Waiting for authorization in your browser and saving the connection. Keep this page open.</p></form>`;
 }

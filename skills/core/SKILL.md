@@ -6,7 +6,7 @@ allowed-tools: Bash(novamira-hq:*)
 
 # Novamira HQ
 
-Novamira HQ operates WordPress **hosting providers** and provisions Novamira. Its MCP also delegates WordPress operations exclusively to the optional Novamira CLI. HQ holds no site token and makes no authenticated WordPress REST requests itself.
+Novamira HQ operates WordPress **hosting providers** and provisions Novamira. Its MCP also delegates WordPress operations exclusively to the bundled Novamira CLI. HQ holds no site token and makes no authenticated WordPress REST requests itself.
 
 ## MCP clients (including Claude Desktop and Claude Code)
 
@@ -33,7 +33,7 @@ novamira-hq skills list
 
 - Use `novamira-hq hosting ...` for host and platform operations: environments, backups, guarded backup restoration, domain and DNS inspection, cache, PHP, redirects, denied IPs, logs, analytics, provider WP-CLI, plugin and theme operations, provider operation polling, and installing or configuring the Novamira plugin. HQ deliberately omits site and environment deletion, site reset, backup and domain deletion, DNS writes, and SSH/SFTP access management.
 - Use `novamira-hq hosting novamira setup` to make a site agent-ready, and then **stop**. HQ's job ends there.
-- **For anything inside WordPress — content, settings, Abilities, files — use the MCP `wordpress_*` tools or the separate `novamira` CLI** after the site is authorized through HQ's Connect action or `novamira auth login <site-url>`. HQ has no `site` command group and holds no site credential; MCP delegates rather than making direct site requests.
+- **For anything inside WordPress — content, settings, Abilities, files — use the MCP `wordpress_*` tools or `novamira-hq site-cli`** after the site is authorized through HQ's Connect action or `novamira-hq site-cli auth login <site-url>`. HQ has no `site` command group and holds no site credential; MCP delegates rather than making direct site requests. In the CLI's own guide examples, use `novamira-hq site-cli` wherever they say `novamira`.
 - If the route is unclear, inspect the configured profiles and then the selected one:
 
   ```bash

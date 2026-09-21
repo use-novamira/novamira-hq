@@ -35,12 +35,8 @@
  * - `profile.credentials` warns. One profile whose `env:` variable is not
  *   exported in this shell must not condemn the installation — every other
  *   profile still works, and `--fix` has nothing to do about it.
- * - `integration.site_cli` warns. `@novamira/cli` is an **optional** integration
- *   (`CLAUDE.md`): hosting inventory, actions, provisioning and plugin-installed
- *   status all work without it, and only connected-state detection degrades. A
- *   fresh `npm install -g @novamira/hq` has neither profiles nor the site CLI,
- *   and the installers run `novamira-hq doctor --offline` as their smoke test —
- *   so a `fail` on either would make every first install look broken.
+ * - `integration.site_cli` warns: hosting inventory, actions, provisioning and
+ *   plugin-installed status remain usable if the bundled CLI needs repair.
  *
  * **Evidence is output-safe by construction.** `profile.credentials` renders
  * `credentialSource(ref)` — `env:NAME` / `file:PATH` / `stored:ID` — and a

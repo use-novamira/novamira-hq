@@ -4,12 +4,9 @@
 /**
  * The site CLI integration's public surface.
  *
- * `@novamira/cli` is an **optional** integration: it is never imported, never a
- * runtime, package or peer dependency, and everything else in HQ — hosting
- * inventory, provider actions, pushes, provisioning, plugin-installed
- * status — works with `novamira` absent. Only connected-state detection
- * degrades, and it degrades to the state `unavailable` with a fixed install
- * hint, never to an error.
+ * The pinned site CLI is a packaged dependency, loaded only by its child entry.
+ * Hosting operations remain usable if the bundled CLI is damaged. Connection
+ * detection reports `unavailable` with repair guidance in that case.
  *
  * `src/integration/` is a peer of `src/web/` and of `src/cli/`: it imports
  * neither, and both may call it. Its only inputs are the stdout of two child

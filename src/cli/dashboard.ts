@@ -36,7 +36,6 @@
 
 import { openInBrowser } from "../browser.js";
 import { createAppAcknowledgement } from "../config/app-acknowledgement.js";
-import { componentInstaller, withComponentSetup } from "../setup/components.js";
 import type { Command } from "commander";
 
 import { runDoctor } from "../doctor/index.js";
@@ -129,8 +128,8 @@ export interface DashboardCommandOverrides {
  * Build the connected-state service the dashboard runs with.
  *
  * This is the only place `@novamira/cli` is reached for, and it is reached for
- * as a *process*, never as a package: nothing imports it, nothing depends on it,
- * and nothing reads its configuration, its profile store or its credentials.
+ * as a child process. The bundled child entry imports it; HQ never reads its
+ * configuration, profile store or credentials.
  * With `novamira` absent the service still answers — every environment reports
  * `unavailable` with a fixed install hint — which is why it is built
  * unconditionally rather than only when something is found. Absent is a state,
@@ -353,14 +352,10 @@ function dashboardServerDependencies(
     store: dependencies.store,
     hosting: dependencies.hosting,
     history: dependencies.history,
-    appAcknowledgement: withComponentSetup({
-      acknowledgement: createAppAcknowledgement(
-        dependencies.paths,
-        dependencies.security,
-      ),
-      probe: dependencies.probeSiteCli,
-      install: componentInstaller(io.env, process.platform),
-    }),
+    appAcknowledgement: createAppAcknowledgement(
+      dependencies.paths,
+      dependencies.security,
+    ),
     ...(dependencies.mcpConnection
       ? { mcpConnection: dependencies.mcpConnection }
       : {}),

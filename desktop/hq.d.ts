@@ -14,6 +14,10 @@ export function main(
   environment?: undefined,
   overrides?: {
     readonly distribution: "desktop";
+    readonly siteCliLaunch: {
+      readonly command: string;
+      readonly prefixArgs: readonly string[];
+    };
     readonly mcpLaunch: {
       readonly command: string;
       readonly args: readonly string[];

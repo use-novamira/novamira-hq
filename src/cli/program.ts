@@ -83,6 +83,18 @@ export function createProgram(
   handlers: CommandHandlers,
 ): Command {
   const program = new Command();
+  // Dispatch occurs before parsing in main, so all child flags remain opaque.
+  program
+    .command("site-cli [arguments...]")
+    .description(
+      "run the bundled site CLI (all following arguments are forwarded)",
+    )
+    .action(() => {
+      throw new CliError(
+        "usage_error",
+        "site-cli must be the first argument; place site CLI flags after it.",
+      );
+    });
   program
     .name(PROGRAM_NAME)
     .description("Hosting provisioning CLI and local dashboard for Novamira")

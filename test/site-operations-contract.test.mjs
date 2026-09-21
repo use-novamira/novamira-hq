@@ -119,7 +119,7 @@ test("missing CLI is actionable without accessing a site", async () => {
   });
   await assert.rejects(
     service.execute({ kind: "list" }),
-    /Install @novamira\/cli/,
+    /Repair or update Novamira HQ/,
   );
 });
 

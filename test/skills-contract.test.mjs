@@ -190,10 +190,12 @@ test("5: neither bundle crosses the hosting safety boundary", async () => {
 test("6: the hosting bundle hands off to @novamira/cli and nothing else runs novamira", async () => {
   const { hosting } = await bundles();
   assert.ok(
-    hosting.content.includes("novamira auth login https://example.com"),
+    hosting.content.includes(
+      "novamira-hq site-cli auth login https://example.com",
+    ),
   );
   assert.ok(hosting.content.includes("@novamira/cli"));
-  assert.ok(hosting.content.includes("npm install -g @novamira/cli"));
+  assert.ok(hosting.content.includes("pinned `@novamira/cli`"));
 
   // Every command line in a fenced block is HQ's, except the one handoff line.
   const fenced = [
@@ -214,7 +216,9 @@ test("7: the router routes WordPress work away from HQ", async () => {
   // The literal the doctor check greps for.
   assert.ok(core.content.includes("novamira-hq skills get hosting"));
   assert.ok(core.content.includes("novamira-hq skills list"));
-  assert.ok(core.content.includes("novamira auth login <site-url>"));
+  assert.ok(
+    core.content.includes("novamira-hq site-cli auth login <site-url>"),
+  );
   assert.match(
     core.content,
     /no authenticated WordPress REST requests itself/i,

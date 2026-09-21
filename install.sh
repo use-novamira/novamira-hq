@@ -211,32 +211,5 @@ fi
 
 printf '\nNovamira HQ and its agent skill installed successfully.\n'
 
-# The site CLI ships alongside HQ so connected-state detection and the
-# dashboard's Connect action work on a fresh machine rather than after a second
-# thing the user has to be told about. It is a *separate global package*, never
-# a dependency of @novamira/hq — the boundary is unchanged, and so is the
-# runtime rule that hosting inventory, provider actions, provisioning and
-# plugin-installed status all work with `novamira` absent.
-#
-# Which is exactly why a failure here is reported and not fatal. HQ is already
-# installed and smoke-tested by this point; a registry hiccup on an optional
-# integration must not turn a working HQ install into a nonzero exit. The
-# executable is installed, never invoked: HQ smoke-tests HQ.
-site_package=@novamira/cli
-if [ -n "${NOVAMIRA_HQ_SKIP_SITE_CLI:-}" ]; then
-  printf '\nSkipping the site CLI (NOVAMIRA_HQ_SKIP_SITE_CLI is set).\n'
-  printf 'Install it later with: npm install -g %s\n' "$site_package"
-else
-  printf '\nInstalling the site CLI for connected-state detection...\n'
-  printf 'Novamira CLI is an independent component and remains installed if you remove Novamira HQ.\n'
-  printf 'Optional removal later: npm uninstall -g @novamira/cli\n'
-  printf 'This does not remove WordPress plugins or guarantee cleanup of saved profiles and credentials. See HQ Settings > Uninstalling.\n'
-  if npm install --global --ignore-scripts "$site_package"; then
-    printf '\nThe site CLI is installed. Connect a provisioned site with:\n'
-    printf '  novamira auth login <url>\n'
-  else
-    printf '\nThe site CLI could not be installed. Novamira HQ is unaffected:\n' >&2
-    printf 'only the connected-state detection and Connect action need it.\n' >&2
-    printf 'Retry with: npm install -g %s\n' "$site_package" >&2
-  fi
-fi
+printf '\nThe site CLI is bundled with HQ. Connect a provisioned site with:\n'
+printf '  novamira-hq site-cli auth login <url>\n'

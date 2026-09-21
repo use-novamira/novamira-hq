@@ -4,6 +4,24 @@
 
 ### Added
 
+- Bundle public `@novamira/cli@1.3.0` in npm and desktop. npm launches it with
+  HQ's Node runtime; desktop embeds its code, dependencies and guide data and
+  launches the `--site-cli` role without an external JavaScript runtime.
+- `novamira-hq site-cli <arguments...>` forwards terminal arguments, streams,
+  and exit codes. Provisioning handoffs now use this available launch path.
+- Shared packaged resolution across dashboard, doctor, MCP and terminal roles,
+  with explicit executable override precedence and repair guidance.
+- Offline compiled acceptance covers packaged assets, managed update policy,
+  OAuth loopback and PKCE, profile persistence, mocked site operations, bounded
+  capture, cancellation and descendant cleanup.
+
+### Changed
+
+- Updating HQ updates its pinned CLI; managed invocations suppress independent
+  updates. Installers and first-run onboarding no longer install a global CLI.
+- Windows external CLI overrides require native `.exe`/`.com` launchers;
+  implicit PATH discovery and Node-specific npm shim assumptions are removed.
+
 - The desktop application ships with its icon on all three platforms. A new
   `scripts/desktop-icons.mjs` derives a Windows `.ico` and the freedesktop
   hicolor PNGs from `scripts/macos/icon.png`, the same committed master the

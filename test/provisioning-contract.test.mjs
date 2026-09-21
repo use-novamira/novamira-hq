@@ -1288,11 +1288,15 @@ test("the handoff is the site CLI's login command and nothing else", () => {
   const handoff = connectHandoff(SITE_URL);
   assert.deepEqual(handoff.command, [
     SITE_CLI_EXECUTABLE,
+    "site-cli",
     "auth",
     "login",
     SITE_URL,
   ]);
-  assert.equal(handoff.commandLine, `novamira auth login ${SITE_URL}`);
+  assert.equal(
+    handoff.commandLine,
+    `novamira-hq site-cli auth login ${SITE_URL}`,
+  );
   // Profile naming belongs to the site CLI; opening a browser is the
   // operator's call. Neither flag may creep back in.
   assert.equal(handoff.command.includes("--name"), false);
@@ -1328,9 +1332,9 @@ test("the boundary rule holds in the emitted data: no site credential, ever", ()
 
   assert.equal(data.ready, true);
   assert.deepEqual(data.next_step, {
-    tool: "novamira",
-    command: ["novamira", "auth", "login", SITE_URL],
-    command_line: `novamira auth login ${SITE_URL}`,
+    tool: "novamira-hq",
+    command: ["novamira-hq", "site-cli", "auth", "login", SITE_URL],
+    command_line: `novamira-hq site-cli auth login ${SITE_URL}`,
   });
   assert.equal(data.compatibility.status, "supported");
   assert.equal(data.plugin.network_activated, false);
@@ -1385,7 +1389,7 @@ test("a skipped compatibility check nulls every derived field", () => {
     [
       `Novamira installed and activated on ${SITE_URL}`,
       "  Compatibility not checked (--no-compat-check).",
-      `  Connect your agent:  novamira auth login ${SITE_URL}`,
+      `  Connect your agent:  novamira-hq site-cli auth login ${SITE_URL}`,
     ].join("\n"),
   );
 });
@@ -1395,7 +1399,7 @@ test("the ready human block names the verified plugin version", () => {
     handoffHuman(setupResult()),
     [
       `Novamira 1.11.1 installed and activated on ${SITE_URL}`,
-      `  Connect your agent:  novamira auth login ${SITE_URL}`,
+      `  Connect your agent:  novamira-hq site-cli auth login ${SITE_URL}`,
     ].join("\n"),
   );
 });

@@ -12,8 +12,8 @@
  * gap by checking the same matrix, from the same public document, before it
  * claims the site is ready.
  *
- * **This module must never import `@novamira/cli`.** The site CLI is an
- * optional integration, never a dependency (AGENTS.md), so this is a
+ * **This module must never import `@novamira/cli`.** The site CLI runs only in
+ * a dedicated child process (AGENTS.md), so this is a
  * deliberate, reviewable copy of two of its files:
  *
  * - `novamira-cli/src/auth/metadata.ts` — the matrix and the document checks.

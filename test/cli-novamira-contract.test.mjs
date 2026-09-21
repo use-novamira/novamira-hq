@@ -790,9 +790,9 @@ test("a default run issues exactly the Phase B sequence and hands off", async ()
         },
         ready: true,
         next_step: {
-          tool: "novamira",
-          command: ["novamira", "auth", "login", base],
-          command_line: `novamira auth login ${base}`,
+          tool: "novamira-hq",
+          command: ["novamira-hq", "site-cli", "auth", "login", base],
+          command_line: `novamira-hq site-cli auth login ${base}`,
         },
       });
     },

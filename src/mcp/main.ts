@@ -22,6 +22,7 @@ import { createMcpOnboarding } from "./onboarding.js";
 import { openInBrowser } from "../browser.js";
 import { CliError } from "../errors.js";
 import { main } from "../main.js";
+import type { MainOverrides } from "../main.js";
 import { HistoryStore } from "../history/index.js";
 import { historyClient } from "../history/client.js";
 import {
@@ -34,6 +35,9 @@ import {
 export interface McpEnvironment extends PathEnvironment, NodeJS.ProcessEnv {}
 
 export interface McpMainOverrides {
+  readonly siteCliLaunch?: MainOverrides["siteCliLaunch"];
+  readonly distribution?: MainOverrides["distribution"];
+  readonly mcpLaunch?: MainOverrides["mcpLaunch"];
   readonly registry?: ProviderRegistry;
   readonly openBrowser?: (url: string) => Promise<void>;
 }
@@ -48,6 +52,17 @@ export async function mcpMain(
   overrides: McpMainOverrides = {},
 ): Promise<void> {
   const paths = platformPaths(environment);
+  const launchOverrides = {
+    ...(overrides.siteCliLaunch === undefined
+      ? {}
+      : { siteCliLaunch: overrides.siteCliLaunch }),
+    ...(overrides.distribution === undefined
+      ? {}
+      : { distribution: overrides.distribution }),
+    ...(overrides.mcpLaunch === undefined
+      ? {}
+      : { mcpLaunch: overrides.mcpLaunch }),
+  };
   const security = defaultFileSecurity();
   const locks = new ProfileLockManager(paths.stateDir, security);
   const store = new ConfigStore(paths.configFile, locks, security);
@@ -96,6 +111,7 @@ export async function mcpMain(
       environment,
       {
         historyChannel: "mcp",
+        ...launchOverrides,
         ...(overrides.registry === undefined
           ? {}
           : { registry: overrides.registry }),
@@ -120,6 +136,7 @@ export async function mcpMain(
           },
           environment,
           {
+            ...launchOverrides,
             ...(overrides.registry === undefined
               ? {}
               : { registry: overrides.registry }),
@@ -155,6 +172,9 @@ export async function mcpMain(
             environment,
             platform: process.platform,
             isFile: nodeIsFile,
+            ...(overrides.siteCliLaunch === undefined
+              ? {}
+              : { packagedTarget: overrides.siteCliLaunch }),
           }),
           spawn: nodeSpawnChild,
           environment,

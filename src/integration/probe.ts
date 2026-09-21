@@ -22,8 +22,7 @@
  *
  * **The invariant.** Every branch below is a *state*. The probe never throws and
  * never rejects, and the doctor check built on it is a `warn` at worst —
- * `@novamira/cli` is an optional integration, and a fresh install of HQ with no
- * site CLI is a working install, not a broken one. Child stdout is parsed for
+ * a damaged bundled CLI must not disable hosting. Child stdout is parsed for
  * one field and dropped: nothing is logged, nothing is persisted, and the only
  * thing that reaches the report is the version string the child printed.
  *

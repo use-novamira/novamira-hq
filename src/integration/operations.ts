@@ -71,7 +71,7 @@ export function createSiteOperations(options: {
       if (!resolved)
         throw new CliError(
           "not_found",
-          "Novamira CLI is not installed. Install @novamira/cli to manage WordPress sites; hosting tools remain available.",
+          "Repair or update Novamira HQ to restore its bundled site CLI; hosting tools remain available.",
         );
       const outcome = await options.spawn({
         command: resolved.command,

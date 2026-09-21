@@ -145,6 +145,7 @@ test("offline notice generation rejects asset drift and missing license text", a
     "desktop/deno.lock",
     ...Object.keys(manifest.assetDigests),
     "node_modules/commander/package.json",
+    "node_modules/@novamira/cli/package.json",
     "node_modules/@starfederation/datastar-sdk/package.json",
   ];
   for (const path of paths) {

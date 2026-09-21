@@ -31,15 +31,27 @@ for (const [path, expected] of Object.entries(manifest.assetDigests)) {
 }
 for (const name of Object.keys(pkg.dependencies)) {
   const installed = JSON.parse(await read(`node_modules/${name}/package.json`));
-  if (
-    Object.keys({
-      ...installed.dependencies,
-      ...installed.optionalDependencies,
-    }).length > 0
-  )
-    throw new Error(
-      `Legal inventory needs review: new transitive runtime dependencies of ${name}`,
+  for (const dependency of Object.keys({
+    ...installed.dependencies,
+    ...installed.optionalDependencies,
+  })) {
+    const transitive = JSON.parse(
+      await read(
+        `node_modules/${name}/node_modules/${dependency}/package.json`,
+      ).catch(() => read(`node_modules/${dependency}/package.json`)),
     );
+    if (
+      !components.some(
+        (item) =>
+          item.name === dependency &&
+          item.version === transitive.version &&
+          item.scope === "npm runtime",
+      )
+    )
+      throw new Error(
+        `Legal inventory needs review: new transitive runtime dependencies of ${name}`,
+      );
+  }
   if (
     !components.some(
       (item) =>
@@ -70,7 +82,7 @@ const sections = [
   `Inventory reviewed: ${manifest.reviewedAt}\n\n${manifest.coverage}`,
   "NOVAMIRA HQ\nCopyright © 2026 Ovation S.r.l.\nSPDX-License-Identifier: AGPL-3.0-or-later\nSource: https://github.com/use-novamira/novamira-hq\nRecipients of a binary must receive access to the matching Corresponding Source, including build scripts. Contact the distributor if the repository is private or the matching revision is unavailable.\n\n" +
     (await read("LICENSE")),
-  "SCOPE\nNovamira CLI and AI clients are separate products, not dependencies bundled in the HQ npm package. They have their own notices. Development-only npm tools are not shipped in the application. System-provided web engines are not treated as HQ-owned code. Trademarks remain the property of their respective owners; license notices do not imply endorsement.",
+  "SCOPE\nNovamira CLI is included as a pinned npm dependency and embedded in desktop, with its guide data and license. AI clients are separate products with their own notices. Development-only npm tools are not shipped in the application. System-provided web engines are not treated as HQ-owned code. Trademarks remain the property of their respective owners; license notices do not imply endorsement.",
   "DESKTOP REVIEW STATUS: " +
     manifest.desktopReview.status.toUpperCase() +
     "\n" +

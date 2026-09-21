@@ -48,6 +48,7 @@ const COMMAND_SURFACE = {
   "skills list": [],
   "skills get": [],
   "skills path": [],
+  "site-cli": [],
 
   "config path": [],
   "config add": [

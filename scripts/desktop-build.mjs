@@ -18,7 +18,7 @@
 // loop should pay for.
 
 import { spawnSync } from "node:child_process";
-import { cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { arch, argv, exit, platform, stderr, stdout } from "node:process";
 import { fileURLToPath, URL } from "node:url";
@@ -29,6 +29,24 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const outDir = join(root, "dist-desktop");
 const iconDir = join(outDir, "icons");
 const entry = "ai.novamira.hq.desktop.desktop";
+const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+const desktopConfig = JSON.parse(
+  await readFile(join(root, "desktop/deno.json"), "utf8"),
+);
+const desktopLock = JSON.parse(
+  await readFile(join(root, "desktop/deno.lock"), "utf8"),
+);
+const cliVersion = manifest.dependencies["@novamira/cli"];
+if (
+  !/^\d+\.\d+\.\d+$/.test(cliVersion) ||
+  desktopConfig.imports["@novamira/cli/entry"] !==
+    `npm:@novamira/cli@${cliVersion}/entry` ||
+  !desktopLock.npm[`@novamira/cli@${cliVersion}`]?.integrity
+) {
+  fail(
+    "npm and desktop must pin the same integrity-locked public site CLI release",
+  );
+}
 
 /** The release's asset naming, which the workflow's matrix repeats. */
 const ARCHITECTURES = { x64: "x86_64", arm64: "aarch64" };
@@ -67,6 +85,21 @@ run("deno", [
 
 const binary =
   platform === "win32" ? "novamira-hq-desktop.exe" : "novamira-hq-desktop";
+
+run("deno", [
+  "compile",
+  "--config",
+  "desktop/deno.json",
+  "--allow-all",
+  "--include",
+  "dist/integration",
+  "--output",
+  join(
+    outDir,
+    platform === "win32" ? "spawn-acceptance.exe" : "spawn-acceptance",
+  ),
+  "desktop/spawn-acceptance.ts",
+]);
 
 if (argv.includes("--package")) {
   if (platform !== "linux") {

@@ -24,6 +24,7 @@ The current reference chain is:
 | Component | Source reference                                                             |
 | --------- | ---------------------------------------------------------------------------- |
 | HQ        | https://github.com/use-novamira/novamira-hq — matching release tag/commit    |
+| Site CLI  | https://github.com/use-novamira/novamira-cli/tree/v1.3.0                     |
 | Deno      | https://github.com/denoland/deno/tree/v2.9.6                                 |
 | Rusty V8  | https://github.com/denoland/rusty_v8/tree/v150.4.0                           |
 | V8        | https://github.com/denoland/v8/tree/ac1e23989121713ca642f6650b34deff7b686896 |
@@ -61,6 +62,12 @@ bun run desktop:build
 ```
 
 The result is `dist-desktop/novamira-hq-desktop` (`.exe` on Windows).
+The site CLI comes from the exact integrity-locked public npm release in both
+distributions, with its `guide-data/` assets. No sibling checkout is used. Its
+AGPL license is identical to the included `LICENSE`; its source and build scripts
+are available at the public tag above. `spawn-acceptance` is a test-only compiled
+executable and is not part of release archives. Run `node scripts/desktop-smoke.mjs`
+to exercise compiled offline site features and process cleanup.
 This normally uses a **precompiled** Deno runtime. It rebuilds HQ, but does not
 recompile the LGPL component. The following steps are needed to modify that code.
 

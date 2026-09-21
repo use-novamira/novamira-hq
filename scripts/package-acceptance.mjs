@@ -37,6 +37,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import process from "node:process";
+import { verifySiteCli } from "./site-cli-acceptance.mjs";
 import { fileURLToPath, URL } from "node:url";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -108,9 +109,9 @@ try {
   assert.equal(packageJson.author, "Ovation S.r.l.");
   assert.equal(packageJson.engines.node, ">=22");
   assert.deepEqual(packageJson.bin, { "novamira-hq": "dist/index.js" });
-  // Exactly two runtime dependencies. AGENTS.md: everything else is a `node:`
-  // builtin, and Phase 7 added none.
+  // The managed site CLI is pinned exactly; all other runtime imports are builtins.
   assert.deepEqual(packageJson.dependencies, {
+    "@novamira/cli": "1.3.0",
     "@starfederation/datastar-sdk": "^1.0.0",
     commander: "^14.0.0",
   });
@@ -239,6 +240,47 @@ try {
       ? join(globalRoot, "novamira-hq.cmd")
       : join(globalRoot, "bin", "novamira-hq");
   const home = join(temporary, "hq-home");
+  const installedEntry = join(
+    globalRoot,
+    ...(process.platform === "win32" ? [] : ["lib"]),
+    "node_modules",
+    "@novamira",
+    "hq",
+    "dist",
+    "index.js",
+  );
+  const siteEnvironment = {
+    PATH: "",
+    NOVAMIRA_HQ_HOME: home,
+    NOVAMIRA_HOME: join(temporary, "site-home"),
+    NOVAMIRA_HQ_SITE_CLI: "",
+  };
+  await verifySiteCli(
+    process.execPath,
+    [installedEntry, "site-cli"],
+    temporary,
+    packageJson.dependencies["@novamira/cli"],
+    "node",
+  );
+  assert.equal(
+    run(
+      process.execPath,
+      [installedEntry, "site-cli", "--version"],
+      temporary,
+      siteEnvironment,
+    ).stdout.trim(),
+    packageJson.dependencies["@novamira/cli"],
+  );
+  const guide = JSON.parse(
+    run(
+      process.execPath,
+      [installedEntry, "site-cli", "guide", "get", "core", "--full", "--json"],
+      temporary,
+      siteEnvironment,
+    ).stdout,
+  );
+  assert.equal(guide.ok, true);
+  assert.ok(guide.data.references.length > 0);
 
   assert.match(
     run(globalBin, ["--help"], temporary).stdout,
@@ -268,7 +310,7 @@ try {
   assert.equal(hosting.ok, true);
   assert.ok(hosting.data.content.length > 0, "the hosting skill is empty");
   // The handoff sentence is the one thing this bundle must not lose.
-  assert.match(hosting.data.content, /novamira auth login/);
+  assert.match(hosting.data.content, /novamira-hq site-cli auth login/);
 
   // The installers' smoke test, and the reason a `warn` report exits 0.
   const doctor = JSON.parse(

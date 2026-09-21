@@ -124,8 +124,8 @@ export type SiteProfileOutcome =
 
 /**
  * The site CLI's `validateProfileName` grammar (`src/config/profiles.ts`
- * upstream), copied rather than imported because `@novamira/cli` is never a
- * dependency of any kind.
+ * upstream), copied rather than imported to keep the CLI outside HQ's parent
+ * process. Only its dedicated child launch entry imports the package.
  *
  * HQ checks it for a reason that is not politeness. A profile name becomes an
  * **argv element** of `sites remove <name>` and of `--site <name>`, and

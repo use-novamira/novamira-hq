@@ -1,8 +1,13 @@
 {
-  "reviewedAt": "2026-09-16",
+  "reviewedAt": "2026-09-21",
   "scope": "All npm lock entries, including development tools; not a binary SBOM. License identifiers are declarations from installed package manifests.",
-  "lockSha256": "63b80f290693c13c73c1ce31ed0c0615b42791db1e6dd5417fd80c50a7302bb9",
+  "lockSha256": "b51a2c071855682f063597355ec3f7b68b6f5f6e622308c25369235b019691ef",
   "packages": [
+    {
+      "name": "@novamira/cli",
+      "version": "1.3.0",
+      "license": "AGPL-3.0-or-later"
+    },
     {
       "name": "@eslint-community/eslint-utils",
       "version": "4.10.1",
