@@ -60,7 +60,7 @@
       fn();
     } finally {
       if (observer && obsTarget) {
-        observer.observe(obsTarget, { childList: true, subtree: true, attributes: true, attributeFilter: ["open"] });
+        observer.observe(obsTarget, { childList: true, subtree: true });
       }
     }
   }
@@ -201,10 +201,11 @@
     if (e.target && e.target.matches && e.target.matches(".show-hidden-sites")) refilter();
   });
 
-  // Datastar patches #sites-result on load/refresh/filter — re-apply our state.
+  // Only fragment changes need filtering. Native disclosure toggles must not
+  // rebuild pagination: that layout churn can move the browser's scroll anchor.
   obsTarget = document.body;
   observer = new MutationObserver(refilter);
-  observer.observe(obsTarget, { childList: true, subtree: true, attributes: true, attributeFilter: ["open"] });
+  observer.observe(obsTarget, { childList: true, subtree: true });
 
   function init() { refilter(); }
   if (document.readyState !== "loading") init();

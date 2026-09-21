@@ -12,6 +12,7 @@ test("Show more stays expanded after observer refreshes and replacement fragment
   );
   let refresh;
   let button;
+  const observations = [];
   const makeRows = () =>
     Array.from({ length: 22 }, () => {
       const classes = new Set(["site-row"]);
@@ -61,7 +62,9 @@ test("Show more stays expanded after observer refreshes and replacement fragment
       constructor(fn) {
         refresh = fn;
       }
-      observe() {}
+      observe(target, options) {
+        observations.push(options);
+      }
       disconnect() {}
     },
   });
@@ -69,6 +72,13 @@ test("Show more stays expanded after observer refreshes and replacement fragment
     grid.children.filter((row) => row.classList.contains("sf-capped")).length;
   assert.equal(hidden(), 10);
   assert.equal(button.textContent, "Show 10 more");
+  // Opening a native details row must never schedule filtering/pagination.
+  assert.ok(observations.length > 0);
+  assert.ok(
+    observations.every(
+      (options) => options.childList && options.subtree && !options.attributes,
+    ),
+  );
   button.click();
   assert.equal(hidden(), 0);
   refresh();
@@ -78,4 +88,5 @@ test("Show more stays expanded after observer refreshes and replacement fragment
   refresh();
   assert.equal(hidden(), 0);
   assert.equal(button, null);
+  assert.ok(observations.every((options) => !options.attributes));
 });
