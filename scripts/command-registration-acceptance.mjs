@@ -86,8 +86,12 @@ export async function verifyCommandRegistration(executable, home, environment) {
   }
   const reenabled = run(app, ["--command-registration", "enable"]);
   assert.equal(reenabled.status, 0, describe(reenabled));
-  // An in-place app update must keep command access.
-  await copyFile(executable, app);
+  // Replace the executable atomically, as an app update does. Overwriting a
+  // previously executed signed Mach-O in place leaves macOS's cached code
+  // signature attached to a modified vnode and can cause a kernel SIGKILL.
+  const replacement = `${app}.replacement`;
+  await copyFile(executable, replacement);
+  await rename(replacement, app);
   const updated = run(launcher, ["--help"]);
   assert.equal(updated.status, 0, describe(updated));
   const movedBundle = `${bundle} moved`;
