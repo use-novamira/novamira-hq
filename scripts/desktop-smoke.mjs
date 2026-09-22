@@ -77,6 +77,36 @@ try {
   if (spawned.status !== 0)
     throw new Error(spawned.stderr || "Embedded spawn acceptance failed");
   stdout.write(spawned.stdout);
+  const registrar = spawnSync(
+    fileURLToPath(
+      new URL(
+        `../dist-desktop/registrar-acceptance${platform === "win32" ? ".exe" : ""}`,
+        import.meta.url,
+      ),
+    ),
+    [resolve(executable)],
+    {
+      encoding: "utf8",
+      timeout: 120_000,
+      env: {
+        ...env,
+        PATH: systemPath,
+        HOME: home,
+        USERPROFILE: home,
+        XDG_CONFIG_HOME: join(home, "config"),
+        XDG_CACHE_HOME: join(home, "cache"),
+        XDG_STATE_HOME: join(home, "state"),
+        CODEX_HOME: join(home, "codex"),
+        CLAUDE_CONFIG_DIR: join(home, "claude"),
+        NOVAMIRA_HQ_HOME: join(home, "hq"),
+        DENO_DIR: join(home, "registrar-cache"),
+        NOVAMIRA_HQ_UPDATE_CHECK: "0",
+      },
+    },
+  );
+  if (registrar.status !== 0)
+    throw new Error(registrar.stderr || "Embedded registrar acceptance failed");
+  stdout.write(registrar.stdout);
   const manifest = JSON.parse(
     await readFile(new URL("../package.json", import.meta.url), "utf8"),
   );

@@ -54,7 +54,10 @@ function siteCliLaunch() {
   };
 }
 
-if (Deno.args[0] === "--site-cli") {
+if (Deno.args[0] === "--skill-registrar") {
+  const { registrar } = await import("./registrar.ts");
+  await registrar(Deno.args.slice(1));
+} else if (Deno.args[0] === "--site-cli") {
   const { main } = await import("@novamira/cli/entry");
   Deno.exit(
     await main(Deno.args.slice(1), undefined, undefined, {

@@ -38,6 +38,13 @@ const desktopLock = JSON.parse(
 );
 const cliVersion = manifest.dependencies["@novamira/cli"];
 if (
+  desktopConfig.imports["skills/cli"] !== "npm:skills@1.5.18/dist/cli.mjs" ||
+  desktopLock.npm["skills@1.5.18"]?.integrity !==
+    "sha512-WwQuqIhmS2nrn1H3HAbE2tGe7e2npc1cwMcucMKqmkBdqzm7nxzcZBTqXiHjUKhpalQLE/nNPtEdcx3QYX4TTw=="
+) {
+  fail("The embedded registrar must match the reviewed skills@1.5.18 archive");
+}
+if (
   !/^\d+\.\d+\.\d+$/.test(cliVersion) ||
   desktopConfig.imports["@novamira/cli/entry"] !==
     `npm:@novamira/cli@${cliVersion}/entry` ||
@@ -99,6 +106,23 @@ run("deno", [
     platform === "win32" ? "spawn-acceptance.exe" : "spawn-acceptance",
   ),
   "desktop/spawn-acceptance.ts",
+]);
+
+run("deno", [
+  "compile",
+  "--config",
+  "desktop/deno.json",
+  "--allow-all",
+  "--include",
+  "dist",
+  "--include",
+  "skills",
+  "--output",
+  join(
+    outDir,
+    platform === "win32" ? "registrar-acceptance.exe" : "registrar-acceptance",
+  ),
+  "desktop/registrar-acceptance.ts",
 ]);
 
 if (argv.includes("--package")) {

@@ -13,12 +13,44 @@
     ]
   },
   "assetDigests": {
+    "skills/novamira-hq/SKILL.md": "fbbb0259c6b648ac4ec0a83d2c6d9c1c866a3702d6b282b9779406ab0de4c760",
+    "legal/licenses/skills.txt": "4b9410a9e0cd54d9ecb1852b3660ca97f865c0d5dee7262a3c46ab2fd138bddc",
+    "legal/licenses/detect-agent.txt": "1cc720929ef881f2ae885d66a8399d3d652430ef241aa73ed1291cd465cd3d2f",
     "src/web/static/datastar.js": "2837d87acf6ee0ba8e4e63765926c25a98d63883b02f88be194a86b81d3fd24a",
     "src/web/static/fonts/montserrat-var.woff2": "06b16db7a969135d48d38c49183be7fb88d4452e2a3011957c7851941f4e4879",
     "src/web/static/fonts/jetbrains-mono-var.woff2": "18be452724bfdc236c074ca94a249a7f41a86752c7d04ab258ce9ed5651f6a7e",
     "src/web/views/ai-logos.ts": "f3dc0f012c03670eb050747a038e800395f99e614a409aacd6e3c660325dfb5e"
   },
   "components": [
+    {
+      "id": "skills-detect-agent",
+      "name": "@vercel/detect-agent",
+      "version": "bundled in skills@1.5.18",
+      "license": "Apache-2.0",
+      "scope": "desktop JavaScript runtime",
+      "source": "https://www.npmjs.com/package/@vercel/detect-agent/v/1.2.1",
+      "licenseFiles": ["licenses/detect-agent.txt"],
+      "notes": "Bundled code present in registrar archive but omitted from its ThirdPartyNoticeText. Upstream declared minimum is 1.2.1; exact bundled dependency version is not recorded by the published archive."
+    },
+    {
+      "id": "skills",
+      "name": "skills",
+      "version": "1.5.18",
+      "license": "MIT",
+      "scope": "desktop JavaScript runtime",
+      "source": "https://github.com/vercel-labs/skills/tree/7d338e40181942ce8077b14110898299658ebd9e",
+      "licenseFiles": ["licenses/skills.txt"],
+      "notes": "Isolated registrar role; npm tarball bundles clack, picocolors, simple-git, detect-agent and xdg-basedir. Upstream bundled notices retained. No HQ npm runtime dependency."
+    },
+    {
+      "id": "yaml",
+      "name": "yaml",
+      "version": "2.9.1",
+      "license": "ISC",
+      "scope": "desktop JavaScript runtime",
+      "source": "https://github.com/eemeli/yaml/tree/v2.9.1",
+      "licenseFiles": ["licenses/skills.txt"]
+    },
     {
       "id": "novamira-cli",
       "name": "@novamira/cli",

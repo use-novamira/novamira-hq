@@ -226,7 +226,46 @@ consistently describe and verify one desktop distribution.
 Update this section at the end of each implementation session with changed paths,
 decisions, commands/results, and concrete remaining work.
 
-- **Session 1:** Not started.
+- **Session 1 (2026-09-22):** Embedded registrar prototype implemented and
+  validated on Linux x86_64. Detailed inspection, API, asset layout, upstream
+  limitations and site-skill decision are in
+  [`embedded-skill-registrar.md`](embedded-skill-registrar.md).
+  - Added isolated `--skill-registrar` role in `desktop/main.ts` and
+    `desktop/registrar.ts`, pinned `skills@1.5.18` plus integrity-locked
+    `yaml@2.9.1` in `desktop/deno.json` / `desktop/deno.lock`. Network and
+    subprocess permissions are revoked in the child; telemetry is disabled.
+  - Added `createSkillRegistrar` in `src/agent-setup/registrar.ts`: explicit
+    single-agent `installHosting(agent, signal)`, bounded/cancellable shared
+    process seam, private local staging, copy mode, inventory/byte verification,
+    cleanup and actionable failure results. Uses the embedded
+    `skills/novamira-hq/SKILL.md`; its digest is pinned in the legal manifest.
+    Supported prototype agents: **Claude Code and Windsurf**. Directory rules
+    remain in the registrar. Shared-directory agents are excluded pending the
+    upstream inventory issues described in the inspection report.
+  - Added `desktop/registrar-acceptance.ts`, compiled and run by the existing
+    desktop build/smoke scripts; added focused adapter contracts and updated the
+    desktop dependency convention test. Updated `AGENTS.md` for the desktop-only
+    registrar exception and `legal/manifest.json` / `legal/licenses/` for MIT,
+    ISC and Apache-2.0 notices, including omissions from upstream's notice file.
+  - Validation: `bun run check` passed (1,279 passed, one skipped, zero failed);
+    `bun run desktop:check`, `bun run desktop:build`,
+    `node scripts/desktop-smoke.mjs`, `bun run pack:inspect`, and
+    `bun run package:acceptance` passed. Compiled smoke used isolated homes and
+    caches with external runtimes absent from PATH. Both skills survived staging
+    cleanup; repeat conflicts and launch failure were exercised, followed by
+    successful HQ dashboard, bundled site CLI and MCP startup. Real child
+    cancellation and process-tree cleanup passed as well.
+  - Site decision: public CLI 1.3.0 hard-codes `novamira` and standalone npm
+    installation guidance; no command-prefix support was found. Keep detailed
+    guidance upstream. A prefix-aware managed guidance release is required
+    before session 3 installs `novamira-site`; no site skill is exposed yet.
+  - Remaining: platform CI must validate macOS/Windows. Session 3 must add
+    exact-target inventory, owned-artifact tracking and conflict-safe preflight
+    (including malformed/manual skills) before UI wiring. Upstream's CLI can
+    overwrite targets, combines inventory paths, and reports some copy failures
+    with exit zero; this is a fresh-install prototype, not the finished setup
+    service. Full shared-directory agent support and existing desktop legal
+    release prerequisites remain open. Session 2 can proceed independently.
 - **Session 2:** Not started.
 - **Session 3:** Not started.
 - **Session 4:** Not started.

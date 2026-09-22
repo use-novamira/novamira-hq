@@ -52,7 +52,10 @@ output, configuration, and security contract.
   pins and integrity locks together. Only integration's child entry and desktop's
   site-CLI role may import the public `@novamira/cli/entry` export.
 - `src/skills/` is read-only and imports only Node builtins and `errors.js`.
-  Skill registration belongs to `npx skills add`; site guidance belongs to the
+  Desktop skill registration uses the isolated, pinned `skills@1.5.18` role
+  through `src/agent-setup/`; its Deno-only dependency is an explicit exception
+  to the runtime dependency allowlist. Use local assets, copy mode, explicit
+  agents, and disabled network/telemetry. Site guidance belongs to the
   site CLI. Hosting skill guidance stops at `novamira-hq site-cli auth login`.
 - A completed doctor report exits successfully regardless of report status.
   `profile.credentials`, `integration.site_cli`, and `update.available` cannot

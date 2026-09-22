@@ -85,7 +85,11 @@ test("desktop shell pins HQ's runtime dependencies at package.json's ranges", ()
     (name) =>
       !(name in manifest.dependencies) && name !== "@novamira/cli/entry",
   );
-  assert.deepEqual(extra, ["@webview/webview"]);
+  assert.deepEqual(extra, ["skills/cli", "@webview/webview"]);
+  assert.equal(
+    denoConfig.imports["skills/cli"],
+    "npm:skills@1.5.18/dist/cli.mjs",
+  );
   assert.match(
     denoConfig.imports["@webview/webview"],
     /^jsr:@webview\/webview@\d/,
