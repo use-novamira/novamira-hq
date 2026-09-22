@@ -27,11 +27,11 @@ const appIcon = await readFile(join(root, "scripts/macos/icon.png"));
 
 test("release metadata selects prerelease and stable desktop releases", async () => {
   const prerelease = await runMetadataIn(
-    { version: "1.0.0-rc1" },
-    "v1.0.0-rc1",
+    { version: "1.0.0-beta1" },
+    "v1.0.0-beta1",
   );
   assert.equal(prerelease.status, 0, prerelease.stderr);
-  assert.match(prerelease.stdout, /^version=1\.0\.0-rc1$/m);
+  assert.match(prerelease.stdout, /^version=1\.0\.0-beta1$/m);
   assert.doesNotMatch(prerelease.stdout, /dist_tag/);
   assert.match(prerelease.stdout, /^prerelease=true$/m);
 
@@ -48,10 +48,10 @@ test("publication remains desktop-only", () => {
   );
 });
 
-test("legal review exception is limited to the explicitly accepted first RC", () => {
+test("legal review exception is limited to the explicitly accepted first beta", () => {
   assert.match(
     workflow,
-    /continue-on-error: \$\{\{ env\.RELEASE_TAG == 'v1\.0\.0-rc1' \}\}\n        run: bun run legal:desktop-check/,
+    /continue-on-error: \$\{\{ env\.RELEASE_TAG == 'v1\.0\.0-beta1' \}\}\n        run: bun run legal:desktop-check/,
   );
   assert.equal((workflow.match(/continue-on-error:/g) ?? []).length, 1);
 });

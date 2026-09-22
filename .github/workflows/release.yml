@@ -55,8 +55,8 @@ jobs:
           bun-version: 1.2.19
       - run: bun install --frozen-lockfile --ignore-scripts
       - run: bun run check
-      - name: Desktop legal review (accepted gap for the first RC)
-        continue-on-error: ${{ env.RELEASE_TAG == 'v1.0.0-rc1' }}
+      - name: Desktop legal review (accepted gap for the first beta)
+        continue-on-error: ${{ env.RELEASE_TAG == 'v1.0.0-beta1' }}
         run: bun run legal:desktop-check
 
   desktop:

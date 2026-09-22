@@ -1,8 +1,8 @@
 # Changelog
 
-## 1.0.0-rc1 - 2026-09-22
+## 1.0.0-beta1 - 2026-09-22
 
-Release candidate for 1.0.
+First public beta for 1.0.
 
 ### Added
 

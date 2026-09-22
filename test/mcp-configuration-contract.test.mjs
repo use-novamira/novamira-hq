@@ -100,7 +100,7 @@ test("the downloaded MCP bundle runs after relocation and lists real tools", asy
     },
     { NOVAMIRA_HQ_HOME: join(root, "home"), KINSTA_API_KEY: "never-in-bundle" },
   ).configuration();
-  const zip = createMcpBundle(config, "1.0.0-rc1");
+  const zip = createMcpBundle(config, "1.0.0-beta1");
   assert.ok(!zip.includes(Buffer.from("never-in-bundle")));
   const files = new Map();
   let offset = 0;

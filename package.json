@@ -1,7 +1,7 @@
 {
   "name": "@novamira/hq",
   "private": true,
-  "version": "1.0.0-rc1",
+  "version": "1.0.0-beta1",
   "description": "Hosting provisioning CLI and local dashboard for Novamira",
   "license": "AGPL-3.0-or-later",
   "author": "Ovation S.r.l.",
