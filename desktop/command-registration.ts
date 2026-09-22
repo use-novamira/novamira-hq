@@ -31,7 +31,8 @@ export async function commandRegistration(): Promise<Registration> {
   return createCommandRegistration({
     executable: Deno.execPath(),
     ...(Deno.build.os === "darwin" && !isCommandLauncher &&
-        Deno.execPath().includes(".app/Contents/MacOS/")
+        basename(dirname(Deno.execPath())) === "MacOS" &&
+        basename(dirname(dirname(Deno.execPath()))) === "Contents"
       ? {
         launcherSource: join(
           dirname(dirname(Deno.execPath())),
