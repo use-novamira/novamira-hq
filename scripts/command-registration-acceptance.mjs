@@ -18,13 +18,32 @@ export async function verifyCommandRegistration(executable, home, environment) {
     process.platform === "darwin"
       ? join(bundle, "Contents", "MacOS", name)
       : join(bundle, name);
-  await mkdir(dirname(app), { recursive: true });
-  await copyFile(executable, app);
-  if (process.platform === "darwin")
-    await writeFile(
-      join(bundle, "Contents", "Info.plist"),
-      '<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>ai.novamira.hq.desktop</string></dict></plist>',
-    );
+  const shippedBundle =
+    process.platform === "darwin" ? enclosingApp(executable) : undefined;
+  if (shippedBundle) {
+    // A bundle's main executable is signed as part of that bundle, so rebuilding
+    // a bundle around the executable alone makes the kernel kill it at launch
+    // (SIGKILL, nothing on either stream). Copy the shipped bundle whole, which
+    // is exactly what an installation does.
+    await mkdir(dirname(bundle), { recursive: true });
+    const copied = spawnSync("/usr/bin/ditto", [shippedBundle, bundle], {
+      encoding: "utf8",
+      timeout: 60000,
+    });
+    if (copied.error) throw copied.error;
+    if (copied.status !== 0)
+      throw new Error(
+        `could not copy the application bundle: ${copied.stderr}`,
+      );
+  } else {
+    await mkdir(dirname(app), { recursive: true });
+    await copyFile(executable, app);
+    if (process.platform === "darwin")
+      await writeFile(
+        join(bundle, "Contents", "Info.plist"),
+        '<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>ai.novamira.hq.desktop</string></dict></plist>',
+      );
+  }
   const run = (command, args, input) =>
     spawnSync(command, args, {
       env: environment,
@@ -84,4 +103,11 @@ export async function verifyCommandRegistration(executable, home, environment) {
   const resolved = run(launcher, ["--help"]);
   assert.equal(resolved.status, 0, describe(resolved));
   return { launcher, executable: moved };
+}
+
+/** The `.app` a macOS bundle main executable lives in, if it is in one. */
+function enclosingApp(executable) {
+  const marker = ".app/Contents/MacOS/";
+  const end = executable.indexOf(marker);
+  return end === -1 ? undefined : executable.slice(0, end + ".app".length);
 }
