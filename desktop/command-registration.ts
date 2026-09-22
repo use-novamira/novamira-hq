@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { basename, dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 interface Registration {
   launcher: string;
@@ -30,6 +30,16 @@ export async function commandRegistration(): Promise<Registration> {
   const { createCommandRegistration } = await import(specifier);
   return createCommandRegistration({
     executable: Deno.execPath(),
+    ...(Deno.build.os === "darwin" && !isCommandLauncher &&
+        Deno.execPath().includes(".app/Contents/MacOS/")
+      ? {
+        launcherSource: join(
+          dirname(dirname(Deno.execPath())),
+          "Helpers",
+          "novamira-hq",
+        ),
+      }
+      : {}),
     ...(isCommandLauncher
       ? { stateDir: dirname(dirname(Deno.execPath())) }
       : {}),

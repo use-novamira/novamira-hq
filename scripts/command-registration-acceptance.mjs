@@ -39,6 +39,13 @@ export async function verifyCommandRegistration(executable, home, environment) {
     await mkdir(dirname(app), { recursive: true });
     await copyFile(executable, app);
     if (process.platform === "darwin")
+      await mkdir(join(bundle, "Contents", "Helpers"), { recursive: true });
+    if (process.platform === "darwin")
+      await copyFile(
+        executable,
+        join(bundle, "Contents", "Helpers", "novamira-hq"),
+      );
+    if (process.platform === "darwin")
       await writeFile(
         join(bundle, "Contents", "Info.plist"),
         '<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>ai.novamira.hq.desktop</string></dict></plist>',

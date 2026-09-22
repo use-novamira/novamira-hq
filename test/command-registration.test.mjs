@@ -49,6 +49,31 @@ test("registration is explicit, repeatable, survives updates, and removes owned 
   assert.equal((await service.remove()).state, "disabled");
 });
 
+test("standalone launcher source is installed and refreshed while the app remains the target", async (t) => {
+  const { options, executable, home } = await fixture(t);
+  const launcherSource = join(home, "standalone-launcher");
+  await writeFile(launcherSource, "standalone signature", { mode: 0o700 });
+  const service = createCommandRegistration({ ...options, launcherSource });
+  await service.enable();
+  assert.equal(
+    await readFile(service.launcher, "utf8"),
+    "standalone signature",
+  );
+  assert.equal(await service.resolve(), executable);
+  await writeFile(launcherSource, "updated standalone signature");
+  await service.refresh();
+  assert.equal(
+    await readFile(service.launcher, "utf8"),
+    "updated standalone signature",
+  );
+  await rm(launcherSource);
+  await assert.rejects(service.repair(), /ENOENT/);
+  assert.equal(
+    await readFile(service.launcher, "utf8"),
+    "updated standalone signature",
+  );
+});
+
 test("missing app fails closed; opening moved or explicitly selected copy refreshes target", async (t) => {
   const { executable, options, service, home } = await fixture(t);
   await service.enable();

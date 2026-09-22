@@ -44,6 +44,8 @@ export interface CommandRegistrationStatus {
 }
 export interface CommandRegistrationOptions {
   executable: string;
+  /** Separately signed standalone launcher shipped inside the macOS bundle. */
+  launcherSource?: string;
   stateDir?: string;
   platform?: NodeJS.Platform;
   home?: string;
@@ -279,6 +281,7 @@ export function createCommandRegistration(options: CommandRegistrationOptions) {
     }
   }
   async function enable() {
+    const source = options.launcherSource ?? options.executable;
     const value = await record();
     await owned(value);
     if (!(await valid(options.executable)))
@@ -287,12 +290,12 @@ export function createCommandRegistration(options: CommandRegistrationOptions) {
       );
     await secureDirectory(paths.directory, defaultFileSecurity());
     if (!(await exists(launcher))) {
-      await copyFile(options.executable, launcher, constants.COPYFILE_EXCL);
+      await copyFile(source, launcher, constants.COPYFILE_EXCL);
       await chmod(launcher, 0o700);
-    } else if (value && (await digest(options.executable)) !== value.digest) {
+    } else if (value && (await digest(source)) !== value.digest) {
       const temporary = `${launcher}.${randomUUID()}.tmp`;
       try {
-        await copyFile(options.executable, temporary, constants.COPYFILE_EXCL);
+        await copyFile(source, temporary, constants.COPYFILE_EXCL);
         await chmod(temporary, 0o700);
         await rename(temporary, launcher);
       } catch (error) {

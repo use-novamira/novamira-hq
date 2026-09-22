@@ -216,6 +216,9 @@ codesign --force --timestamp --options runtime --entitlements "$entitlements" \
   --identifier ai.novamira.hq.desktop --keychain "$keychain" \
   --sign "$APPLE_SIGNING_IDENTITY" "$binary"
 codesign --verify --strict --verbose=2 "$binary"
+# Bundle-signed main executables cannot be copied outside their bundle for
+# terminal command registration. Ship a standalone-signed copy for that role.
+cp "$binary" "$app/Contents/Helpers/novamira-hq"
 sign "$app"
 
 # --- notarization, both artifacts in one submission -------------------------
