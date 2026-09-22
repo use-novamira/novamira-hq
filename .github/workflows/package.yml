@@ -1,0 +1,136 @@
+# SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+name: Desktop and source acceptance
+
+# CI never talks to a hosting provider. No job here may define provider
+# credentials or set the environment variables that gate live provider calls;
+# every provider test that runs in CI is a recorded or offline test.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: ${{ matrix.os }} / Node ${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.19
+      - run: npm config set ignore-scripts true
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - if: runner.os == 'macOS'
+        run: bun run keychain:build
+      - run: bun run check
+      # Coverage runs the same suite a second time, so it runs once rather than
+      # on all four matrix legs. It is here for the report as much as for the
+      # thresholds: the uncovered lines it names are the error branches the
+      # offline suite never reaches.
+      - if: runner.os == 'Linux' && matrix.node == 24
+        run: bun run coverage
+
+  # POSIX-heavy source contracts run on Linux/macOS. Windows source builds and
+  # native desktop artifact acceptance run separately below.
+  package-windows:
+    name: windows-latest / Node ${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.19
+      - run: npm config set ignore-scripts true
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run lint
+      - run: bun run format:check
+      - run: bun run build
+
+  # The Deno desktop shell on every target system it ships for: format, lint and
+  # type-check `desktop/`, compile it with `dist/` embedded, and drive the
+  # compiled executable in its `--serve` role — the dashboard server, headless,
+  # on a loopback port. No window is opened, so the runner needs no display and
+  # no WebKitGTK. Offline like the rest: no registry read, no provider
+  # credential.
+  #
+  # macOS appears twice because it ships two architectures: `macos-latest` is
+  # arm64 and `macos-15-intel` is the Intel image, and `deno compile` emits a
+  # binary for the host, so each arch needs its own runner.
+  #
+  # Windows is here for the icon as much as for the compile: `deno compile
+  # --icon` parses the `.ico` and fails the build on a malformed one, which is
+  # the only automated check `scripts/desktop-icons.mjs` can have short of
+  # looking at a taskbar.
+  desktop:
+    name: desktop / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            archive: ""
+          - os: macos-latest
+            archive: novamira-hq-desktop-macos-arm64-unsigned.tar.gz
+          - os: macos-15-intel
+            archive: novamira-hq-desktop-macos-x86_64-unsigned.tar.gz
+          - os: windows-latest
+            archive: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.19
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.6
+      - run: npm config set ignore-scripts true
+      - run: bun install --frozen-lockfile --ignore-scripts
+      # `deno fmt --check` reads the working tree, and the Windows runner's git
+      # rewrites line endings on checkout; the formatting question is answered
+      # identically by the other two.
+      - if: runner.os != 'Windows'
+        run: bun run desktop:check
+      - run: bun run desktop:build
+      - name: Smoke-test the compiled server role
+        run: node scripts/desktop-smoke.mjs
+      - name: Package Linux application
+        if: runner.os == 'Linux'
+        run: node scripts/desktop-build.mjs --package
+      - name: Accept desktop installation artifact
+        if: runner.os != 'macOS'
+        run: bun run desktop:acceptance
+      - name: Archive unsigned macOS executable
+        if: matrix.archive != ''
+        run: tar -czf "dist-desktop/${{ matrix.archive }}" -C dist-desktop novamira-hq-desktop
+      # These are test builds, not releases. Signing stays in macos-signing.yml.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: novamira-hq-desktop-${{ runner.os }}-${{ runner.arch }}-test
+          path: |
+            dist-desktop/*.tar.gz
+            dist-desktop/*.exe
+          retention-days: 7
+          if-no-files-found: error

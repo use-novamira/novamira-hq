@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+name: Verify macOS signing
+
+# The release's macOS signing path, on demand and without a release.
+#
+# `desktop-macos` in `release.yml` runs once, at the end of a publication that
+# has already pushed a tag and published to npm, which is a bad moment to learn
+# that the certificate expired, the entitlements are wrong or notarization
+# rejects the binary. This workflow is that job with the release removed: same
+# script, same environment, same secrets, real notarization — and the artifacts
+# go to the run instead of to a release.
+#
+# It carries no provider credentials and makes no provider call. It talks to
+# Apple's notary service and to nothing else, which is the one network exception
+# signing cannot avoid.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: macos-signing-verification
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: sign, notarize and staple / ${{ matrix.asset }}
+    runs-on: ${{ matrix.runner }}
+    environment: macos-signing
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            asset: novamira-hq-desktop-macos-arm64
+          - runner: macos-15-intel
+            asset: novamira-hq-desktop-macos-x86_64
+    env:
+      ASSET: ${{ matrix.asset }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.2.19
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.9.6
+      - run: npm config set ignore-scripts true
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run desktop:build
+      - run: mv dist-desktop/novamira-hq-desktop "dist-desktop/$ASSET"
+      # As in the release job, a missing secret is a failure here. Answering
+      # "is signing configured?" with a green unsigned build would defeat the
+      # only purpose this workflow has.
+      - name: Sign, notarize and staple
+        env:
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: bash scripts/macos-sign.sh "dist-desktop/$ASSET"
+      - name: Test the native helper protocol without accessing credentials
+        run: node --test test/macos-keychain-contract.test.mjs
+      - name: Smoke-test the signed server role
+        run: node scripts/desktop-smoke.mjs "dist-desktop/$ASSET"
+      - name: Report what Apple and Gatekeeper say
+        run: |
+          codesign --display --verbose=4 "dist-desktop/$ASSET"
+          codesign --display --entitlements - --xml "dist-desktop/$ASSET"
+          codesign --verify --strict --verbose=2 "dist-desktop/$ASSET"
+          unzip -q "dist-desktop/$ASSET.app.zip" -d "$RUNNER_TEMP/verify"
+          codesign --verify --deep --strict --verbose=2 "$RUNNER_TEMP/verify/Novamira HQ.app"
+          xcrun stapler validate "$RUNNER_TEMP/verify/Novamira HQ.app"
+          spctl --assess --type execute -vv "$RUNNER_TEMP/verify/Novamira HQ.app"
+      # The `.app.zip` is uploaded as a file, never as an unpacked bundle:
+      # GitHub re-zips an artifact's contents and drops the symlinks, modes and
+      # extended attributes a signed bundle is made of. Download this artifact,
+      # unzip it once to get `<asset>.app.zip` back byte for byte, then unzip
+      # that to get the stapled bundle. The bare executable loses its mode the
+      # same way, so `chmod +x` it before running.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.asset }}-signed
+          path: |
+            dist-desktop/${{ matrix.asset }}
+            dist-desktop/${{ matrix.asset }}.app.zip
+            dist-desktop/${{ matrix.asset }}.dmg
+            dist-desktop/${{ matrix.asset }}.keychain.zip
+            dist-desktop/${{ matrix.asset }}.SOURCE-OFFER.txt
+            dist-desktop/${{ matrix.asset }}.build-from-source.md
+            dist-desktop/${{ matrix.asset }}.LGPL-2.1.txt
+            dist-desktop/${{ matrix.asset }}.THIRD-PARTY-NOTICES.txt
+          retention-days: 7
+          if-no-files-found: error

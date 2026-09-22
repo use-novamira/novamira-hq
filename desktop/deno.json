@@ -1,0 +1,26 @@
+{
+  "version": "1.0.0-rc1",
+  "nodeModulesDir": "none",
+  "imports": {
+    "skills/cli": "npm:skills@1.5.18/dist/cli.mjs",
+    "@novamira/cli/entry": "npm:@novamira/cli@1.3.1/entry",
+    "@webview/webview": "jsr:@webview/webview@0.9.0",
+    "commander": "npm:commander@^14.0.0",
+    "@starfederation/datastar-sdk": "npm:@starfederation/datastar-sdk@^1.0.0"
+  },
+  "tasks": {
+    "dev": "deno run --allow-env --allow-read --allow-write --allow-net --allow-run --allow-ffi --allow-sys main.ts",
+    "compile": "deno compile --allow-env --allow-read --allow-write --allow-net --allow-run --allow-ffi --allow-sys --include ../dist --include ../skills --output ../dist-desktop/novamira-hq-desktop main.ts",
+    "compile:windows": "deno compile --allow-env --allow-read --allow-write --allow-net --allow-run --allow-ffi --allow-sys --include ../dist --include ../skills --icon ../dist-desktop/icons/novamira-hq.ico --output ../dist-desktop/novamira-hq-desktop main.ts"
+  },
+  "lint": {
+    "rules": {
+      "tags": [
+        "recommended"
+      ]
+    }
+  },
+  "fmt": {
+    "lineWidth": 80
+  }
+}

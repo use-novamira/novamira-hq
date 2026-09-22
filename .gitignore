@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dist-desktop/
+*.tgz
+.DS_Store
+.envrc
+.direnv/
+native/macos/Novamira HQ Credentials.app/

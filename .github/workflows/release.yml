@@ -1,0 +1,200 @@
+# SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+name: Publish desktop release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to publish
+        required: true
+        type: string
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+permissions:
+  contents: read
+env:
+  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.release.outputs.commit }}
+      prerelease: ${{ steps.metadata.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+      - name: Require a protected-main release commit
+        id: release
+        run: |
+          git fetch --no-tags origin main
+          commit=$(git rev-parse HEAD)
+          git merge-base --is-ancestor "$commit" origin/main
+          test "$commit" = "$(git rev-list -n 1 "$RELEASE_TAG")"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+      - id: metadata
+        run: node scripts/release-metadata.mjs "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+  acceptance:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.2.19
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run check
+      - name: Desktop legal review (accepted gap for the first RC)
+        continue-on-error: ${{ env.RELEASE_TAG == 'v1.0.0-rc1' }}
+        run: bun run legal:desktop-check
+
+  desktop:
+    needs: [prepare, acceptance]
+    name: desktop / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: novamira-hq-desktop-linux-x86_64
+            binary: novamira-hq-desktop
+            archive: novamira-hq-desktop-linux-x86_64.tar.gz
+          - os: windows-latest
+            asset: novamira-hq-desktop-windows-x86_64.exe
+            binary: novamira-hq-desktop.exe
+            archive: novamira-hq-desktop-windows-x86_64.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.2.19
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
+        with:
+          deno-version: v2.9.6
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run build
+      - if: runner.os == 'Linux'
+        run: node scripts/desktop-build.mjs --package
+      - if: runner.os != 'Linux'
+        run: node scripts/desktop-build.mjs
+      - run: bun run desktop:acceptance
+      - shell: bash
+        run: mv "dist-desktop/${{ matrix.binary }}" "dist-desktop/${{ matrix.asset }}"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ${{ matrix.asset }}-release
+          path: |
+            dist-desktop/${{ matrix.asset }}
+            dist-desktop/${{ matrix.archive }}
+          if-no-files-found: error
+
+  desktop-macos:
+    needs: [prepare, acceptance]
+    name: desktop / ${{ matrix.asset }}
+    runs-on: ${{ matrix.runner }}
+    environment: macos-signing
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            asset: novamira-hq-desktop-macos-arm64
+          - runner: macos-15-intel
+            asset: novamira-hq-desktop-macos-x86_64
+    env:
+      ASSET: ${{ matrix.asset }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.2.19
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
+        with:
+          deno-version: v2.9.6
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run desktop:build
+      - run: mv dist-desktop/novamira-hq-desktop "dist-desktop/$ASSET"
+      - name: Sign, notarize and staple
+        env:
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: bash scripts/macos-sign.sh "dist-desktop/$ASSET"
+      - run: node --test test/macos-keychain-contract.test.mjs
+      - run: node scripts/desktop-smoke.mjs "dist-desktop/$ASSET"
+      - name: Accept signed installation artifact
+        run: |
+          unzip -q "dist-desktop/$ASSET.app.zip" -d "$RUNNER_TEMP/verify"
+          codesign --verify --deep --strict --verbose=2 "$RUNNER_TEMP/verify/Novamira HQ.app"
+          xcrun stapler validate "$RUNNER_TEMP/verify/Novamira HQ.app"
+          spctl --assess --type execute -vv "$RUNNER_TEMP/verify/Novamira HQ.app"
+          node scripts/desktop-artifact-acceptance.mjs "dist-desktop/$ASSET.dmg"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ${{ matrix.asset }}-release
+          path: |
+            dist-desktop/${{ matrix.asset }}
+            dist-desktop/${{ matrix.asset }}.app.zip
+            dist-desktop/${{ matrix.asset }}.dmg
+            dist-desktop/${{ matrix.asset }}.keychain.zip
+            dist-desktop/${{ matrix.asset }}.SOURCE-OFFER.txt
+            dist-desktop/${{ matrix.asset }}.build-from-source.md
+            dist-desktop/${{ matrix.asset }}.LGPL-2.1.txt
+            dist-desktop/${{ matrix.asset }}.THIRD-PARTY-NOTICES.txt
+          if-no-files-found: error
+
+  github-release:
+    needs: [prepare, desktop, desktop-macos]
+    runs-on: ubuntu-latest
+    environment: desktop-release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: novamira-hq-desktop-*-release
+          path: release-assets
+          merge-multiple: true
+      - name: Publish accepted artifacts with checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          cp install.sh install.ps1 LICENSE legal/SOURCE-OFFER.txt license-docs/build-from-source.md release-assets/
+          cp legal/licenses/lgpl-2.1.txt release-assets/LGPL-2.1.txt
+          cp release-assets/novamira-hq-desktop-macos-arm64.THIRD-PARTY-NOTICES.txt release-assets/THIRD-PARTY-NOTICES.txt
+          cd release-assets
+          sha256sum * > SHA256SUMS
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --generate-notes --title "$RELEASE_TAG"
+          fi
+          gh release upload "$RELEASE_TAG" * --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease="$PRERELEASE"

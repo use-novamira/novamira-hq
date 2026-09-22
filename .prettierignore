@@ -1,0 +1,10 @@
+node_modules
+dist
+docs
+fixtures
+LICENSE
+legal/licenses
+src/web/static
+desktop
+dist-desktop
+native/macos/Novamira HQ Credentials.app

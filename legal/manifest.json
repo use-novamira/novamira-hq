@@ -1,0 +1,266 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-09-21",
+  "coverage": "Application npm dependencies, locked desktop JavaScript dependencies and identified assets. Desktop embedded-runtime review is incomplete; this inventory is not release clearance.",
+  "desktopReview": {
+    "status": "incomplete",
+    "referenceDenoVersion": "2.9.6",
+    "remaining": [
+      "Determine the actual runtime and target-specific dependencies in each compiled artifact; Deno Cargo.lock includes build/test dependencies too.",
+      "Collect notices for all included Rust crates and V8 third-party libraries, plus any redistributed Windows WebView2 components.",
+      "Complete the runtime notice review for the pinned Deno 2.9.6 toolchain before desktop release clearance.",
+      "Provide recipients of HQ binaries with the matching HQ Corresponding Source and build scripts; a private repository link alone is not sufficient for recipients without access."
+    ]
+  },
+  "assetDigests": {
+    "skills/novamira-site/SKILL.md": "16c5d802c5add2f5737455e78d423d32169d863bd8a75fa5a38db41bb95b8eaa",
+    "skills/novamira-hq/SKILL.md": "fbbb0259c6b648ac4ec0a83d2c6d9c1c866a3702d6b282b9779406ab0de4c760",
+    "legal/licenses/skills.txt": "4b9410a9e0cd54d9ecb1852b3660ca97f865c0d5dee7262a3c46ab2fd138bddc",
+    "legal/licenses/detect-agent.txt": "1cc720929ef881f2ae885d66a8399d3d652430ef241aa73ed1291cd465cd3d2f",
+    "src/web/static/datastar.js": "2837d87acf6ee0ba8e4e63765926c25a98d63883b02f88be194a86b81d3fd24a",
+    "src/web/static/fonts/montserrat-var.woff2": "06b16db7a969135d48d38c49183be7fb88d4452e2a3011957c7851941f4e4879",
+    "src/web/static/fonts/jetbrains-mono-var.woff2": "18be452724bfdc236c074ca94a249a7f41a86752c7d04ab258ce9ed5651f6a7e",
+    "src/web/views/ai-logos.ts": "f3dc0f012c03670eb050747a038e800395f99e614a409aacd6e3c660325dfb5e"
+  },
+  "components": [
+    {
+      "id": "skills-detect-agent",
+      "name": "@vercel/detect-agent",
+      "version": "bundled in skills@1.5.18",
+      "license": "Apache-2.0",
+      "scope": "desktop JavaScript runtime",
+      "source": "https://www.npmjs.com/package/@vercel/detect-agent/v/1.2.1",
+      "licenseFiles": ["licenses/detect-agent.txt"],
+      "notes": "Bundled code present in registrar archive but omitted from its ThirdPartyNoticeText. Upstream declared minimum is 1.2.1; exact bundled dependency version is not recorded by the published archive."
+    },
+    {
+      "id": "skills",
+      "name": "skills",
+      "version": "1.5.18",
+      "license": "MIT",
+      "scope": "desktop JavaScript runtime",
+      "source": "https://github.com/vercel-labs/skills/tree/7d338e40181942ce8077b14110898299658ebd9e",
+      "licenseFiles": ["licenses/skills.txt"],
+      "notes": "Isolated registrar role; npm tarball bundles clack, picocolors, simple-git, detect-agent and xdg-basedir. Upstream bundled notices retained. No HQ npm runtime dependency."
+    },
+    {
+      "id": "yaml",
+      "name": "yaml",
+      "version": "2.9.1",
+      "license": "ISC",
+      "scope": "desktop JavaScript runtime",
+      "source": "https://github.com/eemeli/yaml/tree/v2.9.1",
+      "licenseFiles": ["licenses/skills.txt"]
+    },
+    {
+      "id": "novamira-cli",
+      "name": "@novamira/cli",
+      "version": "1.3.1",
+      "license": "AGPL-3.0-or-later",
+      "scope": "npm runtime",
+      "source": "https://github.com/use-novamira/novamira-cli/tree/v1.3.1",
+      "licenseFiles": [],
+      "notes": "Copyright (c) 2026 Ovation S.r.l. Included in npm and desktop, with guide data. The complete AGPL license appears above as HQ's LICENSE. Matching source is the public v1.3.1 tag. Its sole runtime dependency, commander, is inventoried separately."
+    },
+    {
+      "id": "commander",
+      "name": "commander",
+      "version": "14.0.3",
+      "license": "MIT",
+      "scope": "npm runtime",
+      "source": "https://github.com/tj/commander.js/tree/v14.0.3",
+      "licenseFiles": ["licenses/commander.txt"]
+    },
+    {
+      "id": "datastar-sdk",
+      "name": "@starfederation/datastar-sdk",
+      "version": "1.0.0",
+      "license": "MIT",
+      "scope": "npm runtime",
+      "source": "https://www.npmjs.com/package/@starfederation/datastar-sdk/v/1.0.0",
+      "licenseFiles": ["licenses/datastar-sdk.txt"]
+    },
+    {
+      "id": "datastar",
+      "name": "Datastar browser runtime",
+      "version": "1.0.2",
+      "license": "MIT",
+      "scope": "dashboard asset",
+      "source": "https://github.com/starfederation/datastar/tree/v1.0.2",
+      "licenseFiles": ["licenses/datastar.txt"],
+      "notes": "Vendored minified browser runtime, separate from the server SDK."
+    },
+    {
+      "id": "montserrat",
+      "name": "Montserrat",
+      "version": "vendored SHA-256 06b16db7a969135d48d38c49183be7fb88d4452e2a3011957c7851941f4e4879",
+      "license": "OFL-1.1",
+      "scope": "dashboard font",
+      "source": "https://github.com/JulietaUla/Montserrat",
+      "licenseFiles": ["licenses/montserrat.txt"],
+      "notes": "The upstream version was not recorded when vendored. This digest identifies the exact distributed font; no upstream release is asserted."
+    },
+    {
+      "id": "jetbrains-mono",
+      "name": "JetBrains Mono",
+      "version": "vendored SHA-256 18be452724bfdc236c074ca94a249a7f41a86752c7d04ab258ce9ed5651f6a7e",
+      "license": "OFL-1.1",
+      "scope": "dashboard font",
+      "source": "https://github.com/JetBrains/JetBrainsMono",
+      "licenseFiles": ["licenses/jetbrains-mono.txt"],
+      "notes": "The upstream version was not recorded when vendored. This digest identifies the exact distributed font; no upstream release is asserted."
+    },
+    {
+      "id": "simple-icons",
+      "name": "Simple Icons: OpenAI and Claude",
+      "version": "14.3.0",
+      "license": "CC0-1.0",
+      "scope": "dashboard icons",
+      "source": "https://github.com/simple-icons/simple-icons/tree/14.3.0",
+      "licenseFiles": ["licenses/simple-icons.txt"],
+      "notes": "The CC0 dedication for the SVG artwork does not grant trademark rights or imply endorsement."
+    },
+    {
+      "id": "simple-icons-cursor-opencode",
+      "name": "Simple Icons: Cursor and OpenCode",
+      "version": "4ba19240849175ab4b855a732ab98c0f87cfb714",
+      "license": "CC0-1.0",
+      "scope": "dashboard icons",
+      "source": "https://github.com/simple-icons/simple-icons/tree/4ba19240849175ab4b855a732ab98c0f87cfb714",
+      "licenseFiles": ["licenses/simple-icons.txt"],
+      "notes": "Existing path data was matched to this upstream revision. Brand names and marks remain the property of their owners."
+    },
+    {
+      "id": "vscode",
+      "name": "Visual Studio Code icon",
+      "version": "official stable SVG; bundled artwork identified in asset digests",
+      "license": "Microsoft brand terms",
+      "scope": "dashboard icon",
+      "source": "https://code.visualstudio.com/brand",
+      "licenseFiles": [],
+      "notes": "Visual Studio Code, VS Code, and the Visual Studio Code icon are trademarks of Microsoft Corporation. All rights reserved. Used to identify a supported AI client, not to imply endorsement. This artwork is not classified as MIT solely because VS Code source code is MIT."
+    },
+    {
+      "id": "jsr:@denosaurs/plug",
+      "name": "@denosaurs/plug",
+      "version": "1.1.0",
+      "license": "MIT",
+      "scope": "desktop JavaScript",
+      "source": "https://jsr.io/@denosaurs/plug/1.1.0",
+      "licenseFiles": ["licenses/plug.txt"]
+    },
+    {
+      "id": "jsr:@std/encoding",
+      "name": "@std/encoding",
+      "version": "1.0.11",
+      "license": "MIT",
+      "scope": "desktop JavaScript",
+      "source": "https://jsr.io/@std/encoding/1.0.11",
+      "licenseFiles": ["licenses/deno-std.txt"]
+    },
+    {
+      "id": "jsr:@std/fmt",
+      "name": "@std/fmt",
+      "version": "1.0.10",
+      "license": "MIT",
+      "scope": "desktop JavaScript",
+      "source": "https://jsr.io/@std/fmt/1.0.10",
+      "licenseFiles": ["licenses/deno-std.txt"]
+    },
+    {
+      "id": "jsr:@std/fs",
+      "name": "@std/fs",
+      "version": "1.0.24",
+      "license": "MIT",
+      "scope": "desktop JavaScript",
+      "source": "https://jsr.io/@std/fs/1.0.24",
+      "licenseFiles": ["licenses/deno-std.txt"]
+    },
+    {
+      "id": "jsr:@std/internal",
+      "name": "@std/internal",
+      "version": "1.0.14",
+      "license": "MIT",
+      "scope": "desktop JavaScript",
+      "source": "https://jsr.io/@std/internal/1.0.14",
+      "licenseFiles": ["licenses/deno-std.txt"]
+    },
+    {
+      "id": "jsr:@std/path",
+      "name": "@std/path",
+      "version": "1.1.6",
+      "license": "MIT",
+      "scope": "desktop JavaScript",
+      "source": "https://jsr.io/@std/path/1.1.6",
+      "licenseFiles": ["licenses/deno-std.txt"]
+    },
+    {
+      "id": "jsr:@webview/webview",
+      "name": "@webview/webview",
+      "version": "0.9.0",
+      "license": "MIT",
+      "scope": "desktop JavaScript",
+      "source": "https://jsr.io/@webview/webview/0.9.0",
+      "licenseFiles": ["licenses/webview-deno.txt"]
+    },
+    {
+      "id": "native-webview",
+      "name": "webview native library",
+      "version": "c5b19403382ef089f9933ea5331c76aa35414589 (webview_deno 0.9.0)",
+      "license": "MIT",
+      "scope": "desktop native library",
+      "source": "https://github.com/webview/webview/tree/c5b19403382ef089f9933ea5331c76aa35414589",
+      "licenseFiles": ["licenses/native-webview.txt"],
+      "notes": "Webview uses platform web engines. Platform runtimes and any redistributed Windows WebView2 loader require separate review."
+    },
+    {
+      "id": "deno",
+      "name": "Deno",
+      "version": "2.9.6 (pinned CI toolchain; runtime review incomplete)",
+      "license": "MIT",
+      "scope": "desktop runtime reference",
+      "source": "https://github.com/denoland/deno/tree/v2.9.6",
+      "licenseFiles": ["licenses/deno.txt"],
+      "notes": "This is Deno's own license, not a complete notice for its embedded Rust/C/C++ dependencies. CI workflows pin Deno 2.9.6; target-specific runtime inclusion and redistribution obligations still require review."
+    },
+    {
+      "id": "rusty-v8",
+      "name": "Rusty V8",
+      "version": "150.4.0",
+      "license": "MIT",
+      "scope": "desktop runtime reference",
+      "source": "https://github.com/denoland/rusty_v8/tree/v150.4.0",
+      "licenseFiles": ["licenses/rusty-v8.txt"]
+    },
+    {
+      "id": "v8",
+      "name": "V8",
+      "version": "ac1e23989121713ca642f6650b34deff7b686896",
+      "license": "BSD-3-Clause and separately licensed third-party code",
+      "scope": "desktop runtime reference",
+      "source": "https://github.com/denoland/v8/tree/ac1e23989121713ca642f6650b34deff7b686896",
+      "licenseFiles": ["licenses/v8.txt"],
+      "notes": "The upstream license explicitly excludes externally maintained libraries. Their notices must be audited separately before desktop release clearance."
+    },
+    {
+      "id": "typescript",
+      "name": "TypeScript",
+      "version": "6.0.3",
+      "license": "Apache-2.0",
+      "scope": "desktop runtime reference",
+      "source": "https://github.com/microsoft/TypeScript/tree/v6.0.3",
+      "licenseFiles": ["licenses/typescript.txt"],
+      "notes": "Reported by the locally inspected Deno runtime. Exact compiled-app inclusion remains part of the desktop artifact review."
+    },
+    {
+      "id": "webpki-roots",
+      "name": "webpki-roots",
+      "version": "0.26.1",
+      "license": "MPL-2.0",
+      "scope": "desktop runtime reference",
+      "source": "https://static.crates.io/crates/webpki-roots/webpki-roots-0.26.1.crate",
+      "licenseFiles": ["licenses/webpki-roots.txt", "licenses/mpl-2.0.txt"],
+      "notes": "Present in Deno 2.9.6 Cargo.lock; do not infer exact binary inclusion from the workspace lock alone. The linked archive contains the matching published source. If redistributed in executable form, recipients must be informed how to obtain the MPL-covered source."
+    }
+  ]
+}

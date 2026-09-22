@@ -1,0 +1,62 @@
+{
+  "name": "@novamira/hq",
+  "private": true,
+  "version": "1.0.0-rc1",
+  "description": "Hosting provisioning CLI and local dashboard for Novamira",
+  "license": "AGPL-3.0-or-later",
+  "author": "Ovation S.r.l.",
+  "homepage": "https://github.com/use-novamira/novamira-hq",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/use-novamira/novamira-hq.git"
+  },
+  "bugs": {
+    "url": "https://github.com/use-novamira/novamira-hq/issues"
+  },
+  "type": "module",
+  "bin": {
+    "novamira-hq": "dist/index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "legal",
+    "license-docs",
+    "native/macos/Novamira HQ Credentials.app",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-static.mjs && node scripts/copy-mcp-assets.mjs && node scripts/legal-notices.mjs && node scripts/set-bin-mode.mjs",
+    "legal:check": "node scripts/legal-notices.mjs --check",
+    "legal:desktop-check": "node scripts/legal-notices.mjs --check-desktop",
+    "test": "bun run build && node --test test/*.test.mjs",
+    "coverage": "bun run build && node --test --experimental-test-coverage --test-coverage-exclude=test/** --test-coverage-exclude=scripts/** --test-coverage-lines=93 --test-coverage-branches=85 --test-coverage-functions=92 test/*.test.mjs",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "headers": "node scripts/add-spdx-headers.mjs",
+    "check": "bun run lint && bun run format:check && bun run test",
+    "desktop:acceptance": "node scripts/desktop-artifact-acceptance.mjs",
+    "providers:live": "bun run build && node scripts/provider-live.mjs",
+    "desktop:check": "bun run build && deno fmt --check desktop && deno lint desktop && deno check desktop/main.ts",
+    "desktop:build": "bun run build && node scripts/desktop-build.mjs",
+    "keychain:build": "node scripts/macos-keychain-build.mjs"
+  },
+  "dependencies": {
+    "@novamira/cli": "1.3.1",
+    "@starfederation/datastar-sdk": "^1.0.0",
+    "commander": "^14.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}
