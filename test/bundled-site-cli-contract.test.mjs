@@ -29,7 +29,7 @@ test("packaged forwarding works offline outside HQ with no global CLI and preser
           NOVAMIRA_HOME: join(home, "site"),
         },
       });
-    assert.equal(run(["--version"]).stdout.trim(), "1.3.0");
+    assert.equal(run(["--version"]).stdout.trim(), "1.3.1");
     const result = run(["guide", "list", "--json"]);
     assert.equal(result.status, 0, result.stderr);
     assert.ok(JSON.parse(result.stdout).data.guides.length > 0);

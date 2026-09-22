@@ -14,6 +14,7 @@ export function main(
   environment?: undefined,
   overrides?: {
     readonly distribution: "desktop";
+    readonly dashboard?: { readonly agentSetup: unknown };
     readonly siteCliLaunch: {
       readonly command: string;
       readonly prefixArgs: readonly string[];

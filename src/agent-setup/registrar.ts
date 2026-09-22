@@ -17,6 +17,7 @@ import { nodeSpawnChild, type SpawnChild } from "../integration/spawn.js";
 /** Reviewed user-scope capabilities of skills@1.5.18; directory rules stay upstream. */
 export const REGISTRAR_AGENTS = ["claude-code", "windsurf"] as const;
 export type RegistrarAgent = (typeof REGISTRAR_AGENTS)[number];
+export type EntrySkill = "novamira-hq" | "novamira-site";
 
 const AGENT_NAMES: Record<RegistrarAgent, string> = {
   "claude-code": "Claude Code",
@@ -104,19 +105,16 @@ export function createSkillRegistrar(options: RegistrarOptions) {
   async function installHosting(
     agent: RegistrarAgent,
     signal: AbortSignal,
+    skill: EntrySkill = "novamira-hq",
   ): Promise<RegistrationResult> {
     if (!REGISTRAR_AGENTS.includes(agent)) return failure("unsupported_agent");
     if (cancelled(signal)) return failure("aborted");
     let stage: string | undefined;
     try {
-      if (
-        (await list(agent, signal)).some(
-          (skill) => skill.name === "novamira-hq",
-        )
-      )
+      if ((await list(agent, signal)).some((entry) => entry.name === skill))
         return failure("conflict");
       const asset = await readFile(
-        new URL("../../skills/novamira-hq/SKILL.md", import.meta.url),
+        new URL(`../../skills/${skill}/SKILL.md`, import.meta.url),
         "utf8",
       );
       const { cacheDir } = platformPaths(env);
@@ -124,12 +122,12 @@ export function createSkillRegistrar(options: RegistrarOptions) {
       stage = await mkdtemp(join(cacheDir, "skill-registration-"));
       await defaultFileSecurity().secureDirectory(stage);
       await writeFile(join(stage, "SKILL.md"), asset, { mode: 0o600 });
-      const result = await invoke(["install", agent, stage], signal);
+      const result = await invoke(["install", agent, stage, skill], signal);
       if (result.kind !== "exited" || result.code !== 0)
         return failure(result.kind === "exited" ? "failed" : result.kind);
       // Upstream can report per-target copy failures with exit code zero.
       const installed = (await list(agent, signal)).find(
-        (skill) => skill.name === "novamira-hq" && skill.agents.length > 0,
+        (entry) => entry.name === skill && entry.agents.length > 0,
       );
       if (
         /Failed to install|Installation failed/.test(
@@ -161,6 +159,33 @@ export function createSkillRegistrar(options: RegistrarOptions) {
   }
   return {
     agents: REGISTRAR_AGENTS,
+    async target(
+      agent: RegistrarAgent,
+      skill: EntrySkill,
+      signal: AbortSignal,
+    ): Promise<string> {
+      if (
+        !REGISTRAR_AGENTS.includes(agent) ||
+        !["novamira-hq", "novamira-site"].includes(skill)
+      )
+        throw new Error("Unsupported entry point");
+      const result = await invoke(["target", agent, skill], signal);
+      if (result.kind !== "exited" || result.code !== 0)
+        throw new Error("Agent directory lookup failed");
+      const target: unknown = JSON.parse(result.stdout);
+      if (typeof target !== "string" || !isAbsolute(target))
+        throw new Error("Invalid agent directory");
+      return target;
+    },
+    async installSkill(
+      agent: RegistrarAgent,
+      skill: EntrySkill,
+      signal: AbortSignal,
+    ): Promise<RegistrationResult> {
+      if (!["novamira-hq", "novamira-site"].includes(skill))
+        return failure("unsupported_skill");
+      return installHosting(agent, signal, skill);
+    },
     /** Fresh hosting entry installation only; ownership-aware repair is a setup-service concern. */
     async installHosting(
       agent: RegistrarAgent,

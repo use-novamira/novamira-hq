@@ -111,7 +111,7 @@ try {
   assert.deepEqual(packageJson.bin, { "novamira-hq": "dist/index.js" });
   // The managed site CLI is pinned exactly; all other runtime imports are builtins.
   assert.deepEqual(packageJson.dependencies, {
-    "@novamira/cli": "1.3.0",
+    "@novamira/cli": "1.3.1",
     "@starfederation/datastar-sdk": "^1.0.0",
     commander: "^14.0.0",
   });

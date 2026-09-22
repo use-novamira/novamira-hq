@@ -24,7 +24,7 @@ The current reference chain is:
 | Component | Source reference                                                             |
 | --------- | ---------------------------------------------------------------------------- |
 | HQ        | https://github.com/use-novamira/novamira-hq — matching release tag/commit    |
-| Site CLI  | https://github.com/use-novamira/novamira-cli/tree/v1.3.0                     |
+| Site CLI  | https://github.com/use-novamira/novamira-cli/tree/v1.3.1                     |
 | Deno      | https://github.com/denoland/deno/tree/v2.9.6                                 |
 | Rusty V8  | https://github.com/denoland/rusty_v8/tree/v150.4.0                           |
 | V8        | https://github.com/denoland/v8/tree/ac1e23989121713ca642f6650b34deff7b686896 |

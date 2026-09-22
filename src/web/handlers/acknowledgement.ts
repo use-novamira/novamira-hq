@@ -20,18 +20,24 @@ export function createAcknowledgementHandler(
           );
         await context.appAcknowledgement.accept();
         const view = await context.loadConfigView();
+        const agentSetup = await context.agentSetup
+          ?.view()
+          .catch(() => undefined);
         const notice = {
           level: "neutral",
           message: "",
         } as const;
         patchPage(stream, {
-          page: "providers",
+          page: agentSetup?.firstRun ? "settings" : "providers",
           notice,
           model: {
             view,
             notice,
             signals: defaultDashboardSignals(context.token),
             providerOnboarding: true,
+            ...(agentSetup?.firstRun
+              ? { settingsTab: "agents" as const, agentSetup }
+              : {}),
           },
         });
       } catch (error) {

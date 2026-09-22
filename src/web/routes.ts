@@ -100,6 +100,7 @@ import {
 } from "./handlers/site-profiles.js";
 import { createSitesHandler } from "./handlers/sites.js";
 import { createProHandler } from "./handlers/pro.js";
+import { createAgentSetupHandler } from "./handlers/agent-setup.js";
 import {
   createUpdateCheckHandler,
   createUpdateInstallHandler,
@@ -151,6 +152,7 @@ export interface Route {
  * Keep it a flat list so a future batch's diff does not collide.
  */
 export interface RouteContext {
+  readonly agentSetup?: import("../agent-connection.js").AgentSetupService;
   readonly pro?: import("../pro/service.js").ProService;
   readonly hostingTools?: import("./services/hosting-tools.js").HostingToolsService;
   readonly restore?: import("./services/restore.js").RestoreService;
@@ -364,7 +366,10 @@ function pageExtras(
   if (page === "settings") {
     const tab = request.query.get("tab");
     return {
-      settingsTab: tab === "uninstall" || tab === "pro" ? tab : "general",
+      settingsTab:
+        tab === "uninstall" || tab === "pro" || tab === "agents"
+          ? tab
+          : "general",
     };
   }
   if (page === "updates") {
@@ -547,6 +552,25 @@ function pageHandler(context: RouteContext, page: DashboardPage): RouteHandler {
       firstProviderKind: PROVIDER_KINDS[0],
     });
     const extras = pageExtras(context, renderedPage, request);
+    if (
+      context.agentSetup &&
+      (request.path === "/" || renderedPage === "settings")
+    ) {
+      try {
+        const agentSetup = await context.agentSetup.view();
+        if (request.path === "/" && agentSetup.firstRun) {
+          renderedPage = "settings";
+          Object.assign(extras, { settingsTab: "agents" });
+        }
+        Object.assign(extras, { agentSetup });
+      } catch {
+        // Setup failure must not prevent access to the hosting dashboard.
+        Object.assign(extras, {
+          agentSetupError:
+            "Agent setup is unavailable. Check local directory permissions and reload Settings to retry.",
+        });
+      }
+    }
     if (request.path === "/hosting-tools") {
       const profile = request.query.get("profile") ?? "";
       const provider = view.profiles.find(
@@ -658,6 +682,48 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
     });
   }
   routes.push(
+    {
+      method: "GET",
+      path: "/_dashboard/agents/status",
+      auth: "token",
+      handler: createAgentSetupHandler(context, "status"),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/agents/install",
+      auth: "token",
+      handler: createAgentSetupHandler(context, "install"),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/agents/repair",
+      auth: "token",
+      handler: createAgentSetupHandler(context, "repair"),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/agents/remove",
+      auth: "token",
+      handler: createAgentSetupHandler(context, "remove"),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/agents/cancel",
+      auth: "token",
+      handler: createAgentSetupHandler(context, "cancel"),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/agents/dismiss",
+      auth: "token",
+      handler: createAgentSetupHandler(context, "dismiss"),
+    },
+    {
+      method: "POST",
+      path: "/_dashboard/agents/command",
+      auth: "token",
+      handler: createAgentSetupHandler(context, "command"),
+    },
     {
       method: "POST",
       path: "/_dashboard/pro/save",

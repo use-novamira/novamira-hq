@@ -13,6 +13,7 @@
     ]
   },
   "assetDigests": {
+    "skills/novamira-site/SKILL.md": "16c5d802c5add2f5737455e78d423d32169d863bd8a75fa5a38db41bb95b8eaa",
     "skills/novamira-hq/SKILL.md": "fbbb0259c6b648ac4ec0a83d2c6d9c1c866a3702d6b282b9779406ab0de4c760",
     "legal/licenses/skills.txt": "4b9410a9e0cd54d9ecb1852b3660ca97f865c0d5dee7262a3c46ab2fd138bddc",
     "legal/licenses/detect-agent.txt": "1cc720929ef881f2ae885d66a8399d3d652430ef241aa73ed1291cd465cd3d2f",
@@ -54,12 +55,12 @@
     {
       "id": "novamira-cli",
       "name": "@novamira/cli",
-      "version": "1.3.0",
+      "version": "1.3.1",
       "license": "AGPL-3.0-or-later",
       "scope": "npm runtime",
-      "source": "https://github.com/use-novamira/novamira-cli/tree/v1.3.0",
+      "source": "https://github.com/use-novamira/novamira-cli/tree/v1.3.1",
       "licenseFiles": [],
-      "notes": "Copyright (c) 2026 Ovation S.r.l. Included in npm and desktop, with guide data. The complete AGPL license appears above as HQ's LICENSE. Matching source is the public v1.3.0 tag. Its sole runtime dependency, commander, is inventoried separately."
+      "notes": "Copyright (c) 2026 Ovation S.r.l. Included in npm and desktop, with guide data. The complete AGPL license appears above as HQ's LICENSE. Matching source is the public v1.3.1 tag. Its sole runtime dependency, commander, is inventoried separately."
     },
     {
       "id": "commander",

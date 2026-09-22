@@ -48,7 +48,7 @@ output, configuration, and security contract.
   Managed CLI invocations suppress update notices and independent self-update.
   npm and desktop must ship the same exact public CLI release and required data;
   desktop uses its embedded `--site-cli` role, not an assumed Node executable.
-  The current bundled release is `@novamira/cli@1.3.0`; update the npm and Deno
+  The current bundled release is `@novamira/cli@1.3.1`; update the npm and Deno
   pins and integrity locks together. Only integration's child entry and desktop's
   site-CLI role may import the public `@novamira/cli/entry` export.
 - `src/skills/` is read-only and imports only Node builtins and `errors.js`.
@@ -56,7 +56,13 @@ output, configuration, and security contract.
   through `src/agent-setup/`; its Deno-only dependency is an explicit exception
   to the runtime dependency allowlist. Use local assets, copy mode, explicit
   agents, and disabled network/telemetry. Site guidance belongs to the
-  site CLI. Hosting skill guidance stops at `novamira-hq site-cli auth login`.
+  site CLI. Exact-target metadata for the two reviewed registrar agents lives
+  only in `desktop/registrar.ts` and is checked against real upstream copies;
+  never use merged upstream inventory as an ownership record. The registrar
+  writes only inside private staging homes; HQ publishes verified entry copies
+  and tracks digests for conflict-safe repair/removal. Detailed guidance remains
+  read-only. Site instructions use the upstream managed command-prefix option.
+  Hosting skill guidance stops at `novamira-hq site-cli auth login`.
 - A completed doctor report exits successfully regardless of report status.
   `profile.credentials`, `integration.site_cli`, and `update.available` cannot
   fail. `--fix` only repairs private-path permissions and creates the state

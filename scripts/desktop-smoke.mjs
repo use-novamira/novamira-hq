@@ -32,6 +32,7 @@ import { fileURLToPath, URL } from "node:url";
 import { defaultFileSecurity } from "../dist/config/file-security.js";
 import { verifySiteCli } from "./site-cli-acceptance.mjs";
 import { verifyCommandRegistration } from "./command-registration-acceptance.mjs";
+import { verifyAgentSetup } from "./agent-setup-acceptance.mjs";
 import { readFile } from "node:fs/promises";
 
 const STARTUP_TIMEOUT_MS = 90_000;
@@ -137,6 +138,9 @@ try {
     stdio: ["pipe", "pipe", "inherit"],
     env: {
       ...env,
+      HOME: join(home, "ui-home"),
+      USERPROFILE: join(home, "ui-home"),
+      CLAUDE_CONFIG_DIR: join(home, "ui-home", ".claude"),
       NOVAMIRA_HQ_HOME: home,
       NOVAMIRA_HOME: join(home, "site"),
       PATH: systemPath,
@@ -165,6 +169,10 @@ try {
     stdout.write(`desktop-smoke: GET ${path} -> ${status}\n`);
   }
 
+  await verifyAgentSetup(url, join(home, "ui-home"));
+  stdout.write(
+    "desktop-smoke: agent onboarding, command repair, both skills, repeat/add/remove and Settings revisit passed\n",
+  );
   child.stdin.end();
   const code = await withTimeout(
     exited(child),

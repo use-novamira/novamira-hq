@@ -72,7 +72,15 @@ Both require Node.js 22+, `npm` and `npx`. Set `NOVAMIRA_HQ_AGENT` (for example
 `NOVAMIRA_HQ_AGENT=opencode`) to pick the agent non-interactively; without it the
 skill step asks, and needs a terminal to ask on.
 
-HQ includes the pinned public `@novamira/cli@1.3.0` release. npm installs it as
+The desktop's first-launch flow and **Settings → Connect your agents** offer
+terminal command registration and user-scope hosting/site entry points for
+explicitly selected **Claude Code** and **Windsurf** agents. No external runtime
+or downloads are needed for skill setup. Status, repair and owned removal are
+available in the same panel; existing/manual instructions are preserved.
+See [Connect your agents](docs/connect-agents.md) for PATH/restart guidance,
+installed paths and ownership rules. Other clients can use the MCP setup guide.
+
+HQ includes the pinned public `@novamira/cli@1.3.1` release. npm installs it as
 an HQ dependency; desktop embeds the same release and its guide data. Desktop
 site features need no separate Node, npm, Deno, or `novamira` installation.
 Installers do not install a second global site CLI or offer a site-CLI skip option.

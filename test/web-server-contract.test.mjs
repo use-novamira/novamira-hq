@@ -1017,6 +1017,13 @@ test("the build ships all assets under dist/web/static", async () => {
  * a reviewer's attention fails here.
  */
 const SHIPPED_ROUTES = [
+  "GET /_dashboard/agents/status",
+  "GET /_dashboard/agents/install",
+  "GET /_dashboard/agents/repair",
+  "GET /_dashboard/agents/remove",
+  "GET /_dashboard/agents/cancel",
+  "GET /_dashboard/agents/dismiss",
+  "GET /_dashboard/agents/command",
   "GET /novamira-pro",
   "GET /_dashboard/pro/save",
   "GET /_dashboard/pro/remove",

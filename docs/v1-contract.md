@@ -116,7 +116,7 @@ remain backward compatible with and ships no legacy import.
 | lint / format | ESLint / Prettier |
 | license | AGPL-3.0-or-later |
 | release owner | Ovation S.r.l. through reviewed `use-novamira` GitHub workflows and npm trusted publishing with provenance |
-| runtime dependencies | `commander`, `@starfederation/datastar-sdk`, and exact `@novamira/cli@1.3.0` |
+| runtime dependencies | `commander`, `@starfederation/datastar-sdk`, and exact `@novamira/cli@1.3.1` |
 | bundled data | the published tarball contains `dist/`, `skills/` (`novamira-hq`, `core`, `hosting`) and `legal/` |
 | installers | `install.sh` and `install.ps1`, published as GitHub release assets and served from the repository's raw URL; **not** inside the npm tarball |
 | distribution | npm package and standalone compiled desktop application |
@@ -1319,6 +1319,13 @@ automatically.
 | Path | Method | Token |
 | --- | --- | --- |
 | `/_dashboard/pro/save` | POST | yes |
+| `/_dashboard/agents/status` | GET | yes |
+| `/_dashboard/agents/install` | POST | yes |
+| `/_dashboard/agents/repair` | POST | yes |
+| `/_dashboard/agents/remove` | POST | yes |
+| `/_dashboard/agents/cancel` | POST | yes |
+| `/_dashboard/agents/dismiss` | POST | yes |
+| `/_dashboard/agents/command` | POST | yes |
 | `/_dashboard/pro/remove` | POST | yes |
 | `/_dashboard/pro/plan` | POST | yes |
 | `/_dashboard/pro/install` | POST | yes |
@@ -1700,6 +1707,42 @@ form to itself and no page reloads.
 Below 1000px the sidebar becomes a compact brand/Menu header. Menu expands the
 connection action, navigation and About together, with `aria-expanded` reflecting
 the state. About is inside that menu rather than a separate mobile footer.
+
+### Connect your agents (desktop)
+
+After the first-launch notice, the compiled desktop offers command registration
+and agent entry-point setup. `Settings → Connect your agents`
+(`/settings?tab=agents`) always reopens it. Continue/Done persists an introduction
+marker under HQ state; no skill or command registration happens implicitly.
+
+Supported explicitly selected agents are Claude Code and Windsurf. Each install
+job handles `novamira-hq` and `novamira-site` independently, exposing per-entry
+success, partial failure, cancellation and retry. The two entry points load
+version-matched guidance through `novamira-hq skills get core` and
+`novamira-hq site-cli guide get core`. Bundled site CLI 1.3.1 renders all bundled
+executable examples, including `--full` and JSON, with that managed prefix and
+replaces standalone update instructions. HQ never rewrites site output.
+
+Agent install/repair/remove routes require `agent=claude-code|windsurf`;
+`agents/command` requires `operation=enable|repair|remove`. They ignore posted
+signals. Status is read-only. Setup actions use session-local jobs and repaint
+through the normal signals/main/nav/toast patch boundary. Cancellation retains
+completed entries. No agent-setup operation calls a hosting provider.
+
+The pinned registrar writes in isolated private agent homes, with network,
+subprocesses and telemetry disabled. Verified copies are published to exact
+reviewed agent targets. HQ records target paths and entry digests under
+`<stateDir>/agent-skills/`; detailed guidance is not installed. Manual, malformed,
+linked, extra-file or edited installations are conflicts and are preserved.
+Repair updates only matching HQ-owned files or restores absent entries; removal
+deletes only matching owned files and their empty directories. Changed bundled
+entry instructions are shown as outdated and require explicit repair.
+
+The command panel shows status, PATH/shadowing and platform-specific restart
+instructions. Users must reopen HQ and regenerate earlier MCP configurations
+after command registration changes to select the stable launcher. MCP's existing
+guide-based experience remains available to agents without skills. See
+[Connect your agents](connect-agents.md) for exact artifacts and API details.
 
 ### Assets
 

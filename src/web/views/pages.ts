@@ -78,6 +78,8 @@ import {
 import type { ConfigView, DashboardNotice, DashboardPage } from "./types.js";
 
 export interface PageModel {
+  readonly agentSetup?: import("../../agent-connection.js").AgentSetupView;
+  readonly agentSetupError?: string;
   readonly pro?: import("../../pro/service.js").ProView;
   readonly updatesAvailable?: boolean;
   readonly desktopUpdates?: boolean;
@@ -186,7 +188,13 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
     case "diagnostics":
       return renderDiagnosticsPage();
     case "settings":
-      return renderSettingsPage(model.view, model.settingsTab, model.pro);
+      return renderSettingsPage(
+        model.view,
+        model.settingsTab,
+        model.pro,
+        model.agentSetup,
+        model.agentSetupError,
+      );
     case "novamira-pro":
       return renderProPage(model.pro ?? {});
     case "updates":

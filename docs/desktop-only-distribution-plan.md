@@ -319,5 +319,53 @@ decisions, commands/results, and concrete remaining work.
     The smoke test's temporary macOS bundle checks metadata, not signed Finder
     installation. Session 3 owns UI wiring and PATH/MCP regeneration guidance;
     session 1's upstream site-guidance blocker remains unchanged.
-- **Session 3:** Not started.
+- **Session 3 (2026-09-22):** Connect-your-agents onboarding and Settings
+  implemented. Artifact paths, structural API, ownership and repair rules are in
+  [Connect your agents](connect-agents.md).
+  - Released public `@novamira/cli@1.3.1` from the adjacent site CLI repository
+    (commit `e2f93d0`, tag/release `v1.3.1`). Its managed `commandPrefix` option
+    renders bundled core/full/JSON guidance with `novamira-hq site-cli`, preserves
+    Ability identifiers, and replaces standalone update guidance with HQ's hint.
+    Upstream checks passed: 95 tests, package inspection/acceptance and compiled
+    offline embedded acceptance. npm publication and provenance verification
+    succeeded. The final GitHub-release job lacked repository context; the
+    release was created manually and that workflow fixed in commit `a7c7ad4`.
+    HQ's npm/Deno pins, integrity locks and legal inventories now match 1.3.1.
+  - Added `skills/novamira-site/SKILL.md` alongside the hosting entry point.
+    Supported agents remain **Claude Code and Windsurf**, explicitly selected
+    per agent. Both installed files load version-matched guidance on demand and
+    contain no app-location or staging-directory dependency.
+  - Added `src/agent-setup/owned-skills.ts` and `service.ts`, plus the structural
+    `src/agent-connection.ts` interface. The registrar runs only in private
+    staging homes for production setup. Its two reviewed exact-target directory
+    rules live in `desktop/registrar.ts` and are compared with real upstream
+    copies in compiled acceptance. HQ publishes verified files exclusively,
+    coordinates setup across processes, and records target paths and SHA-256
+    digests under `<stateDir>/agent-skills/`. Manual, malformed, linked, edited
+    or extra-file installations are preserved as conflicts. Repair restores
+    missing owned files or explicitly updates outdated entry digests; removal
+    affects only matching owned files and empty directories.
+  - Added first-launch setup after the app notice and revisitable
+    `/settings?tab=agents`, with command status/enable/repair/removal, PATH and
+    restart instructions, per-entry results, cancellation and retry. Completed
+    entries survive partial failure/cancellation. Existing MCP guidance remains
+    accessible; the UI explains reopening HQ and regenerating MCP configuration
+    after registration changes. New token-guarded routes are declared in
+    `docs/v1-contract.md` and the route conventions test.
+  - Validation passed locally on Linux x86_64: `bun run check` (**1,290 passed,
+    two skipped, zero failed**), `bun run desktop:check`,
+    `bun run desktop:build`, `node scripts/desktop-smoke.mjs`,
+    `bun run pack:inspect`, and `bun run package:acceptance`. New focused
+    contracts cover partial failure/retry, cancellation, additional agents,
+    concurrent/repeat setup, changed entry digests, manual/edited instructions,
+    corrupt ownership records, repair and removal. Compiled smoke exercises
+    offline entry guidance, real authenticated onboarding/Settings SSE routes,
+    both agents, command repair and skill removal with isolated homes/caches and
+    external runtimes absent from PATH. No live hosting providers were called.
+    An additional compiled dashboard HTTP walkthrough passed; visual browser
+    review was unavailable because no desktop browser was connected.
+  - Native macOS/Windows CI validation is pending. Session 4 still owns
+    desktop-only publishing/installers/update semantics and the final HQ release.
+    Existing desktop runtime legal-review prerequisites and native signed
+    Finder/Spotlight/helper and Windows in-use-launcher validation remain open.
 - **Session 4:** Not started.

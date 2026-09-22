@@ -238,6 +238,7 @@ export interface DashboardUpdates {
 export interface DashboardServerDependencies {
   readonly pro?: import("../pro/service.js").ProService;
   readonly appAcknowledgement?: import("../config/app-acknowledgement.js").AppAcknowledgement;
+  readonly agentSetup?: import("../agent-connection.js").AgentSetupService;
   readonly mcpConnection?: import("../mcp-connection.js").McpConnectionService;
   readonly history: Pick<HistoryStore, "list">;
   readonly version: string;
@@ -602,6 +603,7 @@ export function createDashboardServer(
     hostingTools: createHostingToolsService(dependencies.hosting),
     restore,
     history: dependencies.history,
+    ...(dependencies.agentSetup ? { agentSetup: dependencies.agentSetup } : {}),
     ...(dependencies.appAcknowledgement
       ? { appAcknowledgement: dependencies.appAcknowledgement }
       : {}),

@@ -5,26 +5,35 @@ import { hrefAttr, html, url, type Html } from "../html.js";
 import type { ConfigView } from "./types.js";
 import type { ProView } from "../../pro/service.js";
 import { renderPro } from "./pro.js";
+import { renderAgentSetup } from "./agent-setup.js";
+import type { AgentSetupView } from "../../agent-connection.js";
 import { pageHeader, panel, tabs, filePath } from "./components.js";
 
-export type SettingsTab = "general" | "uninstall" | "pro";
+export type SettingsTab = "general" | "uninstall" | "pro" | "agents";
 
 export function renderSettingsPage(
   view: ConfigView,
   tab: SettingsTab = "general",
   pro?: ProView,
+  agentSetup?: AgentSetupView,
+  agentSetupError?: string,
 ): Html {
   if (tab === "uninstall")
     return html`<section class="page flow-page"><header class="page-head"><div><h1>Uninstall Novamira HQ</h1><a class="text-link"${hrefAttr(url("/about"))}>← About Novamira HQ</a></div></header>${renderUninstallHelp()}</section>`;
   const navigation = tabs("Settings sections", [
     { label: "General", href: url("/settings"), selected: tab === "general" },
     {
+      label: "Connect your agents",
+      href: url("/settings", { tab: "agents" }),
+      selected: tab === "agents",
+    },
+    {
       label: "Novamira Pro",
       href: url("/settings", { tab: "pro" }),
       selected: tab === "pro",
     },
   ]);
-  return html`<section class="page flow-page">${pageHeader("Settings")}${navigation}${tab === "pro" ? (pro ? renderPro(pro) : panel(html`<p>Plugin license settings are unavailable in this instance.</p>`)) : panel(filePath(view.configFile), { title: "Configuration file", description: "Stores hosting account settings and saved push configurations. Credentials are stored separately." })}</section>`;
+  return html`<section class="page flow-page">${pageHeader("Settings")}${navigation}${tab === "agents" ? renderAgentSetup(agentSetup, agentSetupError) : tab === "pro" ? (pro ? renderPro(pro) : panel(html`<p>Plugin license settings are unavailable in this instance.</p>`)) : panel(filePath(view.configFile), { title: "Configuration file", description: "Stores hosting account settings and saved push configurations. Credentials are stored separately." })}</section>`;
 }
 
 /** Instructions only: no uninstall command or credential action is executed. */

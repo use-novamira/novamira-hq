@@ -5,5 +5,8 @@
 import { main } from "@novamira/cli/entry";
 
 process.exitCode = await main(process.argv.slice(2), undefined, undefined, {
-  managed: { updateHint: "Update Novamira HQ to update its bundled site CLI." },
+  managed: {
+    updateHint: "Update Novamira HQ to update its bundled site CLI.",
+    commandPrefix: "novamira-hq site-cli",
+  },
 });

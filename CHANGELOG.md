@@ -4,7 +4,12 @@
 
 ### Added
 
-- Bundle public `@novamira/cli@1.3.0` in npm and desktop. npm launches it with
+- First-launch and Settings **Connect your agents** flow: command access,
+  explicit Claude Code/Windsurf selection, both hosting and site entry points,
+  per-entry status, cancellation, retry, digest-owned repair and removal.
+- Managed site guidance uses `novamira-hq site-cli` throughout, including full
+  references, without standalone installation/update instructions.
+- Bundle public `@novamira/cli@1.3.1` in npm and desktop. npm launches it with
   HQ's Node runtime; desktop embeds its code, dependencies and guide data and
   launches the `--site-cli` role without an external JavaScript runtime.
 - `novamira-hq site-cli <arguments...>` forwards terminal arguments, streams,

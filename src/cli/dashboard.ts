@@ -101,6 +101,7 @@ export interface DashboardHandlers {
  * replaces the whole service, for a test that wants to script its answers.
  */
 export interface DashboardCommandOverrides {
+  readonly agentSetup?: import("../agent-connection.js").AgentSetupService;
   /** Embedded dashboard lifecycle: the MCP owns and closes its own listener. */
   readonly signal?: AbortSignal;
   readonly onReady?: (bound: BoundAddress) => void;
@@ -352,6 +353,7 @@ function dashboardServerDependencies(
   http: HttpFetch,
 ): Parameters<typeof createDashboardServer>[0] {
   return {
+    ...(overrides.agentSetup ? { agentSetup: overrides.agentSetup } : {}),
     pro: createProService({
       paths: dependencies.paths,
       security: dependencies.security,

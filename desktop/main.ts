@@ -85,6 +85,7 @@ if (isCommandLauncher) {
     await main(Deno.args.slice(1), undefined, undefined, {
       managed: {
         updateHint: "Update Novamira HQ to update its bundled site CLI.",
+        commandPrefix: "novamira-hq site-cli",
       },
     }),
   );
@@ -143,6 +144,19 @@ async function serve(): Promise<void> {
   // the specifier resolvable inside a compiled executable.
   const specifier = new URL("../dist/main.js", import.meta.url).href;
   const { main } = (await import(specifier)) as typeof import("./hq.d.ts");
+  const setupSpecifier =
+    new URL("../dist/agent-setup/service.js", import.meta.url).href;
+  const { createAgentSetup } = await import(setupSpecifier);
+  let dashboard;
+  try {
+    dashboard = {
+      agentSetup: createAgentSetup({
+        command: Deno.execPath(),
+        prefixArgs: serverArgs(),
+        registration: await commandRegistration(),
+      }),
+    };
+  } catch { /* Development runtime has no installed executable to register. */ }
   const code = await main(
     ["dashboard", "--json", "--listen", "127.0.0.1:0"],
     undefined,
@@ -150,6 +164,7 @@ async function serve(): Promise<void> {
     {
       distribution: "desktop",
       siteCliLaunch: siteCliLaunch(),
+      ...(dashboard ? { dashboard } : {}),
       mcpLaunch: await mcpLaunch({
         command: Deno.execPath(),
         args: [...serverArgs(), "--mcp"],

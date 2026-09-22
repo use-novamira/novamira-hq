@@ -2,14 +2,38 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import process from "node:process";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 
 /** Isolated role only: upstream owns process.argv and exits the process. */
 export async function registrar(args: string[]): Promise<void> {
-  const [operation, agent, source] = args;
+  const [operation, agent, source, skill = "novamira-hq"] = args;
+  if (operation === "target") {
+    if (
+      !agent || !["claude-code", "windsurf"].includes(agent) ||
+      !source || !["novamira-hq", "novamira-site"].includes(source) ||
+      args.length !== 3
+    ) {
+      throw new Error("Invalid target request");
+    }
+    // Reviewed skills@1.5.18 registry entries (not its merged list output).
+    // Compiled acceptance compares these exact targets with upstream copies.
+    const base = agent === "claude-code"
+      ? join(
+        process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude"),
+        "skills",
+      )
+      : join(homedir(), ".codeium/windsurf/skills");
+    console.log(JSON.stringify(resolve(base, source)));
+    return;
+  }
   if (
     !agent || !/^[a-z][a-z0-9-]+$/.test(agent) ||
     (operation !== "list" && operation !== "install") ||
-    (operation === "list" ? args.length !== 2 : args.length !== 3 || !source)
+    (operation === "list"
+      ? args.length !== 2
+      : (args.length !== 3 && args.length !== 4) || !source) ||
+    !["novamira-hq", "novamira-site"].includes(skill)
   ) {
     throw new Error("Invalid embedded skill registrar request");
   }
@@ -30,7 +54,7 @@ export async function registrar(args: string[]): Promise<void> {
         "add",
         source!,
         "--skill",
-        "novamira-hq",
+        skill,
         "--global",
         "--agent",
         agent,

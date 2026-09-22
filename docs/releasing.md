@@ -82,7 +82,7 @@ run from moving `latest` or `next` backward.
 
 ## Desktop Assets
 
-HQ pins public `@novamira/cli@1.3.0` in npm and desktop. Publish compatible upstream
+HQ pins public `@novamira/cli@1.3.1` in npm and desktop. Publish compatible upstream
 changes before changing that exact pin; never build from a sibling checkout.
 Verify both lockfiles, packaged entry and guide data, legal notices, and compiled
 `--site-cli` acceptance with an empty PATH and fresh runtime cache. Run

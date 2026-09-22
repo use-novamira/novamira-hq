@@ -1,5 +1,11 @@
 # Embedded skill registrar: session 1 findings
 
+Session 3 update: the published `@novamira/cli@1.3.1` resolves the managed
+guidance-prefix blocker below. The production onboarding adapter adds isolated
+registrar homes, exact-target checks and digest ownership; see
+[Connect your agents](connect-agents.md). The prototype findings below remain
+the record of the session 1 investigation.
+
 ## Runtime and API
 
 `skills@1.5.18` is pinned in `desktop/deno.json` and integrity-locked in

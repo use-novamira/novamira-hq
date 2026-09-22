@@ -234,7 +234,7 @@ test("10: the installers are not shipped inside the package they install", () =>
     "@starfederation/datastar-sdk",
     "commander",
   ]);
-  assert.equal(manifest.dependencies["@novamira/cli"], "1.3.0");
+  assert.equal(manifest.dependencies["@novamira/cli"], "1.3.1");
   for (const field of [
     "devDependencies",
     "optionalDependencies",
