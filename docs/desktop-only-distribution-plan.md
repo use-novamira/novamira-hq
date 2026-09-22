@@ -266,6 +266,58 @@ decisions, commands/results, and concrete remaining work.
     with exit zero; this is a fresh-install prototype, not the finished setup
     service. Full shared-directory agent support and existing desktop legal
     release prerequisites remain open. Session 2 can proceed independently.
-- **Session 2:** Not started.
+- **Session 2 (2026-09-22):** Terminal registration implemented and validated
+  against the compiled Linux x86_64 app. Platform behavior and onboarding API
+  details are in [terminal-command-registration.md](terminal-command-registration.md).
+  - Added `createCommandRegistration` and `CommandRegistrationStatus` in
+    `src/agent-setup/command-registration.ts`: status, enable, repair, remove,
+    refresh and resolution, serialized writes, digest-based ownership, missing
+    launcher repair and preservation of conflicts/edited files. Stable paths
+    resolve through `commandRegistrationPaths` in `src/config/paths.ts`.
+  - Added `desktop/command-registration.ts` and desktop management roles:
+    `<app executable> --command-registration status|enable|repair|remove`.
+    The stable native launcher is a copy of the compiled executable under
+    `<HQ stateDir>/command/novamira-hq[.exe]`; its reserved basename selects
+    forwarding before UI or credential initialization. This costs one additional
+    executable's disk space, preserves native argument/stream boundaries, and
+    needs no shell scripts or external runtimes. Repair/open refreshes changed
+    launcher bytes; Windows executable locks produce retry guidance.
+  - macOS prefers the recorded app, then validates standard-directory and
+    Spotlight bundle-ID candidates; multiple matches fail deterministically.
+    Disk images, App Translocation and Trash candidates are excluded. Linux and
+    Windows portable installs use the recorded path; opening the moved app or
+    explicitly repairing selects it. Opening a desktop window refreshes an
+    existing registration without making failures fatal to dashboard startup.
+    The installed signed app remains the macOS credential-helper caller.
+  - Current portable release formats have no automatic installer hook. Enable
+    returns user-PATH/restart instructions and status detects filesystem command
+    shadowing. Existing commands, PATH and shell configuration are preserved.
+    Session 3 must offer enable on first launch and status/repair in Settings.
+  - Desktop CLI, MCP and dashboard compositions now generate MCP configurations
+    using the absolute stable launcher with `--mcp` when registration is healthy.
+    Earlier absolute-app configurations require regeneration after enable or
+    relocation; moving HQ state or removing registration also requires it.
+  - Updated `README.md` and `docs/v1-contract.md`; added focused contracts in
+    `test/command-registration.test.mjs` and compiled acceptance in
+    `scripts/command-registration-acceptance.mjs`, invoked by the existing
+    cross-platform `scripts/desktop-smoke.mjs`. The latter now performs the real
+    MCP protocol handshake through the registered launcher.
+  - Validation passed: `bun run check` (**1,285 passed, two skipped, zero failed**),
+    `bun run desktop:check`, `bun run desktop:build`,
+    `node scripts/desktop-smoke.mjs`, `bun run pack:inspect`, and
+    `bun run package:acceptance`. Compiled smoke covered special-character
+    paths/arguments, piped input, JSON offline doctor, hosting/site help, nonzero
+    exits, repeat registration, update-in-place, missing app, relocation/repair,
+    and headless MCP (31 tools), with external runtimes absent from PATH and
+    isolated caches/homes. Contract tests also covered ownership, removal,
+    concurrent registration, multiple explicitly selected copies and PATH conflicts.
+  - Remaining platform validation: macOS/Windows CI has the tests wired through
+    existing desktop jobs, but was not run from this Linux session. The macOS
+    discovery contract is platform-skipped locally. Finder/Gatekeeper relocation,
+    real Spotlight indexing, signed helper authorization via the installed
+    launcher, and Windows in-use launcher replacement need native confirmation.
+    The smoke test's temporary macOS bundle checks metadata, not signed Finder
+    installation. Session 3 owns UI wiring and PATH/MCP regeneration guidance;
+    session 1's upstream site-guidance blocker remains unchanged.
 - **Session 3:** Not started.
 - **Session 4:** Not started.

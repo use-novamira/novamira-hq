@@ -53,6 +53,14 @@ export function appAcknowledgementPath(
   return join(paths.stateDir, "app-acknowledgement.json");
 }
 
+/** Stable native terminal launcher and its ownership record. */
+export function commandRegistrationPaths(
+  paths: Pick<PlatformPaths, "stateDir">,
+) {
+  const directory = join(paths.stateDir, "command");
+  return { directory, record: join(directory, "registration.json") };
+}
+
 export function proLicenseMetadataPath(
   paths: Pick<PlatformPaths, "stateDir">,
 ): string {

@@ -1,5 +1,29 @@
 # Novamira HQ v1 Contract
 
+## Desktop terminal registration
+
+Compiled desktop applications expose `--command-registration
+status|enable|repair|remove`. Registration creates an owned native `novamira-hq`
+launcher (`.exe` on Windows) and a versioned ownership record in the shared HQ
+state directory's `command` subdirectory. It forwards to the installed app's
+`--cli` role, preserving arguments, streams and exit status, or to `--mcp` when
+that is the launcher's first argument. It never opens a desktop window.
+
+Enable/repair preserve foreign or edited command artifacts. Opening a moved
+desktop app refreshes an existing registration; in-place updates retain command
+access. macOS checks the recorded bundle, standard application directories and
+bundle-identifier discovery, rejecting ambiguous matches. Windows/Linux portable
+relocation requires opening the moved app or explicitly repairing it. Missing
+apps fail with repair instructions, without PATH fallback. The signed app
+remains the credential-helper caller. Status reports PATH membership and detected
+command shadowing; registration does not edit user PATH or shell configuration.
+
+Healthy desktop registrations supply the absolute stable launcher and `--mcp`
+to newly generated MCP configurations. Configurations generated before enable,
+or before moving HQ's state directory, require regeneration. See
+[terminal command registration](terminal-command-registration.md) for platform
+locations, ownership, repair, and onboarding integration requirements.
+
 ## Hosting inspection and cache tools
 
 `GET /hosting-tools?profile=…&site=…&env=…` is a read-only page under Sites,

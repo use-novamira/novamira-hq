@@ -342,6 +342,30 @@ install -Dm644 ai.novamira.hq.desktop.desktop \
 That entry is separate from the one `install.sh` writes: this one opens the
 native window, and the installer's opens the dashboard in a browser.
 
+### Desktop-provided terminal command
+
+The compiled app can register its own headless `novamira-hq` launcher:
+
+```sh
+# Linux example; on Windows use the installed .exe path.
+~/.local/bin/novamira-hq-desktop --command-registration enable
+# macOS:
+"/Applications/Novamira HQ.app/Contents/MacOS/novamira-hq-desktop" --command-registration enable
+```
+
+The JSON result reports the stable launcher path and the directory to add to
+your user PATH. Restart terminals and agents after changing PATH. Existing
+commands and shell configuration are preserved; `status` reports detected PATH
+conflicts. The launcher runs without a desktop window or external runtime and
+supports `novamira-hq site-cli ...` and `novamira-hq --mcp`.
+
+Use the same app role with `status`, `repair`, or `remove` to manage registration.
+Opening a relocated app refreshes an existing registration. Newly generated
+desktop MCP configurations use the stable launcher when enabled; regenerate
+older absolute-app configurations after enabling it. See
+[terminal command registration](docs/terminal-command-registration.md) for
+platform behavior and ownership rules.
+
 ## Provision a site
 
 One command installs the Novamira plugin on an environment, activates it, turns

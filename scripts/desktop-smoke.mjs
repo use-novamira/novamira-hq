@@ -31,6 +31,7 @@ import { clearTimeout, setTimeout } from "node:timers";
 import { fileURLToPath, URL } from "node:url";
 import { defaultFileSecurity } from "../dist/config/file-security.js";
 import { verifySiteCli } from "./site-cli-acceptance.mjs";
+import { verifyCommandRegistration } from "./command-registration-acceptance.mjs";
 import { readFile } from "node:fs/promises";
 
 const STARTUP_TIMEOUT_MS = 90_000;
@@ -60,6 +61,17 @@ try {
   // HQ deliberately rejects an existing config root with inherited access.
   // Secure our own throwaway root; never weaken the application's checks.
   await defaultFileSecurity().secureDirectory(home);
+  const launcher = await verifyCommandRegistration(resolve(executable), home, {
+    ...env,
+    NOVAMIRA_HQ_HOME: home,
+    NOVAMIRA_HOME: join(home, "site"),
+    PATH: systemPath,
+    DENO_DIR: join(home, "command-cache"),
+    NOVAMIRA_HQ_UPDATE_CHECK: "0",
+  });
+  stdout.write(
+    "desktop-smoke: native command registration, forwarding, update and relocation passed\n",
+  );
   const spawned = spawnSync(
     fileURLToPath(
       new URL(
@@ -160,7 +172,7 @@ try {
     "the dashboard server did not stop when its stdin closed",
   );
   stdout.write(`desktop-smoke: stopped with ${describeExit(code)}\n`);
-  mcpChild = spawn(resolve(executable), ["--mcp"], {
+  mcpChild = spawn(launcher, ["--mcp"], {
     stdio: ["pipe", "pipe", "inherit"],
     env: {
       ...env,

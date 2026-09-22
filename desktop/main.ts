@@ -36,6 +36,12 @@ import {
 } from "./runtime.ts";
 import { installMacMenus } from "./macos-menu.ts";
 import process from "node:process";
+import {
+  commandRegistration,
+  isCommandLauncher,
+  launchCommand,
+  mcpLaunch,
+} from "./command-registration.ts";
 
 const SERVE_FLAG = "--serve";
 const WINDOW_TITLE = "Novamira HQ";
@@ -54,7 +60,23 @@ function siteCliLaunch() {
   };
 }
 
-if (Deno.args[0] === "--skill-registrar") {
+if (isCommandLauncher) {
+  Deno.exit(await launchCommand());
+} else if (Deno.args[0] === "--command-registration") {
+  try {
+    const registration = await commandRegistration();
+    const action = Deno.args[1] ?? "status";
+    if (!["status", "enable", "repair", "remove"].includes(action)) {
+      throw new Error("Expected status, enable, repair or remove.");
+    }
+    const result = await registration
+      [action as "status" | "enable" | "repair" | "remove"]();
+    console.log(JSON.stringify(result));
+  } catch (error) {
+    console.error(String(error));
+    Deno.exit(1);
+  }
+} else if (Deno.args[0] === "--skill-registrar") {
   const { registrar } = await import("./registrar.ts");
   await registrar(Deno.args.slice(1));
 } else if (Deno.args[0] === "--site-cli") {
@@ -84,7 +106,10 @@ if (Deno.args[0] === "--skill-registrar") {
   await mcpMain(Deno.args.slice(1), undefined, undefined, {
     siteCliLaunch: siteCliLaunch(),
     distribution: "desktop",
-    mcpLaunch: { command: Deno.execPath(), args: [...serverArgs(), "--mcp"] },
+    mcpLaunch: await mcpLaunch({
+      command: Deno.execPath(),
+      args: [...serverArgs(), "--mcp"],
+    }),
   });
 } else if (Deno.args[0] === "--cli") {
   // Signed terminal entry point: same commands and credential backend as the
@@ -96,7 +121,10 @@ if (Deno.args[0] === "--skill-registrar") {
   process.exitCode = await main(Deno.args.slice(1), undefined, undefined, {
     distribution: "desktop",
     siteCliLaunch: siteCliLaunch(),
-    mcpLaunch: { command: Deno.execPath(), args: [...serverArgs(), "--mcp"] },
+    mcpLaunch: await mcpLaunch({
+      command: Deno.execPath(),
+      args: [...serverArgs(), "--mcp"],
+    }),
   });
 } else if (Deno.args[0] === SERVE_FLAG) {
   await serve();
@@ -122,7 +150,10 @@ async function serve(): Promise<void> {
     {
       distribution: "desktop",
       siteCliLaunch: siteCliLaunch(),
-      mcpLaunch: { command: Deno.execPath(), args: [...serverArgs(), "--mcp"] },
+      mcpLaunch: await mcpLaunch({
+        command: Deno.execPath(),
+        args: [...serverArgs(), "--mcp"],
+      }),
     },
   );
   Deno.exit(code);
@@ -176,6 +207,13 @@ function stopServer(): void {
 
 /** The window role: spawn the server, wait for its URL, show it, reap it. */
 async function window(): Promise<number> {
+  // A moved copy explicitly opened by the user becomes the selected app.
+  // Registration conflicts must never prevent the dashboard from starting.
+  try {
+    await (await commandRegistration()).refresh();
+  } catch (error) {
+    console.error(`Command access needs repair: ${String(error)}`);
+  }
   const server = new Deno.Command(Deno.execPath(), {
     args: [...serverArgs(), SERVE_FLAG],
     // Piped and never written to: the pipe is the server's lifeline. See
