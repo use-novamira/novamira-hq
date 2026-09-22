@@ -57,6 +57,17 @@ try {
         join(temporary, "Novamira HQ.app"),
         join(installed, "Novamira HQ.app"),
       ]);
+      run("codesign", [
+        "--verify",
+        "--deep",
+        "--strict",
+        "--verbose=2",
+        join(installed, "Novamira HQ.app"),
+      ]);
+      run(
+        join(installed, "Novamira HQ.app/Contents/MacOS/novamira-hq-desktop"),
+        ["--cli", "--version"],
+      );
       run(process.execPath, [
         "scripts/desktop-smoke.mjs",
         join(installed, "Novamira HQ.app/Contents/MacOS/novamira-hq-desktop"),

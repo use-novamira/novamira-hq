@@ -227,7 +227,7 @@ try {
 } catch (error) {
   child?.kill("SIGKILL");
   mcpChild?.kill("SIGKILL");
-  stderr.write(`desktop-smoke: ${error.message}\n`);
+  stderr.write(`desktop-smoke: ${error.stack ?? error.message}\n`);
   exit(1);
 } finally {
   await rm(home, { recursive: true, force: true });
