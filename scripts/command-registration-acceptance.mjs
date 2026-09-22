@@ -32,8 +32,21 @@ export async function verifyCommandRegistration(executable, home, environment) {
       timeout: 60000,
       input,
     });
+  // A binary killed by the kernel (a code-signature or bundle rejection) exits
+  // with `status: null` and writes nothing, which a bare status assertion
+  // reports as an opaque "null !== 0". Name the signal and any captured output
+  // so a release failure says which rejection happened.
+  const describe = (result) =>
+    [
+      result.error ? `spawn error: ${result.error.message}` : "",
+      `status=${result.status} signal=${result.signal}`,
+      `stdout=${JSON.stringify((result.stdout ?? "").slice(0, 2000))}`,
+      `stderr=${JSON.stringify((result.stderr ?? "").slice(0, 2000))}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
   const registered = run(app, ["--command-registration", "enable"]);
-  assert.equal(registered.status, 0, registered.stderr);
+  assert.equal(registered.status, 0, describe(registered));
   const { launcher } = JSON.parse(registered.stdout);
   for (const args of [
     ["--help"],
@@ -44,7 +57,7 @@ export async function verifyCommandRegistration(executable, home, environment) {
   ]) {
     const direct = run(app, ["--cli", ...args], "piped input\n");
     const forwarded = run(launcher, args, "piped input\n");
-    assert.equal(forwarded.status, direct.status, forwarded.stderr);
+    assert.equal(forwarded.status, direct.status, describe(forwarded));
     if (args[0] === "doctor")
       assert.equal(JSON.parse(forwarded.stdout).ok, true);
     else {
@@ -52,19 +65,23 @@ export async function verifyCommandRegistration(executable, home, environment) {
       assert.equal(forwarded.stderr, direct.stderr);
     }
   }
-  assert.equal(run(app, ["--command-registration", "enable"]).status, 0);
+  const reenabled = run(app, ["--command-registration", "enable"]);
+  assert.equal(reenabled.status, 0, describe(reenabled));
   // An in-place app update must keep command access.
   await copyFile(executable, app);
-  assert.equal(run(launcher, ["--help"]).status, 0);
+  const updated = run(launcher, ["--help"]);
+  assert.equal(updated.status, 0, describe(updated));
   const movedBundle = `${bundle} moved`;
   await rename(bundle, movedBundle);
   const moved = app.replace(bundle, movedBundle);
   if (process.platform !== "darwin") {
     const missing = run(launcher, ["--help"]);
-    assert.equal(missing.status, 1);
+    assert.equal(missing.status, 1, describe(missing));
     assert.match(missing.stderr, /missing/);
   }
-  assert.equal(run(moved, ["--command-registration", "repair"]).status, 0);
-  assert.equal(run(launcher, ["--help"]).status, 0);
+  const repaired = run(moved, ["--command-registration", "repair"]);
+  assert.equal(repaired.status, 0, describe(repaired));
+  const resolved = run(launcher, ["--help"]);
+  assert.equal(resolved.status, 0, describe(resolved));
   return { launcher, executable: moved };
 }

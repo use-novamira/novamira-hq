@@ -72,6 +72,11 @@ jobs:
         run: node --test test/macos-keychain-contract.test.mjs
       - name: Smoke-test the signed server role
         run: node scripts/desktop-smoke.mjs "dist-desktop/$ASSET"
+      # The release job runs this against the DMG as a clean installation. It is
+      # repeated here so a bundle that only fails once installed is caught before
+      # a tag instead of after one.
+      - name: Accept the signed DMG as a clean installation
+        run: node scripts/desktop-artifact-acceptance.mjs "dist-desktop/$ASSET.dmg"
       - name: Report what Apple and Gatekeeper say
         run: |
           codesign --display --verbose=4 "dist-desktop/$ASSET"
