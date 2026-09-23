@@ -7,7 +7,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createAppAcknowledgement } from "../dist/config/app-acknowledgement.js";
-import { defaultFileSecurity } from "../dist/config/file-security.js";
+import {
+  defaultFileSecurity,
+  WindowsFileSecurity,
+} from "../dist/config/file-security.js";
 import { platformPaths, appAcknowledgementPath } from "../dist/config/paths.js";
 import { renderAcknowledgement } from "../dist/web/views/acknowledgement.js";
 import { renderHtml } from "../dist/web/html.js";
@@ -29,6 +32,50 @@ test("app acknowledgement is lazy, persistent and private", async (t) => {
       (await stat(appAcknowledgementPath(paths))).mode & 0o777,
       0o600,
     );
+});
+
+test("Windows private storage retains its owner and removes inherited and explicit access", async () => {
+  const calls = [];
+  const security = new WindowsFileSecurity({
+    async run(command, args) {
+      calls.push({ command, script: args.at(-1) });
+      return 0;
+    },
+  });
+  await security.secureDirectory(
+    "C:\\Users\\Example\\AppData\\Local\\Novamira HQ\\State",
+  );
+  await security.secureFile(
+    "C:\\Users\\Example\\AppData\\Local\\Novamira HQ\\State\\record.json",
+  );
+  for (const { command, script } of calls) {
+    assert.equal(command, "powershell.exe");
+    assert.match(script, /GetOwner\(/);
+    assert.match(script, /owner\.Value -ne \$sid\.Value/);
+    assert.doesNotMatch(script, /SetOwner\(/);
+    assert.match(script, /SetAccessRuleProtection\(\$true,\$false\)/);
+    assert.match(script, /RemoveAccessRuleSpecific\(/);
+    assert.match(script, /Set-Acl -LiteralPath \$path/);
+    assert.match(script, /\$actual=Get-Acl -LiteralPath \$path\};\$rules=/);
+  }
+});
+
+test("failed onboarding storage writes have a useful configuration error", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "hq-app-ack-fail-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const paths = platformPaths({ NOVAMIRA_HQ_HOME: root });
+  const service = createAppAcknowledgement(paths, {
+    async secureDirectory() {
+      throw new Error("simulated ACL failure");
+    },
+    async secureFile() {},
+  });
+  await assert.rejects(service.accept(), (error) => {
+    assert.equal(error.code, "config_error");
+    assert.match(error.message, /state directory/);
+    assert.equal(error.cause?.message, "simulated ACL failure");
+    return true;
+  });
 });
 
 test("consent hides navigation and fills the viewport until the page is replaced", async () => {

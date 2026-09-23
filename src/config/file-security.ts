@@ -119,8 +119,12 @@ export class WindowsFileSecurity implements VerifiedFileSecurity {
   ): string[] {
     const body = [
       "$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User",
-      "if($action -eq 'apply'){$acl=if($directory){[System.Security.AccessControl.DirectorySecurity]::new()}else{[System.Security.AccessControl.FileSecurity]::new()};$acl.SetOwner($sid);$acl.SetAccessRuleProtection($true,$false);$inherit=if($directory){[System.Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit'}else{[System.Security.AccessControl.InheritanceFlags]::None};$rule=[System.Security.AccessControl.FileSystemAccessRule]::new($sid,[System.Security.AccessControl.FileSystemRights]::FullControl,$inherit,[System.Security.AccessControl.PropagationFlags]::None,[System.Security.AccessControl.AccessControlType]::Allow);$acl.AddAccessRule($rule);Set-Acl -LiteralPath $path -AclObject $acl}",
       "$actual=Get-Acl -LiteralPath $path",
+      "$owner=$actual.GetOwner([System.Security.Principal.SecurityIdentifier])",
+      // A standard user may change the DACL of a file they own, but resetting
+      // ownership via Set-Acl can require an elevated privilege. Check the
+      // existing owner and retain it when replacing the access rules.
+      "if($action -eq 'apply'){if($null -eq $owner -or $owner.Value -ne $sid.Value){throw 'File is not owned by the current user'};$actual.SetAccessRuleProtection($true,$false);$existing=@($actual.GetAccessRules($true,$false,[System.Security.Principal.SecurityIdentifier]));foreach($entry in $existing){$actual.RemoveAccessRuleSpecific($entry)};$inherit=if($directory){[System.Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit'}else{[System.Security.AccessControl.InheritanceFlags]::None};$rule=[System.Security.AccessControl.FileSystemAccessRule]::new($sid,[System.Security.AccessControl.FileSystemRights]::FullControl,$inherit,[System.Security.AccessControl.PropagationFlags]::None,[System.Security.AccessControl.AccessControlType]::Allow);$actual.AddAccessRule($rule);Set-Acl -LiteralPath $path -AclObject $actual;$actual=Get-Acl -LiteralPath $path}",
       "$rules=@($actual.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]))",
       // `$actual.Owner` is the translated NTAccount form (`COMPUTER\user`),
       // which never equals an SID string. Compare SID to SID.

@@ -56,11 +56,19 @@ export function createAppAcknowledgement(
       }
     },
     async accept() {
-      await atomicWriteFile(
-        file,
-        JSON.stringify({ version: 1, acceptedAt: new Date().toISOString() }),
-        security,
-      );
+      try {
+        await atomicWriteFile(
+          file,
+          JSON.stringify({ version: 1, acceptedAt: new Date().toISOString() }),
+          security,
+        );
+      } catch (cause) {
+        throw new CliError(
+          "config_error",
+          "Could not save the onboarding acknowledgement. Check that Novamira HQ can write to its state directory.",
+          { cause },
+        );
+      }
     },
   };
 }

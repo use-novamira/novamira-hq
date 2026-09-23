@@ -7,6 +7,9 @@
 - After connecting a hosting account, HQ now confirms verified access and links
   to Sites without showing an actions table that was not verified for that
   account.
+- Windows onboarding can save its acknowledgement without running Novamira HQ
+  as an administrator. Private storage retains the current user's ownership
+  while its access rules are secured; write failures now show a useful message.
 
 ## 1.0.0-beta1 - 2026-09-22
 
