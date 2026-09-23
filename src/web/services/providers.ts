@@ -87,10 +87,7 @@ export interface ProviderService {
   upsert(input: ProviderFormInput): Promise<ProviderMutation>;
   remove(name: string): Promise<ProviderMutation>;
   /** A **live provider API call**. Tests inject a registry or a mock origin. */
-  validate(
-    name: string,
-    includeCapabilities?: boolean,
-  ): Promise<ProviderValidation & { readonly capabilities?: unknown }>;
+  validate(name: string): Promise<ProviderValidation>;
   /**
    * The provider's capability document with HQ-excluded operations omitted.
    *
@@ -285,22 +282,9 @@ export function createProviderService(
   return {
     upsert,
     remove,
-    validate: async (name, includeCapabilities = false) => {
+    validate: async (name) => {
       const client = await options.hosting.clientFromProfile(name);
-      const validation = await client.validate();
-      if (!includeCapabilities) return validation;
-      // Reuse the validated client: describing the account must not resolve its
-      // credential a second time. A missing catalog does not undo validation.
-      try {
-        return {
-          ...validation,
-          capabilities: applyHqCapabilityPolicy(
-            await client.read({ kind: "capabilities" }),
-          ),
-        };
-      } catch {
-        return validation;
-      }
+      return client.validate();
     },
     capabilities: async (name) => {
       const client = await options.hosting.clientFromProfile(name);

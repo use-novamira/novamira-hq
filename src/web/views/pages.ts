@@ -42,7 +42,7 @@ import { CliError } from "../../errors.js";
 import { renderHostingTools, type HostingToolsView } from "./hosting-tools.js";
 import { renderRestore, type RestoreView } from "./restore.js";
 import { renderAboutPage } from "./about.js";
-import type { ProviderActionsView } from "./provider-actions.js";
+import type { ProviderReadyView } from "./provider-ready.js";
 import type { McpConfiguration } from "../../mcp-connection.js";
 import {
   renderMcpPage,
@@ -85,7 +85,7 @@ export interface PageModel {
   readonly desktopUpdates?: boolean;
   readonly hostingTools?: HostingToolsView;
   readonly restore?: RestoreView;
-  readonly providerActions?: ProviderActionsView;
+  readonly providerReady?: ProviderReadyView;
   readonly providerRemoval?: ProviderRemovalView;
   readonly settingsTab?: SettingsTab;
   readonly sitesSnapshot?: SitesResult;
@@ -151,7 +151,7 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
       if (model.providerRemoval)
         return renderProviderRemoval(model.providerRemoval);
       return renderProvidersPage({
-        ...(model.providerActions ? { actions: model.providerActions } : {}),
+        ...(model.providerReady ? { ready: model.providerReady } : {}),
         view: model.view,
         notice: model.notice,
         onboarding: model.providerOnboarding ?? false,

@@ -87,9 +87,9 @@ import { connCellId } from "../patches.js";
 import { connCheckingSignal, dynamicSignalPath } from "../signals.js";
 import { renderNotice } from "./layout.js";
 import {
-  renderProviderActionsPage,
-  type ProviderActionsView,
-} from "./provider-actions.js";
+  renderProviderReadyPage,
+  type ProviderReadyView,
+} from "./provider-ready.js";
 import {
   providerLabelFor,
   type ConfigView,
@@ -317,7 +317,7 @@ function providerAction(path: string, profile: string): Expr {
 /* -------------------------------------------------------------------------- */
 
 export interface ProvidersPageModel {
-  readonly actions?: ProviderActionsView;
+  readonly ready?: ProviderReadyView;
   readonly view: ConfigView;
   readonly notice: DashboardNotice;
   /** True only for `/` when neither hosting nor the site CLI has any sites. */
@@ -327,8 +327,7 @@ export interface ProvidersPageModel {
 }
 
 export function renderProvidersPage(model: ProvidersPageModel): Html {
-  if (model.actions)
-    return renderProviderActionsPage(model.actions, model.notice);
+  if (model.ready) return renderProviderReadyPage(model.ready, model.notice);
   if (model.onboarding) {
     return renderOnboarding(model);
   }
@@ -492,7 +491,7 @@ export function renderProviderTable(
 export function renderProviderRow(profile: HostingProfileView): Html {
   return html`<tr><td><strong>${profile.name}</strong></td><td>${providerLabelFor(
     profile.provider,
-  )}</td><td class="actions"><details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", "More actions for " + profile.name)}>⋯</summary><div class="profile-menu-popover"><a class="button tiny quiet profile-menu-action"${hrefAttr(url("/hosting-accounts", { actions: profile.name }))}>Available actions</a><a class="button tiny quiet profile-menu-action"${hrefAttr(url("/hosting-activity", { profile: profile.name }))}>Activity</a><button class="button tiny quiet profile-menu-action" type="button"${ds.on(
+  )}</td><td class="actions"><details class="profile-menu"><summary class="button tiny quiet"${attr("aria-label", "More actions for " + profile.name)}>⋯</summary><div class="profile-menu-popover"><a class="button tiny quiet profile-menu-action"${hrefAttr(url("/hosting-activity", { profile: profile.name }))}>Activity</a><button class="button tiny quiet profile-menu-action" type="button"${ds.on(
     "click",
     editProviderForm(profile),
   )}>Edit</button>${renderCheckConnectionButton(

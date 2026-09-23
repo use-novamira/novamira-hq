@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- After connecting a hosting account, HQ now confirms verified access and links
+  to Sites without showing an actions table that was not verified for that
+  account.
+
 ## 1.0.0-beta1 - 2026-09-22
 
 First public beta for 1.0.

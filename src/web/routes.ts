@@ -589,28 +589,6 @@ function pageHandler(context: RouteContext, page: DashboardPage): RouteHandler {
         },
       });
     }
-    const actionProfile = request.query.get("actions");
-    if (renderedPage === "providers" && actionProfile !== null) {
-      const profile = view.profiles.find(
-        (profile) => profile.name === actionProfile,
-      );
-      if (!profile)
-        throw new CliError("not_found", "Hosting account not found.");
-      let capabilities: unknown;
-      try {
-        capabilities = await context.providers.capabilities(profile.name);
-      } catch {
-        // Do not expose credential references or adapter diagnostics here.
-        capabilities = undefined;
-      }
-      Object.assign(extras, {
-        providerActions: {
-          profile: profile.name,
-          provider: profile.provider,
-          capabilities,
-        },
-      });
-    }
     // The extras go first so the three fields every page must have cannot be
     // overwritten by one, and so the notice reaching the toast and the notice
     // reaching the body are one value.

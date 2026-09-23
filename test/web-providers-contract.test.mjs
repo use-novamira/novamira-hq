@@ -423,14 +423,10 @@ test("3: the table has Go's four columns and no invented ones", async () => {
   assert.ok(markup.includes(">Verify access</button>"));
   assert.ok(!markup.includes(">Validate</button>"));
   assert.ok(markup.includes("1 hosting account"));
-  assert.ok(
-    markup.includes(
-      'href="/hosting-accounts?actions=prod">Available actions</a>',
-    ),
-  );
+  assert.ok(!markup.includes("Available actions"));
 });
 
-test("account actions page reads capabilities only for the selected account", async () => {
+test("hosting accounts page does not read a static capability catalog", async () => {
   const calls = [];
   const { server } = await fixture({
     config: PROFILE_CONFIG,
@@ -439,35 +435,10 @@ test("account actions page reads capabilities only for the selected account", as
         calls.push(request);
         return [{ name: "sites.list", supported: true }];
       },
-      validateError: new Error("must not validate"),
     },
   });
   await page(server, "/hosting-accounts");
-  assert.equal(calls.length, 0);
-  const markup = await page(server, "/hosting-accounts?actions=prod");
-  assert.deepEqual(calls, [{ kind: "capabilities" }]);
-  assert.ok(markup.includes("List sites"));
-  assert.ok(markup.includes("prod · Kinsta"));
-  assert.ok(!markup.includes("env:KINSTA_API_KEY"));
-  const missing = await server.dispatch(
-    request("/hosting-accounts?actions=missing"),
-  );
-  assert.equal(missing.status, 404);
-  assert.equal(calls.length, 1);
-});
-
-test("account actions loading failure does not leak adapter errors", async () => {
-  const { server } = await fixture({
-    config: PROFILE_CONFIG,
-    client: {
-      read: async () => {
-        throw new Error("private-error-detail");
-      },
-    },
-  });
-  const markup = await page(server, "/hosting-accounts?actions=prod");
-  assert.ok(markup.includes("Available actions could not be loaded"));
-  assert.ok(!markup.includes("private-error-detail"));
+  assert.deepEqual(calls, []);
 });
 
 test("4: the table hides itself while the form is open, on both paints", async () => {
@@ -569,7 +540,7 @@ test("6: a posted credential reaches the store and nothing else, ever", async ()
   assert.ok(!(await page(server, "/hosting-accounts")).includes(SECRET));
 });
 
-test("a verified new account shows app and AI actions using the same validated client", async () => {
+test("a verified new account shows only the live connection result", async () => {
   let clients = 0;
   const reads = [];
   const { server } = await fixture({
@@ -592,19 +563,18 @@ test("a verified new account shows app and AI actions using the same validated c
   });
   const markup = recorder.find("main").markup;
   assert.ok(markup.includes("Hosting account ready"));
-  assert.ok(markup.includes("In the app"));
-  assert.ok(markup.includes("With your AI"));
-  assert.ok(markup.includes("List sites"));
+  assert.ok(markup.includes("verified access to this hosting account"));
+  assert.ok(!markup.includes("What you can do"));
+  assert.ok(!markup.includes("install Novamira"));
   assert.ok(markup.includes('href="/sites">View sites'));
-  assert.ok(!markup.includes('href="/configure-ai">Configure your AI'));
-  assert.ok(markup.includes("does not authorize access to WordPress"));
-  assert.ok(!markup.includes("sites.delete"));
+  assert.ok(!markup.includes("Connect your sites separately"));
+  assert.ok(!markup.includes("Available actions"));
   assert.ok(!recorder.body.includes(SECRET));
   assert.equal(clients, 1);
-  assert.deepEqual(reads, [{ kind: "capabilities" }]);
+  assert.deepEqual(reads, []);
 });
 
-test("capability loading failure preserves successful account verification", async () => {
+test("account confirmation does not depend on the capability catalog", async () => {
   const { server, store } = await fixture({
     client: {
       read: async () => {
@@ -621,7 +591,7 @@ test("capability loading failure preserves successful account verification", asy
   const markup = recorder.find("main").markup;
   assert.ok(markup.includes("Hosting account ready"));
   assert.ok(!markup.includes("account saved and access verified"));
-  assert.ok(markup.includes("Available actions could not be loaded"));
+  assert.ok(markup.includes("verified access to this hosting account"));
   assert.ok(!recorder.body.includes(SECRET));
 });
 

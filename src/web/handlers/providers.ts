@@ -52,7 +52,7 @@ import {
 import { parseProviderForm } from "../signals-input.js";
 import type { SseStream } from "../sse.js";
 import type { DashboardNotice } from "../views/types.js";
-import type { ProviderActionsView } from "../views/provider-actions.js";
+import type { ProviderReadyView } from "../views/provider-ready.js";
 
 /** The reset every provider mutation sends before the new markup. */
 function resetFormSignals(): Readonly<Record<string, JsonValue>> {
@@ -89,14 +89,14 @@ async function patchProvidersPage(
   stream: SseStream,
   notice: DashboardNotice,
   signals?: Readonly<Record<string, JsonValue>>,
-  actions?: ProviderActionsView,
+  ready?: ProviderReadyView,
 ): Promise<void> {
   const view = await context.loadConfigView();
   patchPage(stream, {
     page: "providers",
     notice,
     model: {
-      ...(actions ? { providerActions: actions } : {}),
+      ...(ready ? { providerReady: ready } : {}),
       view,
       notice,
       // The re-rendered form is closed: the mutation succeeded, or it failed
@@ -190,23 +190,18 @@ export function createProviderSaveHandler(context: RouteContext): RouteHandler {
         const saved = await context.providers.upsert(input);
         context.providers.clearChecked(saved.name);
         let notice: DashboardNotice;
-        let actions: ProviderActionsView | undefined;
+        let ready: ProviderReadyView | undefined;
         try {
-          const validation = await context.providers.validate(
-            saved.name,
-            !input.force,
-          );
+          await context.providers.validate(saved.name);
           context.providers.recordChecked(saved.name, context.now());
           notice = mutationNotice(
             `${saved.name}: account saved and access verified.`,
             saved.warning,
           );
           if (!input.force) {
-            actions = {
+            ready = {
               profile: saved.name,
               provider: input.provider,
-              added: true,
-              capabilities: validation.capabilities,
             };
           }
         } catch {
@@ -223,7 +218,7 @@ export function createProviderSaveHandler(context: RouteContext): RouteHandler {
           stream,
           notice,
           resetFormSignals(),
-          actions,
+          ready,
         );
       } catch (error) {
         const cliError = asCliError(error);
