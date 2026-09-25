@@ -310,7 +310,9 @@ export function createSetupJobService(
         signal: AbortSignal.any([signal, controller.signal]),
       });
       if (
-        (client.provider === "hostinger" || client.provider === "cloudways") &&
+        (client.provider === "hostinger" ||
+          client.provider === "cloudways" ||
+          client.provider === "plesk") &&
         existing?.active &&
         siteUrl
       ) {

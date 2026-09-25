@@ -67,6 +67,7 @@ import {
   jsString,
   lookupOr,
   not,
+  or,
   post,
   seq,
   set,
@@ -102,7 +103,8 @@ import {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Go's `providerMetaExpression` table (`views.go:326-381`), verbatim — eight
+ * Go's `providerMetaExpression` table (`views.go:326-381`), extended for Plesk.
+ * The original eight
  * providers by four fields.
  *
  * It is serialized into four `data-text`/`data-attr` expressions and evaluated
@@ -166,6 +168,13 @@ const PROVIDER_FORM_META: JsonValue = {
     companyHelp: "Cloudways Access Tokens do not require an account email.",
     credentialHelp:
       "Paste a Cloudways Access Token. Find it under Profile → API Integration → Create Access Token.",
+  },
+  plesk: {
+    companyLabel: "Plesk account identifier",
+    companyPlaceholder: "Not required",
+    companyHelp: "Plesk uses the administrator API key, not an account ID.",
+    credentialHelp:
+      "Paste a Plesk administrator API key. The panel URL is also required.",
   },
 };
 
@@ -408,7 +417,7 @@ export function renderProviderForm(open: boolean): Html {
   )}${attr(
     "tabindex",
     "-1",
-  )}>Choose your hosting provider</h3><p>The provider determines which credentials and account details are required.</p></div><div class="provider-choice-grid">${providerKinds.map(
+  )}>Choose your hosting service or control panel</h3><p>Your choice determines which credentials and account details are required.</p></div><div class="provider-choice-grid">${providerKinds.map(
     (kind) =>
       html`<button${idAttr(
         `provider-${kind}`,
@@ -440,7 +449,10 @@ export function renderProviderForm(open: boolean): Html {
     meta("credentialHelp"),
   )}></small><small class="field-help">Your hosting credentials are stored only on this computer.</small></label><label${ds.classes(
     {
-      hidden: equal(signal("providerForm.provider"), jsString("cloudways")),
+      hidden: or(
+        equal(signal("providerForm.provider"), jsString("cloudways")),
+        equal(signal("providerForm.provider"), jsString("plesk")),
+      ),
     },
   )}><span${idAttr("company-id-label")}${ds.text(
     meta("companyLabel"),
@@ -450,7 +462,7 @@ export function renderProviderForm(open: boolean): Html {
     placeholder: meta("companyPlaceholder"),
   })}><small class="field-help"${ds.text(
     meta("companyHelp"),
-  )}></small></label></div><div class="button-row"><button class="button primary" type="submit"${ds.attrs({ disabled: signal(saving) })}><span${ds.classes({ hidden: signal(saving) })}>Save and connect</span><span class="loading-inline ds-toggle"${ds.classes({ open: signal(saving) })}>Connecting…</span></button><button class="button secondary" type="button"${ds.on(
+  )}></small></label><label${ds.classes({ hidden: not(equal(signal("providerForm.provider"), jsString("plesk"))) })}><span>Plesk panel URL</span><input type="url"${ds.bind("providerForm.apiBaseUrl")} placeholder="https://panel.example.com:8443"><small class="field-help">Enter the HTTPS panel URL. With WP Toolkit, Novamira HQ can set up Novamira and create or restore WordPress backups. Without it, Novamira HQ lists hosted domains.</small></label></div><div class="button-row"><button class="button primary" type="submit"${ds.attrs({ disabled: signal(saving) })}><span${ds.classes({ hidden: signal(saving) })}>Save and connect</span><span class="loading-inline ds-toggle"${ds.classes({ open: signal(saving) })}>Connecting…</span></button><button class="button secondary" type="button"${ds.on(
     "click",
     resetProviderForm(false),
   )}>Cancel</button></div></section></form>`;

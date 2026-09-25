@@ -47,6 +47,8 @@ const PLACEHOLDER = "registry-fake-credential-not-a-real-secret";
  * one before they will construct at all.
  */
 const IDENTITY = "registry-fake-identity";
+const absentExtensionsFetch = async () =>
+  new Response("[]", { headers: { "content-type": "application/json" } });
 
 async function isolatedStore() {
   const root = await mkdtemp(join(tmpdir(), "novamira-hq-registry-"));
@@ -63,12 +65,12 @@ async function isolatedStore() {
 test("the registry covers every provider kind exactly once", () => {
   const keys = Object.keys(PROVIDER_REGISTRY);
   assert.deepEqual([...keys].sort(), [...PROVIDER_KINDS].sort());
-  assert.equal(keys.length, 8);
+  assert.equal(keys.length, 9);
   assert.equal(new Set(keys).size, keys.length);
 
   // Distinct constructors: a copy-paste in the map would alias two providers.
   const factories = Object.values(PROVIDER_REGISTRY);
-  assert.equal(new Set(factories).size, 8);
+  assert.equal(new Set(factories).size, 9);
   for (const kind of PROVIDER_KINDS) {
     assert.equal(
       typeof PROVIDER_REGISTRY[kind],
@@ -78,7 +80,7 @@ test("the registry covers every provider kind exactly once", () => {
   }
 });
 
-test("registeredProviders reports all eight in taxonomy order", () => {
+test("registeredProviders reports all nine in taxonomy order", () => {
   assert.deepEqual(registeredProviders(PROVIDER_REGISTRY), [...PROVIDER_KINDS]);
 });
 
@@ -92,6 +94,7 @@ test("every registered factory builds a working client from a profile", async ()
       store: state.store,
       registry: PROVIDER_REGISTRY,
       env,
+      http: { fetch: absentExtensionsFetch },
     });
 
     for (const kind of PROVIDER_KINDS) {
@@ -101,6 +104,9 @@ test("every registered factory builds a working client from a profile", async ()
         // Doubles as the identity for the providers that need one, and keeps
         // construction from having to read the environment.
         companyId: IDENTITY,
+        ...(kind === "plesk"
+          ? { apiBaseUrl: "https://plesk.example.invalid:8443" }
+          : {}),
       });
       const client = await factory.clientFromProfile(kind);
       assert.equal(client.provider, kind);
@@ -119,8 +125,8 @@ test("every registered factory builds a working client from a profile", async ()
           `${kind}.${method} is missing`,
         );
       }
-      // Constructing must not have contacted the provider: the capability
-      // matrix is answered locally by every client.
+      // Construction is offline. Plesk's capability document then probes its
+      // extension inventory through the injected, offline HTTP seam.
       const capabilities = await client.read({ kind: "capabilities" });
       assert.ok(
         Array.isArray(capabilities) && capabilities.length > 0,
@@ -252,10 +258,22 @@ test("ENVIRONMENT_PUSH_PROVIDERS is exactly the clients advertising safe envs.pu
         provider: kind,
         credential: envCredential(defaultCredentialEnv(kind)),
         companyId: IDENTITY,
+        ...(kind === "plesk"
+          ? { apiBaseUrl: "https://plesk.example.invalid:8443" }
+          : {}),
       });
       const factory = createHostingClientFactory({
         store: state.store,
         registry: PROVIDER_REGISTRY,
+        http: {
+          fetch:
+            kind === "plesk"
+              ? async () =>
+                  new Response('[{"id":"wp-toolkit","active":true}]', {
+                    headers: { "content-type": "application/json" },
+                  })
+              : absentExtensionsFetch,
+        },
         env: Object.fromEntries(
           PROVIDER_KINDS.map((provider) => [
             defaultCredentialEnv(provider),
@@ -277,7 +295,7 @@ test("ENVIRONMENT_PUSH_PROVIDERS is exactly the clients advertising safe envs.pu
       `${kind}: the set and the advertised granular capability disagree`,
     );
   }
-  assert.deepEqual([...ENVIRONMENT_PUSH_PROVIDERS], ["kinsta"]);
+  assert.deepEqual([...ENVIRONMENT_PUSH_PROVIDERS], ["kinsta", "plesk"]);
 });
 
 test("NOVAMIRA_SETUP_PROVIDERS supports observable WP-CLI or bounded provider API setup", async () => {
@@ -293,6 +311,7 @@ test("NOVAMIRA_SETUP_PROVIDERS supports observable WP-CLI or bounded provider AP
     const eligible =
       kind === "hostinger" ||
       kind === "cloudways" ||
+      kind === "plesk" ||
       (supported && wpCliResultsObservable(client));
     assert.equal(
       NOVAMIRA_SETUP_PROVIDERS.has(kind),
@@ -305,6 +324,7 @@ test("NOVAMIRA_SETUP_PROVIDERS supports observable WP-CLI or bounded provider AP
     "hostinger",
     "instawp",
     "kinsta",
+    "plesk",
     "rocketnet",
   ]);
   // The labels are what a disabled "Setup Novamira" button names, so they must

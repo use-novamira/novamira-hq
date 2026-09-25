@@ -125,6 +125,7 @@ async function fixture(options = {}) {
     NOVAMIRA_HQ_HOME: home,
     KINSTA_API_KEY: "kinsta-fake",
     PANTHEON_MACHINE_TOKEN: "pantheon-fake",
+    PLESK_API_KEY: "plesk-fake",
   };
   const paths = platformPaths(environment, process.platform, home);
   const security = defaultFileSecurity();
@@ -175,6 +176,8 @@ async function fixture(options = {}) {
         ),
       pantheon: (context) =>
         client("pantheon", options.sitesByProfile?.[context.profileName] ?? []),
+      plesk: (context) =>
+        client("plesk", options.sitesByProfile?.[context.profileName] ?? []),
     },
     env: environment,
   });
@@ -644,6 +647,68 @@ test("4b: the form resolves a duplicate site id only within its requested profil
   const missing = await page(server, "/push/new?profile=gamma&site=shared");
   assert.ok(missing.includes("Open this from Sites"));
   assert.ok(!missing.includes("pushForm.sourceEnvId"));
+});
+
+test("Plesk offers cross-domain WordPress copy without calling the provider from push pages", async () => {
+  const { server, store, listCalls } = await fixture({
+    hostingProfiles: {
+      panel: {
+        provider: "plesk",
+        credential: { type: "env", name: "PLESK_API_KEY" },
+        apiBaseUrl: "https://panel.example.test:8443",
+      },
+    },
+    sitesByProfile: {
+      panel: [
+        {
+          id: "2",
+          name: "source.test",
+          displayName: "source.test",
+          status: "unknown",
+          environments: [env("wp:7", "https://source.test")],
+        },
+        {
+          id: "4",
+          name: "target.test",
+          displayName: "target.test",
+          status: "unknown",
+          environments: [env("wp:8", "https://target.test")],
+        },
+      ],
+    },
+  });
+  await warmCache(server);
+  const before = listCalls.length;
+  const choices = await page(server, "/push/new");
+  assert.ok(choices.includes("source.test"));
+  assert.ok(choices.includes("target.test"));
+  const form = await page(
+    server,
+    "/push/new?profile=panel&site=2&source=wp:7&target=wp:8",
+  );
+  assert.ok(form.includes('value="wp:8"'));
+  assert.ok(form.includes("https://target.test"));
+  assert.ok(!form.includes("Search and replace URLs"));
+  await sse(
+    server,
+    saveRequest({
+      name: "cross-domain",
+      hostingProfile: "panel",
+      siteId: "2",
+      siteLabel: "source.test",
+      sourceEnvId: "wp:7",
+      sourceEnvName: "",
+      targetEnvId: "wp:8",
+      targetEnvName: "",
+      pushDb: true,
+      pushFiles: false,
+      searchReplace: false,
+    }),
+  );
+  const saved = (await store.load()).pushes["cross-domain"];
+  assert.equal(saved.sourceEnvDomain, "https://source.test");
+  assert.equal(saved.targetEnvDomain, "https://target.test");
+  assert.equal(listCalls.length, before);
 });
 
 test("5: without two resolvable environments the page is guidance, not a form", async () => {

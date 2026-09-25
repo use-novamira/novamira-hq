@@ -21,7 +21,8 @@ export async function provisionProviderApi(
   request: NovamiraSetupRequest,
 ): Promise<NovamiraSetupResult> {
   const cloudways = dependencies.client.provider === "cloudways";
-  const label = cloudways ? "Cloudways" : "Hostinger";
+  const plesk = dependencies.client.provider === "plesk";
+  const label = cloudways ? "Cloudways" : plesk ? "Plesk" : "Hostinger";
   if (
     request.force ||
     request.activate === false ||
@@ -43,7 +44,9 @@ export async function provisionProviderApi(
     "info",
     cloudways
       ? "Installing and activating Novamira through Cloudways WP Manager. Existing installations are never overwritten. AI Abilities settings cannot be changed through this API; readiness will be checked afterwards."
-      : "Preparing Novamira through Hostinger: verified ZIP upload and temporary installer. Existing installations are never overwritten.",
+      : plesk
+        ? "Installing Novamira through Plesk WP Toolkit on the selected WordPress installation. Existing installations are never overwritten."
+        : "Preparing Novamira through Hostinger: verified ZIP upload and temporary installer. Existing installations are never overwritten.",
   );
   const action = await dependencies.client.action({
     kind: "setup-novamira",
@@ -113,7 +116,9 @@ export async function provisionProviderApi(
         "server_unsupported",
         cloudways
           ? "Novamira is installed and active, but the site is not ready to connect. Open Novamira settings in WordPress, enable AI Abilities for this domain, then reconnect. If already enabled, check plugin compatibility and the site cache. Cloudways API cannot change these settings."
-          : "Novamira is active, but public OAuth readiness could not be verified. If LiteSpeed is serving an old 404, purge its cache and retry verification. Setup is not a completed site connection.",
+          : plesk
+            ? "Novamira is active, but public OAuth readiness could not be verified. Check AI Abilities settings and the site cache before reconnecting."
+            : "Novamira is active, but public OAuth readiness could not be verified. If LiteSpeed is serving an old 404, purge its cache and retry verification. Setup is not a completed site connection.",
         {
           details: {
             siteUrl: site.siteUrl,

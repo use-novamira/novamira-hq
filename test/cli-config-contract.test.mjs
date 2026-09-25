@@ -523,6 +523,7 @@ test("config add rejects an unknown provider with usage_error and the allowed se
       "rocketnet",
       "hostinger",
       "cloudways",
+      "plesk",
     ]);
     assert.equal(cli.hosting.entries.length, 0);
   });

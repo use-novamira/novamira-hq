@@ -204,6 +204,11 @@ export function createProviderService(
         // — is preserved by the `existing.apiBaseUrl` fallback.
         const apiBaseUrl =
           input.apiBaseUrl !== "" ? input.apiBaseUrl : existing?.apiBaseUrl;
+        if (provider === "plesk" && !apiBaseUrl)
+          throw new CliError(
+            "usage_error",
+            "Enter the HTTPS Plesk panel URL before connecting.",
+          );
         const companyId = input.companyId !== "" ? input.companyId : undefined;
 
         const profile: HostingProfile = {

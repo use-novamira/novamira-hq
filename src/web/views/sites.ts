@@ -573,7 +573,7 @@ function renderProfileLink(
         showProfileHeading: false,
         profile: view.profile,
         includeEnvs: view.includeEnvs,
-        reconnectAction: NOVAMIRA_SETUP_PROVIDERS.has(group.provider)
+        reconnectAction: setupSupported(group.provider, env)
           ? post(
               url("/_dashboard/connect", {
                 url: profile.siteUrl,
@@ -615,7 +615,7 @@ function renderConnectButton(
   }
   if (
     connection.state === "unavailable" &&
-    !NOVAMIRA_SETUP_PROVIDERS.has(group.provider)
+    !setupSupported(group.provider, env)
   ) {
     return html`<button class="button tiny" type="button"${flagAttr(
       "disabled",
@@ -626,10 +626,10 @@ function renderConnectButton(
       url: address,
       profile: view.profile,
       include_envs: view.includeEnvs,
-      hosting_profile: NOVAMIRA_SETUP_PROVIDERS.has(group.provider)
+      hosting_profile: setupSupported(group.provider, env)
         ? group.profile
         : undefined,
-      env: NOVAMIRA_SETUP_PROVIDERS.has(group.provider) ? env.id : undefined,
+      env: setupSupported(group.provider, env) ? env.id : undefined,
       site: siteLabel,
       envname: env.displayName || env.name,
     }),
@@ -643,6 +643,16 @@ function renderConnectButton(
     "title",
     `Check Novamira, then authorize access in your browser. novamira-hq site-cli auth login ${address}`,
   )}${ds.indicator(busy)}${ds.attrs({ disabled: signal(busy) })}${ds.on("click", action)}><span${ds.classes({ hidden: signal(busy) })}>Connect</span><span class="loading-inline ds-toggle"${ds.classes({ open: signal(busy) })} role="status">Preparing connection…</span></button>`;
+}
+
+function setupSupported(
+  provider: SiteGroup["provider"],
+  env: HostingEnvironment,
+): boolean {
+  return (
+    NOVAMIRA_SETUP_PROVIDERS.has(provider) &&
+    (provider !== "plesk" || env.id.startsWith("wp:"))
+  );
 }
 
 /**

@@ -20,6 +20,7 @@ export const PROVIDER_KINDS = [
   "rocketnet",
   "hostinger",
   "cloudways",
+  "plesk",
 ] as const;
 
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
@@ -57,6 +58,10 @@ export const DEFAULT_HOSTINGER_CREDENTIAL_ENV = "HOSTINGER_API_TOKEN";
 export const DEFAULT_CLOUDWAYS_API_BASE_URL =
   "https://api.cloudways.com/api/v2";
 export const DEFAULT_CLOUDWAYS_CREDENTIAL_ENV = "CLOUDWAYS_ACCESS_TOKEN";
+// Plesk is self-hosted. This placeholder is never contacted: a profile must
+// provide its own panel URL before the adapter makes any request.
+export const DEFAULT_PLESK_API_BASE_URL = "https://plesk.invalid:8443";
+export const DEFAULT_PLESK_CREDENTIAL_ENV = "PLESK_API_KEY";
 
 export interface ProviderDefaults {
   readonly apiBaseUrl: string;
@@ -109,6 +114,10 @@ export const PROVIDER_DEFAULTS: Readonly<
   cloudways: {
     apiBaseUrl: DEFAULT_CLOUDWAYS_API_BASE_URL,
     credentialEnv: DEFAULT_CLOUDWAYS_CREDENTIAL_ENV,
+  },
+  plesk: {
+    apiBaseUrl: DEFAULT_PLESK_API_BASE_URL,
+    credentialEnv: DEFAULT_PLESK_CREDENTIAL_ENV,
   },
 };
 

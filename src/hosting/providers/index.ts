@@ -25,6 +25,7 @@ import { createInstaWpClient } from "./instawp.js";
 import { createKinstaClient } from "./kinsta.js";
 import { createPantheonClient } from "./pantheon.js";
 import { createPressableClient } from "./pressable.js";
+import { createPleskClient } from "./plesk.js";
 import { createRocketNetClient } from "./rocketnet.js";
 import { createWpEngineClient } from "./wpengine.js";
 
@@ -43,6 +44,7 @@ export const PROVIDER_REGISTRY: Readonly<
   rocketnet: createRocketNetClient,
   hostinger: createHostingerClient,
   cloudways: createCloudwaysClient,
+  plesk: createPleskClient,
 };
 
 export {
@@ -52,6 +54,7 @@ export {
   createKinstaClient,
   createPantheonClient,
   createPressableClient,
+  createPleskClient,
   createRocketNetClient,
   createWpEngineClient,
 };

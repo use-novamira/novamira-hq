@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- Plesk hosting accounts now list domains even without WP Toolkit. With WP
+  Toolkit active, HQ can discover WordPress installations, set up Novamira Free,
+  create and restore backups, and copy files or databases between selected
+  installations, including across domains.
+
 ### Fixed
 
 - After connecting a hosting account, HQ now confirms verified access and links

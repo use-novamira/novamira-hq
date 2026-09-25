@@ -441,6 +441,9 @@ export interface ProviderClient {
 
   listEnvironments(siteId: string): Promise<HostingEnvironment[]>;
 
+  /** Optional native push targets outside the source site's environments. */
+  listPushTargets?(sourceSiteId: string): Promise<HostingEnvironment[]>;
+
   /**
    * Run a read-only request. The resolved value is the parsed provider
    * response, passed through unvalidated (Go returns `json.RawMessage`).

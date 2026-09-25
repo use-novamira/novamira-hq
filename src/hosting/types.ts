@@ -189,6 +189,7 @@ export const PROVIDER_LABELS: Readonly<Record<ProviderKind, string>> = {
   rocketnet: "Rocket.net",
   hostinger: "Hostinger",
   cloudways: "Cloudways",
+  plesk: "Plesk",
 };
 
 export function providerLabel(provider: ProviderKind): string {
@@ -221,7 +222,7 @@ export function providerLabel(provider: ProviderKind): string {
  * provider action internally.
  */
 export const ENVIRONMENT_PUSH_PROVIDERS: ReadonlySet<ProviderKind> =
-  Object.freeze(new Set<ProviderKind>(["kinsta"]));
+  Object.freeze(new Set<ProviderKind>(["kinsta", "plesk"]));
 
 /**
  * Providers `hosting novamira setup` can run against.
@@ -244,6 +245,7 @@ export const NOVAMIRA_SETUP_PROVIDERS: ReadonlySet<ProviderKind> =
       "rocketnet",
       "hostinger",
       "cloudways",
+      "plesk",
     ]),
   );
 
@@ -254,6 +256,7 @@ export const NOVAMIRA_SETUP_PROVIDER_LABELS: readonly string[] = Object.freeze([
   "Rocket.net",
   "Hostinger",
   "Cloudways",
+  "Plesk",
 ]);
 
 /** A JSON object as emitted to stdout or an HTTP response body. */

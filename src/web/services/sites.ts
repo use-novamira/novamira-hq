@@ -557,6 +557,7 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
 
     envResolver: () => {
       const known = new Map<string, Map<string, Map<string, EnvDisplay>>>();
+      const pleskInstallations = new Map<string, Map<string, EnvDisplay>>();
       for (const group of warmAll()?.groups ?? []) {
         for (const site of group.sites) {
           for (const env of site.environments ?? []) {
@@ -566,15 +567,25 @@ export function createSitesService(options: SitesServiceOptions): SitesService {
             known.set(group.profile, bySite);
             const byEnv = bySite.get(site.id) ?? new Map<string, EnvDisplay>();
             bySite.set(site.id, byEnv);
-            byEnv.set(env.id, {
+            const display = {
               name: displayLabel(env.displayName, env.name, env.id),
               domain: env.primaryDomain ?? "",
-            });
+            };
+            byEnv.set(env.id, display);
+            if (group.provider === "plesk" && env.id.startsWith("wp:")) {
+              const byInstallation =
+                pleskInstallations.get(group.profile) ??
+                new Map<string, EnvDisplay>();
+              pleskInstallations.set(group.profile, byInstallation);
+              byInstallation.set(env.id, display);
+            }
           }
         }
       }
       return ({ profile, siteId, envId, storedName }) => {
-        const found = known.get(profile)?.get(siteId)?.get(envId);
+        const found =
+          known.get(profile)?.get(siteId)?.get(envId) ??
+          pleskInstallations.get(profile)?.get(envId);
         if (found !== undefined) return found;
         if (storedName !== "") return { name: storedName, domain: "" };
         return { name: envId, domain: "" };

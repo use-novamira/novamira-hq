@@ -48,12 +48,14 @@ export function historyClient(
   history: HistoryStore,
   channel: () => HistoryChannel,
 ): ProviderClient {
+  const listPushTargets = client.listPushTargets?.bind(client);
   return {
     provider: client.provider,
     validate: () => client.validate(),
     listSites: (options) => client.listSites(options),
     getSite: (id) => client.getSite(id),
     listEnvironments: (id) => client.listEnvironments(id),
+    ...(listPushTargets === undefined ? {} : { listPushTargets }),
     read: (request) => client.read(request),
     ...(client.wpCliResultsObservable === undefined
       ? {}

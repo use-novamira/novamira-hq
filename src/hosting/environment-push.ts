@@ -172,7 +172,18 @@ export async function prepareEnvironmentPush(
   const validated = validateSelection(selection);
   const available = capabilities(await client.read({ kind: "capabilities" }));
   requireCapability(client.provider, available, "envs.push");
+  if (
+    client.provider === "plesk" &&
+    (selection.searchReplace || validated.files.length > 0)
+  )
+    throw new CliError(
+      "provider_unsupported",
+      "Plesk WP Toolkit supports all files and/or all database tables, but not selected files or a separate search-and-replace option.",
+    );
   const environments = await client.listEnvironments(validated.siteId);
+  const targets = client.listPushTargets
+    ? await client.listPushTargets(validated.siteId)
+    : environments;
   const source = requireEnvironment(
     environments,
     validated.sourceEnvironmentId,
@@ -180,7 +191,7 @@ export async function prepareEnvironmentPush(
     validated.siteId,
   );
   const target = requireEnvironment(
-    environments,
+    targets,
     validated.targetEnvironmentId,
     "target",
     validated.siteId,

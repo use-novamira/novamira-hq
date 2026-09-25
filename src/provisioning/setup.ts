@@ -270,7 +270,11 @@ async function provisionNovamiraSteps(
   // Nothing below may issue a provider request until A4 has passed.
 
   const envId = requireEnvId(request.envId);
-  if (client.provider === "hostinger" || client.provider === "cloudways")
+  if (
+    client.provider === "hostinger" ||
+    client.provider === "cloudways" ||
+    client.provider === "plesk"
+  )
     return provisionProviderApi(dependencies, request);
 
   // Go refused a provider whose WP-CLI results it could not observe because it

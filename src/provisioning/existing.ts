@@ -45,7 +45,9 @@ export async function inspectExistingNovamira(
   budget: PollBudget,
 ): Promise<ExistingNovamira | undefined> {
   const plugins =
-    client.provider === "hostinger" || client.provider === "cloudways"
+    client.provider === "hostinger" ||
+    client.provider === "cloudways" ||
+    client.provider === "plesk"
       ? rows(
           JSON.stringify(await client.read({ kind: "plugins", envId })),
         ).filter((entry) => asRecord(entry)?.name === "novamira")
@@ -86,7 +88,11 @@ export async function inspectExistingNovamira(
     );
   let enabled = false;
   let domain: string | null = null;
-  if (client.provider === "hostinger" || client.provider === "cloudways")
+  if (
+    client.provider === "hostinger" ||
+    client.provider === "cloudways" ||
+    client.provider === "plesk"
+  )
     return {
       version: plugin.version,
       active: plugin.status === "active",

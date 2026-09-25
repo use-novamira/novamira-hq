@@ -200,6 +200,10 @@ for (const provider of PROVIDER_KINDS) {
     await withClient(
       provider,
       async (client) => {
+        // Plesk's initial surface is account validation and domain inventory;
+        // it deliberately exposes no generic read or mutating action.
+        if (provider === "plesk")
+          await sweep(provider, "validate", "domains", () => client.validate());
         for (const kind of READ_REQUEST_KINDS) {
           await sweep(provider, "read", kind, () =>
             client.read(READ_REQUESTS[kind]),
@@ -299,6 +303,9 @@ async function withClient(provider, body, seen = []) {
       credential: envCredential(defaultCredentialEnv(provider)),
       // Doubles as the identity half for the providers that require one.
       companyId: IDENTITY,
+      ...(provider === "plesk"
+        ? { apiBaseUrl: "https://plesk.example.invalid:8443" }
+        : {}),
     });
 
     const factory = createHostingClientFactory({
@@ -335,6 +342,11 @@ function recordingFetch(seen) {
     const url =
       typeof input === "string" ? input : (input?.url ?? String(input));
     seen.push(url);
+    if (new URL(url).pathname === "/api/v2/extensions")
+      return new Response("[]", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
     return new Response(
       JSON.stringify({
         access_token: "conformance-fake-token",

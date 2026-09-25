@@ -132,13 +132,32 @@ export function pushesStatusLine(
     let eligible = 0;
     for (const group of warm.groups) {
       if (!environmentPushSupported(group.provider)) continue;
+      const pleskTargets =
+        group.provider === "plesk"
+          ? group.sites
+              .flatMap((site) => site.environments ?? [])
+              .filter((env) => env.id.startsWith("wp:"))
+          : [];
       for (const site of group.sites) {
-        if ((site.environments ?? []).length > 1) eligible += 1;
+        if (
+          (site.environments ?? []).length > 1 ||
+          (group.provider === "plesk" &&
+            (site.environments ?? []).some((env) => env.id.startsWith("wp:")) &&
+            pleskTargets.length > 1)
+        )
+          eligible += 1;
       }
     }
     if (eligible > 0) {
       return `Choose one of the ${String(eligible)} available site(s) below to configure a push.`;
     }
+    if (
+      capable.length > 0 &&
+      profiles
+        .filter((profile) => environmentPushSupported(profile.provider))
+        .every((profile) => profile.provider === "plesk")
+    )
+      return "Plesk copying needs two working WordPress installations visible to WP Toolkit.";
     return `Your push-capable host(s) ${capable.join(", ")} have no site with more than one environment yet, so there's nothing to push between.`;
   }
   return `You have a push-capable host: ${capable.join(", ")}. Open Sites to find a site with more than one environment.`;
@@ -162,9 +181,16 @@ export function renderPushesPage(
   const visibleJobs = jobs.filter((job) =>
     profiles.has(job.confirmation.profile),
   );
-  const canCreate = view.profiles.some((profile) =>
-    environmentPushSupported(profile.provider),
-  );
+  const canCreate = view.profiles.some((profile) => {
+    if (!environmentPushSupported(profile.provider)) return false;
+    if (profile.provider !== "plesk" || !warm.cacheWarm) return true;
+    const group = warm.groups.find((entry) => entry.profile === profile.name);
+    return (
+      (group?.sites
+        .flatMap((site) => site.environments ?? [])
+        .filter((env) => env.id.startsWith("wp:")).length ?? 0) > 1
+    );
+  });
   if (history)
     return html`<section class="page"><header class="page-head"><div><h1>Push history</h1></div><a class="button secondary"${hrefAttr(url("/push"))}>Back to Push</a></header>${renderPushJobs(visibleJobs) || html`<p class="empty">No previous pushes.</p>`}</section>`;
   return html`<section class="page"><header class="page-head"><div><h1>Push</h1><p>Copy content between environments.</p></div><div class="button-row"><a class="button secondary"${hrefAttr(url("/push", { view: "history" }))}>Push history</a>${canCreate ? html`<a class="button primary"${hrefAttr(url("/push/new"))}>New push</a>` : false}</div></header>${view.pushes.length ? html`<div class="push-card-list">${view.pushes.map((push) => renderPushCard(push))}</div>` : canCreate ? html`<p class="empty">No saved pushes yet.</p>` : false}${canCreate ? false : renderAvailableDirections(view, warm)}</section>`;
@@ -200,11 +226,12 @@ function contributesDirections(
 function siteDirections(
   profile: string,
   site: SiteGroup["sites"][number],
+  targets: readonly HostingEnvironment[] = site.environments ?? [],
 ): PushDirection[] {
   const environments = site.environments ?? [];
   const siteLabel = displayLabel(site.displayName, site.name, site.id);
   return environments.flatMap((source) =>
-    environments
+    targets
       .filter((target) => target.id !== source.id)
       .map((target) => ({
         profile,
@@ -238,7 +265,17 @@ function renderAvailableDirections(
   const directions = warm.cacheWarm
     ? warm.groups.flatMap((group) =>
         contributesDirections(group, capable)
-          ? group.sites.flatMap((site) => siteDirections(group.profile, site))
+          ? group.sites.flatMap((site) =>
+              siteDirections(
+                group.profile,
+                site,
+                group.provider === "plesk"
+                  ? group.sites
+                      .flatMap((entry) => entry.environments ?? [])
+                      .filter((env) => env.id.startsWith("wp:"))
+                  : (site.environments ?? []),
+              ),
+            )
           : [],
       )
     : [];
@@ -375,6 +412,8 @@ export interface PushNewView {
   readonly siteId: string;
   readonly siteLabel: string;
   readonly envs: readonly HostingEnvironment[];
+  readonly targetEnvs?: readonly HostingEnvironment[];
+  readonly plesk?: boolean;
   readonly sourceEnvId: string;
   readonly targetEnvId: string;
 }
@@ -396,12 +435,15 @@ export function renderPushNewPage(
   const head = html`<header class="page-head"><div><h1>Set up a push</h1>${
     view.siteLabel === ""
       ? false
-      : html`<p class="lede">Choose what moves between two environments of ${view.siteLabel}.</p>`
+      : view.plesk
+        ? html`<p class="lede">Choose what moves from ${view.siteLabel} to the selected WordPress installation.</p>`
+        : html`<p class="lede">Choose what moves between two environments of ${view.siteLabel}.</p>`
   }</div><a class="button secondary"${hrefAttr(
     url("/push"),
   )}>Back to Push</a></header>`;
 
-  if (view.envs.length < 2) {
+  const targetEnvs = view.targetEnvs ?? view.envs;
+  if (view.envs.length === 0 || targetEnvs.length < 2) {
     if (!view.profile && config)
       return html`<section class="page">${head}${renderAvailableDirections(config, warm, true)}</section>`;
     return html`<section class="page">${head}<div class="empty empty-block"><p>Open this from Sites, expand a site with more than one environment, then choose “Configure push…” beside the source environment.</p><a class="button primary"${hrefAttr(
@@ -420,7 +462,7 @@ export function renderPushNewPage(
   );
 
   const suggestName = suggestPushName(
-    view.envs.map((env) => ({
+    targetEnvs.map((env) => ({
       id: env.id,
       name: displayLabel(env.displayName, env.name, env.id),
     })),
@@ -449,7 +491,7 @@ export function renderPushNewPage(
   )}${renderEnvSelect(
     "To",
     "pushForm.targetEnvId",
-    view.envs,
+    targetEnvs,
   )}</div><fieldset class="push-scope"><legend>Content to push</legend><p class="field-help">Choose at least one. The selected content can overwrite the target environment when this push is run.</p><div class="push-scope-options"><label><input type="checkbox"${ds.bind(
     "pushForm.pushDb",
   )}${ds.on(
@@ -457,11 +499,15 @@ export function renderPushNewPage(
     set("pushForm.searchReplace", jsBoolean(false)),
   )}><span><strong>Database</strong><small>Push the source database to the target.</small></span></label><label><input type="checkbox"${ds.bind(
     "pushForm.pushFiles",
-  )}><span><strong>All files</strong><small>Push all source files to the target.</small></span></label><label><input type="checkbox"${ds.bind(
-    "pushForm.searchReplace",
-  )}${ds.attrs({
-    disabled: not(signal("pushForm.pushDb")),
-  })}><span><strong>Search and replace URLs</strong><small>Available when Database is selected.</small></span></label></div></fieldset><div class="form-grid push-name"><label><span>Saved push name</span><input${idAttr(
+  )}><span><strong>All files</strong><small>${view.plesk ? "Copy files through WP Toolkit; configuration and server rewrite files are excluded by default." : "Push all source files to the target."}</small></span></label>${
+    view.plesk
+      ? false
+      : html`<label><input type="checkbox"${ds.bind(
+          "pushForm.searchReplace",
+        )}${ds.attrs({
+          disabled: not(signal("pushForm.pushDb")),
+        })}><span><strong>Search and replace URLs</strong><small>Available when Database is selected.</small></span></label>`
+  }</div></fieldset><div class="form-grid push-name"><label><span>Saved push name</span><input${idAttr(
     "push-name",
   )} type="text"${ds.bind(
     "pushForm.name",

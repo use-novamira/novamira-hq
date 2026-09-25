@@ -21,6 +21,7 @@ export function secretSafeProviderClient(
   client: ProviderClient,
 ): ProviderClient {
   const operationSecrets = new Map<string, readonly string[]>();
+  const listPushTargets = client.listPushTargets?.bind(client);
 
   const safeClient: ProviderClient = {
     provider: client.provider,
@@ -28,6 +29,7 @@ export function secretSafeProviderClient(
     listSites: (options) => client.listSites(options),
     getSite: (siteId) => client.getSite(siteId),
     listEnvironments: (siteId) => client.listEnvironments(siteId),
+    ...(listPushTargets === undefined ? {} : { listPushTargets }),
     read: (request) => client.read(request),
     async action(request) {
       const secrets = collectSensitiveValues(
