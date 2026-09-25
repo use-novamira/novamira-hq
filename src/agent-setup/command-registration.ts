@@ -50,7 +50,7 @@ export interface CommandRegistrationOptions {
   platform?: NodeJS.Platform;
   home?: string;
   path?: string;
-  /** OS discovery seam; candidates are still identity-checked. */
+  /** Test discovery override; candidates are still identity-checked. */
   discover?: () => Promise<readonly string[]>;
 }
 
@@ -165,10 +165,16 @@ export function createCommandRegistration(options: CommandRegistrationOptions) {
     if (await valid(value.executable)) return value.executable;
     if (platform === "darwin") {
       const suffix = "Contents/MacOS/novamira-hq-desktop";
-      const candidates = [
-        join(options.home ?? homedir(), "Applications/Novamira HQ.app", suffix),
-        join("/Applications/Novamira HQ.app", suffix),
-      ];
+      const candidates = options.discover
+        ? []
+        : [
+            join(
+              options.home ?? homedir(),
+              "Applications/Novamira HQ.app",
+              suffix,
+            ),
+            join("/Applications/Novamira HQ.app", suffix),
+          ];
       try {
         const found = options.discover
           ? await options.discover()
