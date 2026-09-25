@@ -85,7 +85,7 @@ function fixture(options = {}) {
 }
 
 test("Cloudways uploads the official ZIP, verifies inventory, activates and verifies again", async () => {
-  const { http, calls } = fixture();
+  const { http, calls } = fixture({ wp: "7.2-alpha-63789" });
   const result = await setupCloudwaysNovamira(http, "123:456");
   assert.equal(result.raw.siteUrl, "https://example.test");
   assert.equal(result.raw.aiEnabled, null);

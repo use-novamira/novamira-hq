@@ -460,9 +460,13 @@ class PleskClient implements ProviderClient {
         "provider_unsupported",
         "Plesk setup currently requires a root-domain HTTPS WordPress installation.",
       );
+    const coreVersion = target.version.split("-", 1)[0] ?? "";
+    const wordpressVersion = /^\d+\.\d+$/.test(coreVersion)
+      ? `${coreVersion}.0`
+      : coreVersion;
     if (
-      !isSemver(target.version) ||
-      compareSemverStrings(target.version, "6.9.0") < 0
+      !isSemver(wordpressVersion) ||
+      compareSemverStrings(wordpressVersion, "6.9.0") < 0
     )
       throw new CliError(
         "server_unsupported",

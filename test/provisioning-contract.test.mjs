@@ -540,8 +540,7 @@ test("SemVer precedence orders the plugin versions the matrix depends on", () =>
   assert.equal(parseSemver("1.11"), undefined);
 });
 
-test("WordPress versions compare as dotted-numeric, not SemVer", () => {
-  // 32.
+test("WordPress versions compare by numeric core", () => {
   const dotted = (value) => {
     const parsed = parseDotted(value);
     assert.ok(parsed, value);
@@ -550,7 +549,8 @@ test("WordPress versions compare as dotted-numeric, not SemVer", () => {
   assert.equal(compareDotted(dotted("6.9"), dotted("6.9.0")), 0);
   assert.equal(compareDotted(dotted("6.10"), dotted("6.9")), 1);
   assert.equal(compareDotted(dotted("6.8"), dotted("6.9")), -1);
-  assert.equal(parseDotted("6.9-beta"), undefined);
+  assert.equal(compareDotted(dotted("7.2-alpha-63789"), dotted("7.2")), 0);
+  assert.equal(parseDotted("six-nine"), undefined);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -1097,8 +1097,7 @@ test("every required compatibility field is type-checked", async () => {
 /* Compatibility: the matrix                                                  */
 /* -------------------------------------------------------------------------- */
 
-test("WordPress must be 6.9 or newer, and must be comparable", async () => {
-  // 63 and 64.
+test("WordPress must be 6.9 or newer, and prerelease suffixes are ignored", async () => {
   const old = await documentFails({}, { wordpress_version: "6.8" }, "WP 6.8");
   assert.equal(old.details.check, "compat.wordpress");
   assert.match(
@@ -1106,6 +1105,19 @@ test("WordPress must be 6.9 or newer, and must be comparable", async () => {
     new RegExp(`WordPress ${MINIMUM_WORDPRESS_VERSION} or newer`),
   );
   assert.equal(old.details.wordpressVersion, "6.8");
+
+  const alpha = await check(
+    serving(
+      protectedResourceDocument(
+        SITE_URL,
+        {},
+        {
+          wordpress_version: "7.2-alpha-63789",
+        },
+      ),
+    ),
+  );
+  assert.equal(alpha.wordpress_version, "7.2-alpha-63789");
 
   const garbage = await documentFails(
     {},
@@ -1117,7 +1129,6 @@ test("WordPress must be 6.9 or newer, and must be comparable", async () => {
 });
 
 test("metadata that contradicts itself is compat.wordpress_consistency", async () => {
-  // 65.
   const error = await documentFails(
     {},
     { wordpress_version: "6.9", minimum_wordpress_version: "7.0" },
@@ -1195,7 +1206,7 @@ test("a required feature that is false or absent is compat.features", async () =
 });
 
 test("the first failure in check order is the one reported", async () => {
-  // 72: a document that fails both metadata.scopes and compat.wordpress names
+  // A document that fails both metadata.scopes and compat.wordpress names
   // the more fundamental problem.
   const error = await documentFails(
     { scopes_supported: ["abilities:read"] },

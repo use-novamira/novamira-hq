@@ -172,10 +172,11 @@ export {
   type Semver,
 } from "../semver.js";
 
-/** WordPress versions are dotted-numeric, not SemVer: `6.9`, `6.10.2`. */
+/** Compare the numeric core of WordPress versions, including prerelease builds. */
 export function parseDotted(value: string): readonly number[] | undefined {
-  if (!/^\d+(?:\.\d+)*$/.test(value)) return undefined;
-  return value.split(".").map(Number);
+  const core = value.split("-", 1)[0];
+  if (core === undefined || !/^\d+(?:\.\d+)*$/.test(core)) return undefined;
+  return core.split(".").map(Number);
 }
 
 export function compareDotted(

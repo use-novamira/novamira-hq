@@ -146,8 +146,11 @@ export async function setupCloudwaysNovamira(
       "server_unsupported",
       "Cloudways must report PHP 8.0 or newer before Novamira can be installed.",
     );
+  const coreVersion = typeof wp === "string" ? wp.split("-", 1)[0] : undefined;
   const wpVersion =
-    typeof wp === "string" && /^\d+\.\d+$/.test(wp) ? `${wp}.0` : wp;
+    typeof coreVersion === "string" && /^\d+\.\d+$/.test(coreVersion)
+      ? `${coreVersion}.0`
+      : coreVersion;
   if (
     core?.success !== true ||
     typeof wpVersion !== "string" ||

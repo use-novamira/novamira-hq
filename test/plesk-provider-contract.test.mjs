@@ -57,6 +57,7 @@ const TARGET_INSTANCE = {
 
 function fixture(options = {}) {
   const calls = [];
+  const installation = { ...INSTANCE, version: options.wp ?? INSTANCE.version };
   let plugin = options.plugin ?? null;
   const settings = new Map();
   const fetch = async (input, init = {}) => {
@@ -112,8 +113,8 @@ function fixture(options = {}) {
                       JSON.stringify(
                         params.includes("--list")
                           ? options.crossSite
-                            ? [INSTANCE, TARGET_INSTANCE]
-                            : [INSTANCE]
+                            ? [installation, TARGET_INSTANCE]
+                            : [installation]
                           : params.includes("list")
                             ? [BACKUP]
                             : params.includes("backup")
@@ -395,7 +396,10 @@ test("Plesk maps database-only and combined scopes to all tables without implici
 });
 
 test("Plesk setup installs the official Free plugin through WP Toolkit and verifies activation", async () => {
-  const { client, calls, settings } = fixture({ toolkit: true });
+  const { client, calls, settings } = fixture({
+    toolkit: true,
+    wp: "7.2-alpha-63789",
+  });
   const result = await client.action({ kind: "setup-novamira", envId: "wp:7" });
   assert.deepEqual(result.raw, {
     siteUrl: INSTANCE.siteUrl,

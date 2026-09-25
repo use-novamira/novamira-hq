@@ -11,6 +11,8 @@
 
 ### Fixed
 
+- Novamira setup now accepts WordPress development builds such as
+  `7.2-alpha-63789` when their numeric version meets the required minimum.
 - After connecting a hosting account, HQ now confirms verified access and links
   to Sites without showing an actions table that was not verified for that
   account.
