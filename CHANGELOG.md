@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- On macOS, Claude Code started from a terminal no longer stops with
+  "suspended (tty input)" when it starts HQ's connector, and moving the mouse
+  no longer prints stray characters at the prompt. HQ's lookup of the
+  programs installed on the Mac took over the terminal and did not give it
+  back.
+
 ## 1.0.0-beta4 - 2026-10-07
 
 ### Changed

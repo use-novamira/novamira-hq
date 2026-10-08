@@ -96,4 +96,7 @@ test("Mac downloads use a fixed loopback endpoint and command lookup stays trans
     runtime.indexOf("export async function prepareBundledWebview"),
   );
   assert.doesNotMatch(commandPath, /writeFile|npm|nvm|\.codex/);
+  // Terminal MCP clients keep their terminal while the login shell runs.
+  assert.match(commandPath, /args: \["-ilc", "\/usr\/bin\/printenv PATH"\]/);
+  assert.match(commandPath, /detached: true/);
 });

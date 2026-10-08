@@ -20,6 +20,9 @@ export async function prepareCommandPath(): Promise<void> {
         stdin: "null",
         stdout: "piped",
         stderr: "null",
+        // An interactive shell sharing a terminal takes over its foreground
+        // job and leaves the parent (e.g. a terminal MCP client) suspended.
+        detached: true,
       }).spawn();
       const deadline = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
