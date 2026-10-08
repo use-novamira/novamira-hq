@@ -20,6 +20,7 @@ export const MCP_PAGE_CLIENTS = [
   "cursor",
   "vscode",
   "opencode",
+  "antigravity",
 ] as const;
 export type McpPageClient = (typeof MCP_PAGE_CLIENTS)[number];
 export type McpSetupState =
@@ -72,6 +73,7 @@ const CLIENTS = {
     method: "Configure with one click",
   },
   opencode: { name: "OpenCode", method: "Use the guided setup" },
+  antigravity: { name: "Antigravity", method: "Copy the configuration" },
 } as const;
 
 export function isMcpPageClient(value: string | null): value is McpPageClient {
@@ -197,6 +199,17 @@ function setup(configuration: McpConfiguration, client: McpPageClient): Html {
           2,
         ),
         "Merge this server into your OpenCode configuration (opencode.json), keeping your existing settings.",
+      );
+      break;
+    case "antigravity":
+      // Antigravity 2.0, its IDE and agy share this file and offer no install
+      // command or link for local servers; the file is read at launch.
+      description =
+        "Add Novamira HQ to the MCP configuration shared by Antigravity, the Antigravity IDE and the agy CLI.";
+      action = html`<div class="mcp-primary-action"><button class="button primary" type="button"${ds.on("click", copyText(configuration.claude))}>Copy configuration</button><p>Merge it into <code>~/.gemini/config/mcp_config.json</code>, keeping your existing servers, then quit and reopen Antigravity. Novamira HQ appears under Customizations → Installed → MCP Servers.</p></div>`;
+      manual = manualConfiguration(
+        configuration.claude,
+        "Merge this server into ~/.gemini/config/mcp_config.json, keeping your existing servers.",
       );
       break;
   }

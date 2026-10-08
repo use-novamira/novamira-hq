@@ -24,7 +24,7 @@ test("AI client selection and every instruction page share the same full-width c
       if (config || client === undefined) {
         assert.equal(
           markup.split("<svg ").length - 1,
-          client === undefined ? 7 : 1,
+          client === undefined ? MCP_PAGE_CLIENTS.length : 1,
         );
         assert.ok(markup.includes('aria-hidden="true"'));
         assert.ok(!markup.includes('class="mcp-choice-mark">O</span>'));

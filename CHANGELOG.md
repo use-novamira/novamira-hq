@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- Configure your AI now includes Antigravity. Antigravity cannot add a local
+  server by itself, so HQ gives you the configuration to paste into
+  `~/.gemini/config/mcp_config.json`. Antigravity, the Antigravity IDE and the
+  agy CLI all read that file.
+
 ### Fixed
 
 - On macOS, Claude Code started from a terminal no longer stops with

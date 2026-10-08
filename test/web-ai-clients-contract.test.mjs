@@ -95,6 +95,20 @@ test("VS Code and OpenCode use their own schemas without losing launch settings"
   assert.deepEqual(opencode.environment, vscode.env);
 });
 
+test("Antigravity copies the shared mcpServers block for its global config file", () => {
+  const markup = page("antigravity");
+  assert.ok(page().includes("/configure-ai?client=antigravity"));
+  assert.ok(markup.includes("~/.gemini/config/mcp_config.json"));
+  assert.ok(markup.includes("quit and reopen Antigravity"));
+  const copied = JSON.parse(
+    unescape(
+      markup.match(/<pre class="mcp-config"><code>([\s\S]*?)<\/code>/)[1],
+    ),
+  );
+  assert.deepEqual(copied, JSON.parse(configuration.claude));
+  assert.doesNotMatch(markup, /_dashboard\/mcp\/connect/);
+});
+
 test("VS Code one-click setup uses official argv without shell or probe meant for other clients", async () => {
   const calls = [];
   const service = createMcpConnectionService(
