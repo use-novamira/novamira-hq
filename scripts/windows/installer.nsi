@@ -20,6 +20,8 @@ SetCompressor /SOLID lzma
 !endif
 
 !include "MUI2.nsh"
+!include "LogicLib.nsh"
+!include "x64.nsh"
 
 !define APP "Novamira HQ"
 !define EXE "novamira-hq-desktop.exe"
@@ -43,9 +45,18 @@ InstallDirRegKey HKCU "${UNINSTALL_KEY}" "InstallLocation"
 !insertmacro MUI_LANGUAGE "English"
 
 ; HQ windows, servers, MCP processes and the command launcher lock their
-; executables. The uninstaller itself runs from $INSTDIR when given _?=.
+; executables. Only those two exact files are matched, passed through the
+; environment so no path is ever quoted inside the PowerShell command. A
+; 32-bit installer must start 64-bit PowerShell to read 64-bit process paths.
 !macro StopRunning
-  nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "Get-Process | Where-Object { $$_.Path -and $$_.Name -ne 'Uninstall' -and ($$_.Path.StartsWith('$INSTDIR\', [StringComparison]::OrdinalIgnoreCase) -or $$_.Path.StartsWith('$LOCALAPPDATA\Novamira HQ\State\command\', [StringComparison]::OrdinalIgnoreCase)) } | Stop-Process -Force"`
+  System::Call 'Kernel32::SetEnvironmentVariable(t "HQ_STOP_APP", t "$INSTDIR\${EXE}")'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "HQ_STOP_LAUNCHER", t "$LOCALAPPDATA\Novamira HQ\State\command\novamira-hq.exe")'
+  ${If} ${RunningX64}
+    StrCpy $1 "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+  ${Else}
+    StrCpy $1 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
+  ${EndIf}
+  nsExec::Exec `"$1" -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Process | Where-Object { $$_.ExecutablePath -in @($$env:HQ_STOP_APP, $$env:HQ_STOP_LAUNCHER) } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue; Wait-Process -Id $$_.ProcessId -Timeout 10 -ErrorAction SilentlyContinue }"`
   Pop $0
 !macroend
 

@@ -243,7 +243,7 @@
         "sha256": "ba63dffc4410ee89193e1cb5a41989991bd77c61068da17e3156d136b7b0b3d8",
         "licenseSha256": "6cc665347be5c84b76bf0fd6f85fbb0c33261e89b3408aa3e3e55dbe95e12d89"
       },
-      "notes": "Only the Windows installer and its uninstaller contain NSIS code: the installer stub, the nsExec plug-in and the LZMA decompressor, which the NSIS special exception lets programs link without CPL terms. The installed application contains no NSIS code."
+      "notes": "Only the Windows installer and its uninstaller contain NSIS code: the installer stub, the nsExec and System plug-ins and the LZMA decompressor. The NSIS special exception keeps code linked with the LZMA module free of CPL terms; the module itself remains under CPL-1.0, and its source is in nsis-3.13-src.tar.bz2 at https://downloads.sourceforge.net/project/nsis/NSIS%203/3.13/nsis-3.13-src.tar.bz2. The installed application contains no NSIS code."
     },
     {
       "id": "deno",

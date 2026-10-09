@@ -67,10 +67,12 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
+            artifact: novamira-hq-desktop-linux-x86_64
             asset: novamira-hq-desktop-linux-x86_64
             binary: novamira-hq-desktop
             archive: novamira-hq-desktop-linux-x86_64.tar.gz
           - os: windows-latest
+            artifact: novamira-hq-desktop-windows-x86_64
             asset: novamira-hq-setup-windows-x86_64.exe
             binary: novamira-hq-setup-windows-x86_64.exe
             archive: novamira-hq-desktop-windows-x86_64.exe
@@ -102,7 +104,8 @@ jobs:
         run: cp "dist-desktop/novamira-hq-setup-windows-x86_64.exe" "dist-desktop/novamira-hq-desktop-windows-x86_64.exe"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ${{ matrix.asset }}-release
+          # Named for the pattern github-release downloads.
+          name: ${{ matrix.artifact }}-release
           path: |
             dist-desktop/${{ matrix.asset }}
             dist-desktop/${{ matrix.archive }}

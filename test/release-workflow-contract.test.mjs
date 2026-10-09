@@ -120,6 +120,18 @@ test("Linux and Windows desktop assets carry their icons and are proved to run",
   assert.doesNotMatch(desktop, /desktop-build\.mjs\n/);
   assert.match(desktop, /runner\.os == 'Linux'/);
 
+  // Every uploaded artifact matches what the publishing job downloads.
+  const release = jobs.find((job) => job.startsWith("github-release:"));
+  assert.match(release, /pattern: novamira-hq-desktop-\*-release\n/);
+  assert.match(desktop, /name: \$\{\{ matrix\.artifact \}\}-release\n/);
+  const artifacts = [...desktop.matchAll(/artifact: (\S+)\n/g)].map(
+    (match) => match[1],
+  );
+  assert.deepEqual(artifacts, [
+    "novamira-hq-desktop-linux-x86_64",
+    "novamira-hq-desktop-windows-x86_64",
+  ]);
+
   // Every compiled executable this release publishes is run before it is
   // uploaded, on the platform that compiled it.
   assert.match(desktop, /bun run desktop:acceptance/);

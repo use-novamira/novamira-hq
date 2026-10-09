@@ -236,6 +236,9 @@ test("offline notice generation rejects asset drift and missing license text", a
   assert.equal(record.version, "3.13");
   assert.equal(record.artifact.filename, "nsis-3.13.zip");
   assert.deepEqual(record.licenseFiles, ["licenses/nsis.txt"]);
+  // CPL-1.0 section 3: say where the shipped LZMA module's source is.
+  assert.match(record.notes, /nsis-3\.13-src\.tar\.bz2/);
+  assert.match(record.notes, /remains under CPL-1\.0/);
   record.artifact.sha256 = "0".repeat(64);
   await writeFile(manifestPath, JSON.stringify(nsis));
   assert.match(run().stderr, /Legal inventory needs review: NSIS installer/);

@@ -12,8 +12,10 @@ import { join, resolve } from "node:path";
 
 // Exercise the shipped container, not a source-tree npm installation. The
 // shared smoke retains stdin for the server and isolates homes/runtime caches.
+const options = process.argv.slice(2);
+const destructive = options.includes("--destructive");
 const artifact = resolve(
-  process.argv[2] ??
+  options.find((option) => option !== "--destructive") ??
     (process.platform === "linux"
       ? "dist-desktop/novamira-hq-desktop-linux-x86_64.tar.gz"
       : "dist-desktop/novamira-hq-setup-windows-x86_64.exe"),
@@ -43,6 +45,20 @@ try {
     }
     binary = join(tree, "novamira-hq-desktop");
   } else if (artifact.endsWith("-setup-windows-x86_64.exe")) {
+    // The installer writes this user's Start menu, Installed apps entry and
+    // HQ command registration: never on a machine someone actually uses.
+    if (!process.env.CI && !destructive)
+      throw new Error(
+        "Installer acceptance changes this user's Start menu, Installed apps and Novamira HQ command registration. Run it on CI, or pass --destructive on a disposable machine.",
+      );
+    const installed = spawnSync("reg", [
+      "query",
+      "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\NovamiraHQ",
+    ]);
+    if (installed.status === 0)
+      throw new Error(
+        "Novamira HQ is installed for this user. Uninstall it before running installer acceptance.",
+      );
     // No spaces: Node would quote the argument and NSIS requires /D= unquoted.
     const target = join(temporary, "NovamiraHQ");
     run(artifact, ["/S", `/D=${target}`]);

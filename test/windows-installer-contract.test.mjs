@@ -50,15 +50,35 @@ test("the installer ships the legal files beside the app", () => {
     assert.match(script, new RegExp(escape(`File "\${STAGE}\\${name}"`)));
 });
 
-test("running copies are stopped without stopping the uninstaller", () => {
+test("only HQ's own executables are stopped, by 64-bit PowerShell, and awaited", () => {
   const stop = script.slice(
     script.indexOf("!macro StopRunning"),
     script.indexOf("!macroend"),
   );
-  assert.ok(stop.includes("StartsWith('$INSTDIR\\'"));
-  assert.ok(stop.includes("State\\command\\"));
-  assert.ok(stop.includes("Name -ne 'Uninstall'"));
-  assert.ok(stop.includes("Stop-Process -Force"));
+  // A 32-bit installer would otherwise start 32-bit PowerShell, which cannot
+  // read the path of the 64-bit HQ process.
+  assert.ok(stop.includes("${RunningX64}"));
+  assert.ok(
+    stop.includes(
+      "$WINDIR\\Sysnative\\WindowsPowerShell\\v1.0\\powershell.exe",
+    ),
+  );
+  assert.ok(stop.includes("Get-CimInstance Win32_Process"));
+  // Exact executables, passed through the environment: no prefix match that
+  // could reach other programs, no quoting of paths containing apostrophes.
+  assert.ok(
+    stop.includes(
+      'SetEnvironmentVariable(t "HQ_STOP_APP", t "$INSTDIR\\${EXE}")',
+    ),
+  );
+  assert.ok(
+    stop.includes(
+      'SetEnvironmentVariable(t "HQ_STOP_LAUNCHER", t "$LOCALAPPDATA\\Novamira HQ\\State\\command\\novamira-hq.exe")',
+    ),
+  );
+  assert.ok(stop.includes("-in @($$env:HQ_STOP_APP, $$env:HQ_STOP_LAUNCHER)"));
+  assert.doesNotMatch(stop, /StartsWith|'\$INSTDIR|'\$LOCALAPPDATA/);
+  assert.ok(stop.includes("Wait-Process"));
   assert.ok(
     script.indexOf("!insertmacro StopRunning") <
       script.indexOf('SetOutPath "$INSTDIR"'),
@@ -77,7 +97,7 @@ test("uninstall keeps settings and credentials", () => {
 
 test("signing has one marked place and no site CLI is installed", () => {
   assert.equal((script.match(/Code signing goes here/g) ?? []).length, 1);
-  assert.doesNotMatch(script, /site-cli|novamira-hq\.exe"/);
+  assert.doesNotMatch(script, /site-cli|File "[^"]*\\novamira-hq\.exe"/);
 });
 
 test("NSIS is pinned by version and checksum and a mismatch writes nothing", async () => {
@@ -142,4 +162,24 @@ test("package acceptance installs, upgrades a running copy and uninstalls", asyn
   assert.ok(windows.includes("`_?=${target}`"));
   assert.ok(windows.includes("acceptance-sentinel"));
   assert.ok(windows.includes("desktop-smoke.mjs"));
+});
+
+test("installer acceptance refuses to touch a real user setup", async () => {
+  const acceptance = await readFile(
+    new URL("../scripts/desktop-artifact-acceptance.mjs", import.meta.url),
+    "utf8",
+  );
+  const windows = acceptance.slice(
+    acceptance.indexOf('endsWith("-setup-windows-x86_64.exe")'),
+  );
+  assert.ok(windows.includes("process.env.CI"));
+  assert.ok(windows.includes("--destructive"));
+  assert.ok(
+    windows.includes(
+      "HKCU\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\NovamiraHQ",
+    ),
+  );
+  assert.ok(
+    windows.indexOf("--destructive") < windows.indexOf('"/S", `/D=${target}`'),
+  );
 });
