@@ -183,3 +183,26 @@ test("installer acceptance refuses to touch a real user setup", async () => {
     windows.indexOf("--destructive") < windows.indexOf('"/S", `/D=${target}`'),
   );
 });
+
+test("the Start Menu and finish page open HQ through a headless console", () => {
+  // Windows Terminal as the default terminal would otherwise leave an empty
+  // terminal window beside HQ for as long as it runs.
+  assert.ok(
+    script.includes(
+      'CreateShortcut "$SMPROGRAMS\\${APP}.lnk" "$WINDIR\\System32\\conhost.exe" \'--headless "$INSTDIR\\${EXE}"\' "$INSTDIR\\${EXE}" 0',
+    ),
+  );
+  assert.ok(script.includes("!define MUI_FINISHPAGE_RUN_FUNCTION LaunchHQ"));
+  const launch = script.slice(script.indexOf("Function LaunchHQ"));
+  assert.ok(
+    launch.includes(
+      'Exec \'"$WINDIR\\Sysnative\\conhost.exe" --headless "$INSTDIR\\${EXE}"\'',
+    ),
+  );
+  assert.ok(
+    launch.includes(
+      'Exec \'"$SYSDIR\\conhost.exe" --headless "$INSTDIR\\${EXE}"\'',
+    ),
+  );
+  assert.doesNotMatch(script, /MUI_FINISHPAGE_RUN "\$INSTDIR/);
+});

@@ -36,7 +36,9 @@ InstallDirRegKey HKCU "${UNINSTALL_KEY}" "InstallLocation"
 
 !define MUI_ICON "${STAGE}\novamira-hq.ico"
 !define MUI_UNICON "${STAGE}\novamira-hq.ico"
-!define MUI_FINISHPAGE_RUN "$INSTDIR\${EXE}"
+!define MUI_FINISHPAGE_RUN
+!define MUI_FINISHPAGE_RUN_TEXT "Run ${APP}"
+!define MUI_FINISHPAGE_RUN_FUNCTION LaunchHQ
 !insertmacro MUI_PAGE_LICENSE "${STAGE}\LICENSE"
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
@@ -60,6 +62,14 @@ InstallDirRegKey HKCU "${UNINSTALL_KEY}" "InstallLocation"
   Pop $0
 !macroend
 
+Function LaunchHQ
+  ${If} ${RunningX64}
+    Exec '"$WINDIR\Sysnative\conhost.exe" --headless "$INSTDIR\${EXE}"'
+  ${Else}
+    Exec '"$SYSDIR\conhost.exe" --headless "$INSTDIR\${EXE}"'
+  ${EndIf}
+FunctionEnd
+
 Section "Install"
   !insertmacro StopRunning
   SetOutPath "$INSTDIR"
@@ -69,7 +79,9 @@ Section "Install"
   File "${STAGE}\LGPL-2.1.txt"
   File "${STAGE}\THIRD-PARTY-NOTICES.txt"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
-  CreateShortcut "$SMPROGRAMS\${APP}.lnk" "$INSTDIR\${EXE}"
+  ; A headless console: with Windows Terminal as the default terminal, HQ's
+  ; own console would otherwise stay open as an empty terminal window.
+  CreateShortcut "$SMPROGRAMS\${APP}.lnk" "$WINDIR\System32\conhost.exe" '--headless "$INSTDIR\${EXE}"' "$INSTDIR\${EXE}" 0
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "${APP}"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "Ovation S.r.l."
