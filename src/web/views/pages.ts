@@ -43,7 +43,7 @@ import { renderHostingTools, type HostingToolsView } from "./hosting-tools.js";
 import { renderRestore, type RestoreView } from "./restore.js";
 import { renderAboutPage } from "./about.js";
 import type { ProviderReadyView } from "./provider-ready.js";
-import type { McpConfiguration } from "../../mcp-connection.js";
+import type { McpConfiguration, McpRelocation } from "../../mcp-connection.js";
 import {
   renderMcpPage,
   type McpPageClient,
@@ -97,6 +97,8 @@ export interface PageModel {
   readonly mcp?: McpConfiguration;
   readonly mcpClient?: McpPageClient;
   readonly mcpSetup?: McpSetupState;
+  readonly mcpRelocation?: McpRelocation;
+  readonly mcpOutsideApplications?: boolean;
   readonly history?: HistoryView;
   readonly historyProfile?: string;
   readonly view: ConfigView;
@@ -140,6 +142,12 @@ export function renderPageBody(page: DashboardPage, model: PageModel): Html {
         model.mcp,
         model.mcpClient,
         model.mcpSetup,
+        {
+          ...(model.mcpRelocation ? { relocation: model.mcpRelocation } : {}),
+          ...(model.mcpOutsideApplications
+            ? { outsideApplications: true }
+            : {}),
+        },
       );
     case "history":
       return renderHistoryPage(

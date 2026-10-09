@@ -65,6 +65,7 @@ import { CliError } from "../errors.js";
 import {
   createMcpBundleHandler,
   createMcpConnectHandler,
+  createMcpRelocationDismissHandler,
   createMcpVerifyHandler,
 } from "./handlers/mcp.js";
 import { createAcknowledgementHandler } from "./handlers/acknowledgement.js";
@@ -626,6 +627,7 @@ function pageHandler(context: RouteContext, page: DashboardPage): RouteHandler {
       ...(renderedPage === "mcp" && context.mcpConnection
         ? {
             mcp: context.mcpConnection.configuration(),
+            ...(await mcpPageWarnings(context.mcpConnection)),
           }
         : {}),
       ...(renderedPage === "history"
@@ -827,6 +829,12 @@ export function createRouteTable(context: RouteContext): readonly Route[] {
     },
     {
       method: "POST",
+      path: "/_dashboard/mcp/relocation/dismiss",
+      auth: "token",
+      handler: createMcpRelocationDismissHandler(context),
+    },
+    {
+      method: "POST",
       path: "/_dashboard/providers/save",
       auth: "token",
       handler: createProviderSaveHandler(context),
@@ -1009,4 +1017,20 @@ export function matchRoute(
     return undefined;
   }
   return { allow: [...allow].sort() };
+}
+
+/** Relocation detection never blocks the page: a failure shows no notice. */
+async function mcpPageWarnings(
+  service: import("../mcp-connection.js").McpConnectionService,
+): Promise<{
+  readonly mcpRelocation?: import("../mcp-connection.js").McpRelocation;
+  readonly mcpOutsideApplications?: boolean;
+}> {
+  const relocation = await service.relocation?.().catch(() => undefined);
+  return {
+    ...(relocation ? { mcpRelocation: relocation } : {}),
+    ...(service.outsideApplications === true
+      ? { mcpOutsideApplications: true }
+      : {}),
+  };
 }

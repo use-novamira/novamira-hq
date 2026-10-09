@@ -73,7 +73,9 @@ export function createMcpConnectHandler(context: RouteContext): RouteHandler {
         await repaint({ status: "checking" });
         await context.mcpConnection.verify();
         await repaint({ status: "configuring" });
-        const status = await context.mcpConnection.connect(client);
+        const status = await context.mcpConnection.connect(client, {
+          replace: request.query.get("replace") === "1",
+        });
         await repaint({ status });
       } catch (error) {
         try {
@@ -88,6 +90,38 @@ export function createMcpConnectHandler(context: RouteContext): RouteHandler {
               "Configuration could not be completed. Refresh the page and try again.",
           });
         }
+      }
+      stream.close();
+    },
+  });
+}
+
+export function createMcpRelocationDismissHandler(
+  context: RouteContext,
+): RouteHandler {
+  return () => ({
+    kind: "sse",
+    run: async (stream) => {
+      try {
+        await context.mcpConnection?.dismissRelocation?.();
+        const notice = { level: "neutral" as const, message: "" };
+        patchPage(stream, {
+          page: "mcp",
+          notice,
+          model: {
+            view: await context.loadConfigView(),
+            notice,
+            signals: defaultDashboardSignals(context.token),
+            ...(context.mcpConnection
+              ? { mcp: context.mcpConnection.configuration() }
+              : {}),
+          },
+        });
+      } catch (error) {
+        patchToast(stream, {
+          level: "danger",
+          message: asCliError(error).message,
+        });
       }
       stream.close();
     },

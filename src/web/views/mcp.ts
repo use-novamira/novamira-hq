@@ -5,6 +5,8 @@ import type {
   McpConfiguration,
   McpClient,
   McpConnectOutcome,
+  McpDetectedClient,
+  McpRelocation,
 } from "../../mcp-connection.js";
 import * as ds from "../datastar.js";
 import { copyText, post } from "../expr.js";
@@ -216,17 +218,61 @@ function setup(configuration: McpConfiguration, client: McpPageClient): Html {
   return html`<section class="mcp-setup-card"><div class="mcp-setup-head"><div><span class="eyebrow">Step 2 · ${CLIENTS[client].name}</span><h2>Configure Novamira HQ</h2><p>${description}</p></div><span class="mcp-choice-mark large">${clientMark(client)}</span></div>${action}<div class="mcp-after"><strong>After setup, open a new conversation in ${CLIENTS[client].name}.</strong><span>Try asking: “Show me my sites in Novamira HQ.” Approve tool permissions when your client asks.</span></div>${manual}</section>`;
 }
 
+const DETECTED_NAMES: Record<McpDetectedClient, string> = {
+  "claude-code": "Claude Code CLI",
+  codex: "Codex CLI / ChatGPT Desktop",
+  cursor: "Cursor",
+  antigravity: "Antigravity",
+  vscode: "VS Code · GitHub Copilot",
+  claude: "Claude Desktop",
+};
+
+function relocationFix(
+  client: McpDetectedClient,
+  configuration: McpConfiguration,
+): Html {
+  if (client === "claude-code" || client === "codex" || client === "vscode")
+    return html`<button class="button secondary" type="button"${ds.on("click", post(url("/_dashboard/mcp/connect", { client, replace: "1" }), { include: [] }))}>Reconfigure</button>`;
+  if (client === "cursor") {
+    // Same extraction as setup(): the launch Cursor installs from its link.
+    const server = (
+      JSON.parse(configuration.claude) as {
+        mcpServers: { "novamira-hq": unknown };
+      }
+    ).mcpServers["novamira-hq"];
+    return html`<a class="button secondary"${cursorInstallHref(JSON.stringify(server))}>Reinstall in Cursor</a>`;
+  }
+  if (client === "claude")
+    return html`<a class="button secondary"${hrefAttr(url("/mcp/novamira-hq.mcpb"))}>Download the extension again</a>`;
+  return html`<a class="button secondary"${hrefAttr(url("/configure-ai", { client }))}>Show the configuration</a>`;
+}
+
+function relocationNotice(
+  relocation: McpRelocation,
+  configuration: McpConfiguration,
+): Html {
+  return html`<section class="notice warn" role="status"><h2>Novamira HQ moved</h2><p>It used to run from <code>${relocation.previous}</code> and now runs from <code>${relocation.current}</code>. These AI clients still start the old location, so they cannot reach Novamira HQ until you configure them again:</p><ul>${relocation.clients.map((client) => html`<li><strong>${DETECTED_NAMES[client]}</strong> ${relocationFix(client, configuration)}</li>`)}</ul><button class="button" type="button"${ds.on("click", post(url("/_dashboard/mcp/relocation/dismiss"), { include: [] }))}>Dismiss</button></section>`;
+}
+
+const OUTSIDE_APPLICATIONS = html`<section class="notice warn" role="status"><h2>Move Novamira HQ to Applications</h2><p>Novamira HQ is running from outside the Applications folder. AI clients you configure now would stop working when it is moved. Quit Novamira HQ, drag it to Applications, open it from there, then configure your AI clients.</p></section>`;
+
+export interface McpPageExtras {
+  readonly relocation?: McpRelocation;
+  readonly outsideApplications?: boolean;
+}
+
 export function renderMcpPage(
   _view: ConfigView,
   configuration?: McpConfiguration,
   client?: McpPageClient,
   state?: McpSetupState,
+  extras: McpPageExtras = {},
 ): Html {
   if (client && state && state.status !== "failed")
     return setupResult(client, state);
   const content =
     client === undefined
-      ? clientChoice()
+      ? html`${extras.outsideApplications ? OUTSIDE_APPLICATIONS : ""}${extras.relocation && configuration ? relocationNotice(extras.relocation, configuration) : ""}${clientChoice()}`
       : html`<div class="mcp-back"><a class="text-link"${hrefAttr(url("/configure-ai"))}>← Choose another AI client</a></div>${configuration ? setup(configuration, client) : html`<p class="notice warn">Launch configuration is unavailable in this Novamira HQ instance.</p>`}`;
   return html`<section class="page mcp-page"><header class="page-head"><div><h1>Configure your AI</h1><p>Manage your sites with Novamira HQ.</p></div></header>${state?.status === "failed" ? html`<section class="notice danger" role="alert"><h2>Configuration could not be completed</h2><p>${state.message}</p></section>` : ""}${content}</section>`;
 }

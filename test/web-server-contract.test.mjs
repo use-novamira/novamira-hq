@@ -77,6 +77,7 @@ test("app acknowledgement and MCP connection use token-protected POST routes", a
       "/_dashboard/app/acknowledge",
       "/_dashboard/mcp/verify",
       "/_dashboard/mcp/connect?client=chatgpt",
+      "/_dashboard/mcp/relocation/dismiss",
       "/_dashboard/pushes/plan",
       "/_dashboard/pushes/apply",
     ]) {
@@ -1156,6 +1157,7 @@ const SHIPPED_ROUTES = [
   "HEAD /assets/",
   "GET /_dashboard/mcp/verify",
   "GET /_dashboard/mcp/connect",
+  "GET /_dashboard/mcp/relocation/dismiss",
   "GET /_dashboard/app/acknowledge",
   "GET /_dashboard/pushes/plan",
   "GET /_dashboard/pushes/apply",
