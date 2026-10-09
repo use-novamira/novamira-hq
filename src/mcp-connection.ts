@@ -20,7 +20,7 @@ export type McpDetectedClient = import("./mcp/relocation.js").DetectedClient;
 
 /** AI clients still configured with the launch command HQ used before. */
 export interface McpRelocation {
-  readonly previous: string;
+  readonly previous: readonly string[];
   readonly current: string;
   readonly clients: readonly McpDetectedClient[];
 }

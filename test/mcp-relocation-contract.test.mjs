@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -14,11 +14,12 @@ import {
   isOutsideApplications,
   mentions,
   nextLaunchRecord,
+  nodeDetectionHost,
   readLaunchRecord,
   writeLaunchRecord,
 } from "../dist/mcp/relocation.js";
 
-test("the launch record keeps the previous command only when it changes", () => {
+test("the launch record keeps every previous command until it is cleared", () => {
   assert.deepEqual(nextLaunchRecord(undefined, "/new/hq"), {
     command: "/new/hq",
   });
@@ -27,17 +28,33 @@ test("the launch record keeps the previous command only when it changes", () => 
   });
   assert.deepEqual(nextLaunchRecord({ command: "/old/hq" }, "/new/hq"), {
     command: "/new/hq",
-    previous: "/old/hq",
+    previous: ["/old/hq"],
   });
   // Still pending from an earlier launch: kept until detection clears it.
   assert.deepEqual(
-    nextLaunchRecord({ command: "/new/hq", previous: "/old/hq" }, "/new/hq"),
-    { command: "/new/hq", previous: "/old/hq" },
+    nextLaunchRecord({ command: "/new/hq", previous: ["/old/hq"] }, "/new/hq"),
+    { command: "/new/hq", previous: ["/old/hq"] },
   );
-  // A further move replaces the pending one with the latest old location.
+  // A further move keeps the first old location too.
   assert.deepEqual(
-    nextLaunchRecord({ command: "/new/hq", previous: "/old/hq" }, "/third/hq"),
-    { command: "/third/hq", previous: "/new/hq" },
+    nextLaunchRecord(
+      { command: "/new/hq", previous: ["/old/hq"] },
+      "/third/hq",
+    ),
+    { command: "/third/hq", previous: ["/new/hq", "/old/hq"] },
+  );
+  // Moving back to an old location stops treating it as old.
+  assert.deepEqual(
+    nextLaunchRecord({ command: "/new/hq", previous: ["/old/hq"] }, "/old/hq"),
+    { command: "/old/hq", previous: ["/new/hq"] },
+  );
+  // Bounded.
+  assert.equal(
+    nextLaunchRecord(
+      { command: "/6", previous: ["/5", "/4", "/3", "/2", "/1"] },
+      "/7",
+    ).previous.length,
+    5,
   );
 });
 
@@ -57,12 +74,12 @@ test("a corrupt or foreign record reads as missing", async () => {
     }
     await writeLaunchRecord(
       path,
-      { command: "/a", previous: "/b" },
+      { command: "/a", previous: ["/b"] },
       defaultFileSecurity(),
     );
     assert.deepEqual(await readLaunchRecord(path), {
       command: "/a",
-      previous: "/b",
+      previous: ["/b"],
     });
   } finally {
     await rm(folder, { recursive: true, force: true });
@@ -86,6 +103,7 @@ function host(files, outputs = {}, platform = "win32") {
         .filter((path) => path.startsWith(directory) && path !== directory)
         .map((path) => path.slice(directory.length + 1).split(/[\\/]/)[0]),
     run: async (command, args) => outputs[[command, ...args].join(" ")],
+    exists: async () => false,
   };
 }
 
@@ -190,7 +208,7 @@ test("relocation reports clients on the old command until none remain, and dismi
     files = { "/Users/mario/.cursor/mcp.json": '{"command":"/old/hq"}' };
     const moved = service("/new/hq");
     assert.deepEqual(await moved.relocation(), {
-      previous: "/old/hq",
+      previous: ["/old/hq"],
       current: "/new/hq",
       clients: ["cursor"],
     });
@@ -198,9 +216,11 @@ test("relocation reports clients on the old command until none remain, and dismi
     assert.equal(await service("/new/hq").relocation(), undefined);
     // A later move shows it again.
     files = { "/Users/mario/.cursor/mcp.json": '{"command":"/new/hq"}' };
-    assert.deepEqual((await service("/third/hq").relocation()).clients, [
-      "cursor",
-    ]);
+    assert.deepEqual(await service("/third/hq").relocation(), {
+      previous: ["/new/hq"],
+      current: "/third/hq",
+      clients: ["cursor"],
+    });
     // Nothing left on the old command clears the record by itself.
     files = {};
     assert.equal(await service("/third/hq").relocation(), undefined);
@@ -228,4 +248,134 @@ test("replace removes, then adds, even when nothing was there to remove", async 
     assert.match(calls[1], / mcp add /);
     assert.ok(!calls.some((call) => call.includes("mcp get")));
   }
+});
+
+function relocating(folder, command, files, existing = new Set(), counter) {
+  return createMcpConnectionService(
+    { command, args: ["--mcp"] },
+    {},
+    spawnRecorder([]),
+    {
+      stateDir: folder,
+      security: defaultFileSecurity(),
+      executable: command,
+      host: {
+        ...host({}, {}, "linux"),
+        readText: async (path) => {
+          if (counter) counter.reads++;
+          return files()[path];
+        },
+        exists: async (path) => existing.has(path),
+      },
+    },
+  );
+}
+
+test("an old location that still exists is not reported", async () => {
+  // Enabling command registration, or copying instead of moving, leaves the
+  // old executable in place: clients configured with it still work.
+  const folder = await mkdtemp(join(tmpdir(), "hq-relocation-"));
+  try {
+    const files = () => ({
+      "/Users/mario/.cursor/mcp.json": '{"command":"/old/hq"}',
+    });
+    await relocating(folder, "/old/hq", files).relocation();
+    assert.equal(
+      await relocating(
+        folder,
+        "/launcher",
+        files,
+        new Set(["/old/hq"]),
+      ).relocation(),
+      undefined,
+    );
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("a second move keeps reporting clients left on the first location", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "hq-relocation-"));
+  try {
+    const files = () => ({
+      "/Users/mario/.cursor/mcp.json": '{"command":"/a/hq"}',
+    });
+    await relocating(folder, "/a/hq", files).relocation();
+    assert.ok(await relocating(folder, "/b/hq", files).relocation());
+    assert.deepEqual(await relocating(folder, "/c/hq", files).relocation(), {
+      previous: ["/a/hq"],
+      current: "/c/hq",
+      clients: ["cursor"],
+    });
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("page views reuse recent detection and do not rewrite an unchanged record", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "hq-relocation-"));
+  try {
+    const files = () => ({
+      "/Users/mario/.cursor/mcp.json": '{"command":"/old/hq"}',
+    });
+    await relocating(folder, "/old/hq", files).relocation();
+    const record = join(folder, "mcp-launch.json");
+    const quiet = await stat(record);
+    await relocating(folder, "/old/hq", files).relocation();
+    assert.equal((await stat(record)).ino, quiet.ino);
+    const counter = { reads: 0 };
+    const service = relocating(folder, "/new/hq", files, new Set(), counter);
+    assert.ok(await service.relocation());
+    const reads = counter.reads;
+    const written = await stat(record);
+    assert.ok(await service.relocation());
+    assert.equal(counter.reads, reads, "detection is reused within a minute");
+    assert.equal((await stat(record)).ino, written.ino);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("a client CLI that hangs is killed when detection gives up", async () => {
+  const started = Date.now();
+  const output = await nodeDetectionHost(process.env, { timeoutMs: 200 }).run(
+    process.execPath,
+    ["-e", "process.stdout.write('x'); setInterval(() => {}, 1000)"],
+  );
+  assert.equal(output, undefined);
+  assert.ok(Date.now() - started < 5000);
+});
+
+test("Windows npm shims are run through cmd.exe with fixed arguments", async () => {
+  const calls = [];
+  const spawnProcess = (command, args) => {
+    calls.push([command, ...args]);
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.kill = () => {};
+    queueMicrotask(() => {
+      if (command === "claude") {
+        child.emit(
+          "error",
+          Object.assign(new Error("spawn"), { code: "ENOENT" }),
+        );
+        return;
+      }
+      child.stdout.emit("data", Buffer.from("Command: C:\\old.exe"));
+      child.emit("close", 0);
+    });
+    return child;
+  };
+  const output = await nodeDetectionHost(
+    { ComSpec: "C:\\Windows\\System32\\cmd.exe" },
+    { platform: "win32", spawnProcess },
+  ).run("claude", ["mcp", "get", "novamira-hq"]);
+  assert.equal(output, "Command: C:\\old.exe");
+  assert.deepEqual(calls[1], [
+    "C:\\Windows\\System32\\cmd.exe",
+    "/d",
+    "/s",
+    "/c",
+    "claude mcp get novamira-hq",
+  ]);
 });

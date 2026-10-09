@@ -251,7 +251,7 @@ function relocationNotice(
   relocation: McpRelocation,
   configuration: McpConfiguration,
 ): Html {
-  return html`<section class="notice warn" role="status"><h2>Novamira HQ moved</h2><p>It used to run from <code>${relocation.previous}</code> and now runs from <code>${relocation.current}</code>. These AI clients still start the old location, so they cannot reach Novamira HQ until you configure them again:</p><ul>${relocation.clients.map((client) => html`<li><strong>${DETECTED_NAMES[client]}</strong> ${relocationFix(client, configuration)}</li>`)}</ul><button class="button" type="button"${ds.on("click", post(url("/_dashboard/mcp/relocation/dismiss"), { include: [] }))}>Dismiss</button></section>`;
+  return html`<section class="notice warn" role="status"><h2>Novamira HQ moved</h2><p>It used to run from ${relocation.previous.map((path, index) => html`${index > 0 ? ", " : ""}<code>${path}</code>`)} and now runs from <code>${relocation.current}</code>. These AI clients still start the old location, so they cannot reach Novamira HQ until you configure them again:</p><ul>${relocation.clients.map((client) => html`<li><strong>${DETECTED_NAMES[client]}</strong> ${relocationFix(client, configuration)}</li>`)}</ul><button class="button" type="button"${ds.on("click", post(url("/_dashboard/mcp/relocation/dismiss"), { include: [] }))}>Dismiss</button></section>`;
 }
 
 const OUTSIDE_APPLICATIONS = html`<section class="notice warn" role="status"><h2>Move Novamira HQ to Applications</h2><p>Novamira HQ is running from outside the Applications folder. AI clients you configure now would stop working when it is moved. Quit Novamira HQ, drag it to Applications, open it from there, then configure your AI clients.</p></section>`;

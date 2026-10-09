@@ -139,8 +139,9 @@ test("a moved HQ lists clients on the old location with their own fix", () => {
   const markup = renderHtml(
     renderMcpPage({}, configuration, undefined, undefined, {
       relocation: {
-        previous:
+        previous: [
           "/Users/m/Downloads/Novamira HQ.app/Contents/MacOS/novamira-hq-desktop",
+        ],
         current:
           "/Applications/Novamira HQ.app/Contents/MacOS/novamira-hq-desktop",
         clients: ["claude-code", "cursor", "claude", "antigravity"],

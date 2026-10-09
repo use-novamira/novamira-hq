@@ -9,16 +9,20 @@ import { asRecord } from "../json.js";
 import type {
   McpClient,
   McpConnectionService,
+  McpDetectedClient,
   McpLaunch,
   McpRelocation,
 } from "../mcp-connection.js";
 import {
+  DETECTED_CLIENTS,
   findClientsUsing,
   isOutsideApplications,
   nextLaunchRecord,
   readLaunchRecord,
+  sameLaunchRecord,
   writeLaunchRecord,
   type DetectionHost,
+  type LaunchRecord,
 } from "./relocation.js";
 
 type SpawnProcess = typeof spawn;
@@ -285,15 +289,43 @@ export function createMcpConnectionService(
   };
 }
 
-/** Remembers the launch command and reports clients left on the old one. */
+/** Detection spawns client CLIs; page views within a minute reuse it. */
+const DETECTION_TTL_MS = 60_000;
+
+/** Remembers the launch command and reports clients left on old ones. */
 function relocationService(
   current: string,
   options: RelocationOptions,
+  now: () => number = Date.now,
 ): Pick<
   McpConnectionService,
   "relocation" | "dismissRelocation" | "outsideApplications"
 > {
   const record = join(options.stateDir, "mcp-launch.json");
+  const detected = new Map<
+    string,
+    { readonly at: number; readonly clients: readonly McpDetectedClient[] }
+  >();
+  const clientsUsing = async (
+    previous: string,
+  ): Promise<readonly McpDetectedClient[]> => {
+    const cached = detected.get(previous);
+    if (cached && now() - cached.at < DETECTION_TTL_MS) return cached.clients;
+    // An old executable still in place (copied, or replaced by the command
+    // launcher) keeps working for the clients configured with it.
+    const clients = (await options.host.exists(previous))
+      ? []
+      : await findClientsUsing(previous, options.host);
+    detected.set(previous, { at: now(), clients });
+    return clients;
+  };
+  const save = async (
+    stored: LaunchRecord | undefined,
+    next: LaunchRecord,
+  ): Promise<void> => {
+    if (!sameLaunchRecord(stored, next))
+      await writeLaunchRecord(record, next, options.security);
+  };
   return {
     outsideApplications: isOutsideApplications(
       options.executable,
@@ -301,22 +333,32 @@ function relocationService(
       options.host.home,
     ),
     async relocation(): Promise<McpRelocation | undefined> {
-      const next = nextLaunchRecord(await readLaunchRecord(record), current);
-      if (next.previous === undefined) {
-        await writeLaunchRecord(record, next, options.security);
-        return undefined;
+      const stored = await readLaunchRecord(record);
+      const next = nextLaunchRecord(stored, current);
+      const kept: string[] = [];
+      const clients = new Set<McpDetectedClient>();
+      for (const previous of next.previous ?? []) {
+        const found = await clientsUsing(previous);
+        if (found.length === 0) continue;
+        kept.push(previous);
+        for (const client of found) clients.add(client);
       }
-      const clients = await findClientsUsing(next.previous, options.host);
-      await writeLaunchRecord(
-        record,
-        clients.length > 0 ? next : { command: current },
-        options.security,
+      await save(
+        stored,
+        kept.length > 0
+          ? { command: current, previous: kept }
+          : { command: current },
       );
-      return clients.length > 0
-        ? { previous: next.previous, current, clients }
+      return kept.length > 0
+        ? {
+            previous: kept,
+            current,
+            clients: DETECTED_CLIENTS.filter((client) => clients.has(client)),
+          }
         : undefined;
     },
     async dismissRelocation(): Promise<void> {
+      detected.clear();
       await writeLaunchRecord(record, { command: current }, options.security);
     },
   };

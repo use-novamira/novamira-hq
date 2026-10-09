@@ -2,17 +2,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { spawn } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { posix, win32 } from "node:path";
 import { atomicWriteFile } from "../config/atomic-write.js";
 import type { FileSecurity } from "../config/file-security.js";
 import { asRecord } from "../json.js";
 
-/** The command AI clients were last configured with, and the one before it. */
+/** Old locations kept while clients may still start them. */
+const MAX_PREVIOUS = 5;
+
+/** The command AI clients were last configured with, and the ones before it. */
 export interface LaunchRecord {
   readonly command: string;
-  readonly previous?: string;
+  readonly previous?: readonly string[];
 }
 
 export async function readLaunchRecord(
@@ -22,8 +25,13 @@ export async function readLaunchRecord(
     const value = asRecord(JSON.parse(await readFile(path, "utf8")) as unknown);
     if (value?.version !== 1 || typeof value.command !== "string")
       return undefined;
-    return typeof value.previous === "string"
-      ? { command: value.command, previous: value.previous }
+    const previous = Array.isArray(value.previous)
+      ? value.previous.filter(
+          (entry): entry is string => typeof entry === "string",
+        )
+      : [];
+    return previous.length > 0
+      ? { command: value.command, previous }
       : { command: value.command };
   } catch {
     return undefined;
@@ -42,14 +50,30 @@ export async function writeLaunchRecord(
   );
 }
 
+export function sameLaunchRecord(
+  left: LaunchRecord | undefined,
+  right: LaunchRecord,
+): boolean {
+  return (
+    left?.command === right.command &&
+    (left.previous ?? []).join("\0") === (right.previous ?? []).join("\0")
+  );
+}
+
 export function nextLaunchRecord(
   stored: LaunchRecord | undefined,
   current: string,
 ): LaunchRecord {
   if (!stored) return { command: current };
-  if (stored.command !== current)
-    return { command: current, previous: stored.command };
-  return stored;
+  if (stored.command === current) return stored;
+  const previous = [stored.command, ...(stored.previous ?? [])]
+    .filter(
+      (entry, index, all) => entry !== current && all.indexOf(entry) === index,
+    )
+    .slice(0, MAX_PREVIOUS);
+  return previous.length > 0
+    ? { command: current, previous }
+    : { command: current };
 }
 
 export type DetectedClient =
@@ -62,6 +86,7 @@ export interface DetectionHost {
   readText(path: string): Promise<string | undefined>;
   list(directory: string): Promise<readonly string[]>;
   run(command: string, args: readonly string[]): Promise<string | undefined>;
+  exists(path: string): Promise<boolean>;
 }
 
 /** Windows paths appear with escaped backslashes in JSON and TOML files. */
@@ -105,7 +130,7 @@ function within<T>(
   });
 }
 
-const DETECTION_ORDER: readonly DetectedClient[] = [
+export const DETECTED_CLIENTS: readonly DetectedClient[] = [
   "claude-code",
   "codex",
   "cursor",
@@ -118,7 +143,7 @@ const DETECTION_ORDER: readonly DetectedClient[] = [
 export async function findClientsUsing(
   command: string,
   host: DetectionHost,
-  timeoutMs = 10_000,
+  timeoutMs = 3_000,
 ): Promise<DetectedClient[]> {
   const path = host.platform === "win32" ? win32 : posix;
   const env = host.environment;
@@ -165,39 +190,85 @@ export async function findClientsUsing(
     },
   };
   const found = await Promise.all(
-    DETECTION_ORDER.map((client) => checks[client]()),
+    DETECTED_CLIENTS.map((client) => checks[client]()),
   );
-  return DETECTION_ORDER.filter((_, index) => found[index]);
+  return DETECTED_CLIENTS.filter((_, index) => found[index]);
+}
+
+export interface NodeDetectionOptions {
+  readonly timeoutMs?: number;
+  readonly platform?: NodeJS.Platform;
+  readonly spawnProcess?: typeof spawn;
 }
 
 /** Real files and client CLIs; output is bounded and never logged or stored. */
 export function nodeDetectionHost(
   environment: NodeJS.ProcessEnv,
+  options: NodeDetectionOptions = {},
 ): DetectionHost {
+  const platform = options.platform ?? process.platform;
+  const timeoutMs = options.timeoutMs ?? 3_000;
+  const spawnProcess = options.spawnProcess ?? spawn;
+  const capture = (
+    command: string,
+    args: readonly string[],
+  ): Promise<{ output?: string; missing: boolean }> =>
+    new Promise((resolve) => {
+      let settled = false;
+      let output = "";
+      const child = spawnProcess(command, [...args], {
+        shell: false,
+        env: environment,
+        stdio: ["ignore", "pipe", "ignore"],
+        windowsHide: true,
+      });
+      const finish = (result: { output?: string; missing: boolean }): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      };
+      // A client waiting on a login prompt must not outlive detection.
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        finish({ missing: false });
+      }, timeoutMs);
+      child.stdout.on("data", (chunk: Buffer) => {
+        output += chunk.toString("utf8");
+        if (output.length > 65_536) {
+          child.kill("SIGKILL");
+          finish({ missing: false });
+        }
+      });
+      child.on("error", (error: NodeJS.ErrnoException) => {
+        finish({
+          missing: error.code === "ENOENT" || error.code === "EINVAL",
+        });
+      });
+      child.on("close", (code: number | null) => {
+        finish(code === 0 ? { output, missing: false } : { missing: false });
+      });
+    });
   return {
-    platform: process.platform,
+    platform,
     home: homedir(),
     environment,
     readText: (path) => readFile(path, "utf8").catch(() => undefined),
     list: (directory) => readdir(directory).catch(() => []),
-    run: (command, args) =>
-      new Promise((resolve) => {
-        const child = spawn(command, [...args], {
-          shell: false,
-          env: environment,
-          stdio: ["ignore", "pipe", "ignore"],
-        });
-        let output = "";
-        child.stdout.on("data", (chunk: Buffer) => {
-          output += chunk.toString("utf8");
-          if (output.length > 65_536) child.kill("SIGKILL");
-        });
-        child.on("error", () => {
-          resolve(undefined);
-        });
-        child.on("close", (code) => {
-          resolve(code === 0 ? output : undefined);
-        });
-      }),
+    exists: (path) =>
+      stat(path).then(
+        () => true,
+        () => false,
+      ),
+    run: async (command, args) => {
+      const direct = await capture(command, args);
+      if (!direct.missing || platform !== "win32") return direct.output;
+      // npm installs `claude.cmd` and `codex.cmd`, which only a shell can
+      // start. The command and its arguments are fixed words, never input.
+      const shell = environment.ComSpec ?? "cmd.exe";
+      return (
+        await capture(shell, ["/d", "/s", "/c", [command, ...args].join(" ")])
+      ).output;
+    },
   };
 }
