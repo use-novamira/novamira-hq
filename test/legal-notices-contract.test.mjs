@@ -185,6 +185,7 @@ test("offline notice generation rejects asset drift and missing license text", a
   const paths = [
     "scripts/legal-notices.mjs",
     "scripts/windows-native.mjs",
+    "scripts/windows-nsis.mjs",
     "scripts/runtime-license-evidence.mjs",
     "legal",
     "license-docs",
@@ -229,6 +230,15 @@ test("offline notice generation rejects asset drift and missing license text", a
     run().stderr,
     /Legal inventory needs review: Windows WebView2 loader/,
   );
+  await writeFile(manifestPath, originalManifest);
+  const nsis = JSON.parse(originalManifest);
+  const record = nsis.components.find((item) => item.id === "nsis");
+  assert.equal(record.version, "3.13");
+  assert.equal(record.artifact.filename, "nsis-3.13.zip");
+  assert.deepEqual(record.licenseFiles, ["licenses/nsis.txt"]);
+  record.artifact.sha256 = "0".repeat(64);
+  await writeFile(manifestPath, JSON.stringify(nsis));
+  assert.match(run().stderr, /Legal inventory needs review: NSIS installer/);
   await writeFile(manifestPath, originalManifest);
   // Historical audit-completeness flags do not substitute for evidence checks.
   for (const file of [

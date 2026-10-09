@@ -2,8 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import {
+  installNsis,
+  NSIS_SHA256,
+  NSIS_URL,
+  NSIS_VERSION,
+} from "../scripts/windows-nsis.mjs";
 
 const script = await readFile(
   new URL("../scripts/windows/installer.nsi", import.meta.url),
@@ -70,4 +78,26 @@ test("uninstall keeps settings and credentials", () => {
 test("signing has one marked place and no site CLI is installed", () => {
   assert.equal((script.match(/Code signing goes here/g) ?? []).length, 1);
   assert.doesNotMatch(script, /site-cli|novamira-hq\.exe"/);
+});
+
+test("NSIS is pinned by version and checksum and a mismatch writes nothing", async () => {
+  assert.equal(NSIS_VERSION, "3.13");
+  assert.equal(
+    NSIS_URL,
+    "https://downloads.sourceforge.net/project/nsis/NSIS%203/3.13/nsis-3.13.zip",
+  );
+  assert.equal(
+    NSIS_SHA256,
+    "ba63dffc4410ee89193e1cb5a41989991bd77c61068da17e3156d136b7b0b3d8",
+  );
+  const folder = await mkdtemp(join(tmpdir(), "hq-nsis-"));
+  try {
+    await assert.rejects(
+      installNsis(folder, async () => new Response("tampered")),
+      /NSIS checksum mismatch/,
+    );
+    assert.deepEqual(await readdir(folder), []);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
 });
