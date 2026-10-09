@@ -101,3 +101,26 @@ test("NSIS is pinned by version and checksum and a mismatch writes nothing", asy
     await rm(folder, { recursive: true, force: true });
   }
 });
+
+test("--package builds the installer on Windows from the staged legal files", async () => {
+  const builder = await readFile(
+    new URL("../scripts/desktop-build.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(builder, /platform === "win32"\)\s*await packageWindows\(\)/);
+  const start = builder.indexOf("async function packageWindows");
+  assert.ok(start >= 0, "packageWindows is defined");
+  const windows = builder.slice(start);
+  assert.match(windows, /installNsis\(/);
+  assert.match(windows, /novamira-hq-setup-windows-x86_64\.exe/);
+  for (const define of ["/DVERSION=", "/DSTAGE=", "/DOUTFILE="])
+    assert.ok(windows.includes(define), define);
+  for (const name of [
+    "LICENSE",
+    "SOURCE-OFFER.txt",
+    "LGPL-2.1.txt",
+    "THIRD-PARTY-NOTICES.txt",
+    "novamira-hq.ico",
+  ])
+    assert.ok(windows.includes(name), name);
+});
