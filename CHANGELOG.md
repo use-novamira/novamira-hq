@@ -13,9 +13,15 @@
   your AI lists the AI clients that still start the old location and offers
   the fix for each one. On macOS it also warns when Novamira HQ runs outside
   Applications.
+- Windows now has an installer. It installs Novamira HQ for your user account
+  in a fixed folder, adds it to the Start menu and to Installed apps, and
+  updates replace the app in the same place, so AI clients you configured keep
+  working. Uninstalling keeps your settings and credentials.
 
 ### Fixed
 
+- On Windows, opening Novamira HQ from the Start menu no longer leaves a
+  console or Windows Terminal window open beside the app.
 - On macOS, Claude Code started from a terminal no longer stops with
   "suspended (tty input)" when it starts HQ's connector, and moving the mouse
   no longer prints stray characters at the prompt. HQ's lookup of the

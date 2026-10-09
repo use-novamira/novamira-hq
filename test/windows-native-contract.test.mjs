@@ -64,3 +64,30 @@ test("Windows build embeds native assets and stages them before webview import",
       main.indexOf('await import("@webview/webview")'),
   );
 });
+
+test("the window role hides only a console that belongs to it alone", async () => {
+  const runtime = await readFile(
+    new URL("../desktop/runtime.ts", import.meta.url),
+    "utf8",
+  );
+  const main = await readFile(
+    new URL("../desktop/main.ts", import.meta.url),
+    "utf8",
+  );
+  const start = runtime.indexOf("export function hideOwnConsole");
+  assert.ok(start >= 0, "hideOwnConsole is defined");
+  const hide = runtime.slice(start, runtime.indexOf("\n}\n", start));
+  assert.match(hide, /Deno\.build\.os !== "windows"/);
+  assert.match(hide, /GetConsoleProcessList\(ids, 2\) === 1/);
+  assert.match(hide, /ShowWindow\(handle, 0\)/);
+  // Hiding keeps the console for children; freeing it would open new ones.
+  assert.doesNotMatch(runtime, /FreeConsole/);
+  const windowRole = main.slice(main.indexOf("async function window()"));
+  assert.ok(
+    windowRole.indexOf("hideOwnConsole();") >= 0 &&
+      windowRole.indexOf("hideOwnConsole();") <
+        windowRole.indexOf("commandRegistration()"),
+  );
+  // Only the window role hides it: CLI, MCP and the launcher keep output.
+  assert.equal((main.match(/hideOwnConsole\(\);/g) ?? []).length, 1);
+});

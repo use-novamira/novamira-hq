@@ -3,18 +3,22 @@
 
 import assert from "node:assert/strict";
 import process from "node:process";
-import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { spawn, spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { once } from "node:events";
+import { setTimeout as delay } from "node:timers/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 // Exercise the shipped container, not a source-tree npm installation. The
 // shared smoke retains stdin for the server and isolates homes/runtime caches.
+const options = process.argv.slice(2);
+const destructive = options.includes("--destructive");
 const artifact = resolve(
-  process.argv[2] ??
+  options.find((option) => option !== "--destructive") ??
     (process.platform === "linux"
       ? "dist-desktop/novamira-hq-desktop-linux-x86_64.tar.gz"
-      : "dist-desktop/novamira-hq-desktop.exe"),
+      : "dist-desktop/novamira-hq-setup-windows-x86_64.exe"),
 );
 const temporary = await mkdtemp(join(tmpdir(), "hq-artifact-"));
 let mounted = false;
@@ -40,6 +44,64 @@ try {
       await stat(join(tree, name));
     }
     binary = join(tree, "novamira-hq-desktop");
+  } else if (artifact.endsWith("-setup-windows-x86_64.exe")) {
+    // The installer writes this user's Start menu, Installed apps entry and
+    // HQ command registration: never on a machine someone actually uses.
+    if (!process.env.CI && !destructive)
+      throw new Error(
+        "Installer acceptance changes this user's Start menu, Installed apps and Novamira HQ command registration. Run it on CI, or pass --destructive on a disposable machine.",
+      );
+    const installed = spawnSync("reg", [
+      "query",
+      "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\NovamiraHQ",
+    ]);
+    if (installed.status === 0)
+      throw new Error(
+        "Novamira HQ is installed for this user. Uninstall it before running installer acceptance.",
+      );
+    // No spaces: Node would quote the argument and NSIS requires /D= unquoted.
+    const target = join(temporary, "NovamiraHQ");
+    run(artifact, ["/S", `/D=${target}`]);
+    for (const name of [
+      "novamira-hq-desktop.exe",
+      "Uninstall.exe",
+      "LICENSE",
+      "SOURCE-OFFER.txt",
+      "LGPL-2.1.txt",
+      "THIRD-PARTY-NOTICES.txt",
+    ])
+      await stat(join(target, name));
+    // Upgrade over a running copy: the installer must stop it, then replace it.
+    const running = spawn(join(target, "novamira-hq-desktop.exe"), ["--mcp"], {
+      stdio: ["pipe", "ignore", "ignore"],
+      env: { ...process.env, NOVAMIRA_HQ_HOME: join(temporary, "home") },
+    });
+    const exited = once(running, "exit");
+    await delay(3000);
+    run(artifact, ["/S", `/D=${target}`]);
+    await Promise.race([
+      exited,
+      delay(10_000).then(() => {
+        throw new Error("The installer left a running copy behind");
+      }),
+    ]);
+    run(process.execPath, [
+      "scripts/desktop-smoke.mjs",
+      join(target, "novamira-hq-desktop.exe"),
+    ]);
+    // Uninstall keeps settings, state and credentials.
+    const data = join(process.env.LOCALAPPDATA ?? "", "Novamira HQ");
+    const kept = join(data, "acceptance-sentinel.txt");
+    await mkdir(data, { recursive: true });
+    await writeFile(kept, "kept\n");
+    try {
+      run(join(target, "Uninstall.exe"), ["/S", `_?=${target}`]);
+      await assert.rejects(stat(join(target, "novamira-hq-desktop.exe")));
+      await stat(kept);
+    } finally {
+      await rm(kept, { force: true });
+    }
+    binary = undefined;
   } else if (artifact.endsWith(".dmg")) {
     run("hdiutil", [
       "attach",

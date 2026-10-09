@@ -58,6 +58,40 @@ export async function prepareCommandPath(): Promise<void> {
   Deno.env.set("PATH", [...new Set(entries)].join(":"));
 }
 
+/**
+ * Explorer and the Start Menu give a console-subsystem app a console of its
+ * own. Hide it for the window only when no other process shares it, so a
+ * terminal the user launched HQ from stays visible. Hidden, never freed:
+ * the server and PowerShell children inherit it instead of opening new ones.
+ */
+export function hideOwnConsole(): void {
+  if (Deno.build.os !== "windows") return;
+  try {
+    const kernel = Deno.dlopen("kernel32.dll", {
+      GetConsoleWindow: { parameters: [], result: "pointer" },
+      GetConsoleProcessList: { parameters: ["buffer", "u32"], result: "u32" },
+    });
+    const user = Deno.dlopen("user32.dll", {
+      ShowWindow: { parameters: ["pointer", "i32"], result: "i32" },
+    });
+    try {
+      const handle = kernel.symbols.GetConsoleWindow();
+      const ids = new Uint32Array(2);
+      if (
+        handle !== null &&
+        kernel.symbols.GetConsoleProcessList(ids, 2) === 1
+      ) {
+        user.symbols.ShowWindow(handle, 0);
+      }
+    } finally {
+      kernel.close();
+      user.close();
+    }
+  } catch {
+    /* A visible console is cosmetic; it must never stop the window. */
+  }
+}
+
 /** Prepare native webview loading independently of the launch directory. */
 export async function prepareBundledWebview(): Promise<() => void> {
   if (Deno.build.os === "windows") {

@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import process from "node:process";
 import { WINDOWS_WEBVIEW_HASHES } from "./windows-native.mjs";
+import { NSIS_SHA256 } from "./windows-nsis.mjs";
 import { validateDeclaredLicense } from "./runtime-license-evidence.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -25,6 +26,14 @@ if (
     .digest("hex") !== loader.artifact.licenseSha256
 )
   throw new Error("Legal inventory needs review: Windows WebView2 loader");
+const nsis = components.find((item) => item.id === "nsis");
+if (
+  nsis?.artifact?.sha256 !== NSIS_SHA256 ||
+  createHash("sha256")
+    .update(await readFile(join(root, "legal/licenses/nsis.txt")))
+    .digest("hex") !== nsis.artifact.licenseSha256
+)
+  throw new Error("Legal inventory needs review: NSIS installer");
 const npmInventory = JSON.parse(await read("legal/npm-inventory.json"));
 if (
   createHash("sha256")

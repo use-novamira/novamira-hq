@@ -13,9 +13,10 @@
 // same master and puts it in the bundle it signs.
 //
 // Linux cannot embed an icon in an executable at all, so `--package` writes the
-// tarball that carries the three files a desktop entry needs beside it. It is
-// opt-in because gzipping an 80 MB executable is not something an edit-compile
-// loop should pay for.
+// tarball that carries the three files a desktop entry needs beside it. On
+// Windows `--package` builds the per-user installer. It is opt-in because
+// compressing an 80 MB executable is not something an edit-compile loop should
+// pay for.
 
 import { spawnSync } from "node:child_process";
 import { cp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
@@ -25,6 +26,7 @@ import { fileURLToPath, URL } from "node:url";
 
 import { generateIcons, HICOLOR_SIZES, ICON_NAME } from "./desktop-icons.mjs";
 import { installWindowsWebview } from "./windows-native.mjs";
+import { installNsis } from "./windows-nsis.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const outDir = join(root, "dist-desktop");
@@ -131,10 +133,9 @@ run("deno", [
 ]);
 
 if (argv.includes("--package")) {
-  if (platform !== "linux") {
-    fail("--package assembles the Linux desktop archive and needs Linux");
-  }
-  await packageLinux();
+  if (platform === "linux") await packageLinux();
+  else if (platform === "win32") await packageWindows();
+  else fail("--package builds the Linux archive or the Windows installer");
 }
 
 stdout.write(`Compiled ${join(outDir, binary)}\n`);
@@ -191,6 +192,41 @@ async function packageLinux() {
   ]);
   await rm(stage, { recursive: true, force: true });
   stdout.write(`Packaged ${join(outDir, `${name}.tar.gz`)}\n`);
+}
+
+/**
+ * The Windows installer: the executable and the legal files it must travel
+ * with, compiled by a pinned and verified makensis.
+ */
+async function packageWindows() {
+  const stage = join(outDir, "stage-windows");
+  const output = join(outDir, "novamira-hq-setup-windows-x86_64.exe");
+  await rm(stage, { recursive: true, force: true });
+  await mkdir(stage, { recursive: true });
+  await cp(join(outDir, binary), join(stage, "novamira-hq-desktop.exe"));
+  await cp(join(iconDir, "novamira-hq.ico"), join(stage, "novamira-hq.ico"));
+  await cp(join(root, "LICENSE"), join(stage, "LICENSE"));
+  await cp(
+    join(root, "legal/SOURCE-OFFER.txt"),
+    join(stage, "SOURCE-OFFER.txt"),
+  );
+  await cp(
+    join(root, "legal/licenses/lgpl-2.1.txt"),
+    join(stage, "LGPL-2.1.txt"),
+  );
+  await cp(
+    join(root, "dist/web/static/third-party-notices.txt"),
+    join(stage, "THIRD-PARTY-NOTICES.txt"),
+  );
+  const makensis = await installNsis(join(outDir, "nsis"));
+  run(makensis, [
+    `/DVERSION=${manifest.version}`,
+    `/DSTAGE=${stage}`,
+    `/DOUTFILE=${output}`,
+    join(root, "scripts/windows/installer.nsi"),
+  ]);
+  await rm(stage, { recursive: true, force: true });
+  stdout.write(`Packaged ${output}\n`);
 }
 
 function installNotes(name) {

@@ -47,7 +47,8 @@ WordPress connections remain local to your device.
 Download the latest version from [novamira.ai/hq](https://novamira.ai/hq).
 
 - **macOS:** open the DMG and drag Novamira HQ to Applications.
-- **Windows:** download and open the Windows application.
+- **Windows:** download and run the installer. It installs for your user
+  account and needs no administrator rights.
 - **Linux:** download and extract the Linux archive, then open
   `novamira-hq-desktop`.
 

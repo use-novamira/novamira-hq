@@ -231,6 +231,21 @@
       "notes": "The x64 loader embedded from webview_deno 0.9.0 matches build/native/x64/WebView2Loader.dll in the official Microsoft.Web.WebView2 1.0.1150.38 NuGet archive byte for byte. The package declares LICENSE.txt as its license. This record covers the loader, not the separately installed WebView2 Runtime."
     },
     {
+      "id": "nsis",
+      "name": "NSIS (Nullsoft Scriptable Install System)",
+      "version": "3.13",
+      "license": "Zlib; LZMA module CPL-1.0 with the NSIS linking exception",
+      "scope": "Windows installer and uninstaller stub",
+      "source": "https://downloads.sourceforge.net/project/nsis/NSIS%203/3.13/nsis-3.13.zip",
+      "licenseFiles": ["licenses/nsis.txt"],
+      "artifact": {
+        "filename": "nsis-3.13.zip",
+        "sha256": "ba63dffc4410ee89193e1cb5a41989991bd77c61068da17e3156d136b7b0b3d8",
+        "licenseSha256": "6cc665347be5c84b76bf0fd6f85fbb0c33261e89b3408aa3e3e55dbe95e12d89"
+      },
+      "notes": "Only the Windows installer and its uninstaller contain NSIS code: the installer stub, the nsExec and System plug-ins and the LZMA decompressor. The NSIS special exception keeps code linked with the LZMA module free of CPL terms; the module itself remains under CPL-1.0, and its source is in nsis-3.13-src.tar.bz2 at https://downloads.sourceforge.net/project/nsis/NSIS%203/3.13/nsis-3.13-src.tar.bz2. The installed application contains no NSIS code."
+    },
+    {
       "id": "deno",
       "name": "Deno",
       "version": "2.9.6 (pinned CI toolchain; runtime review incomplete)",

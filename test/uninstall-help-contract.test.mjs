@@ -17,6 +17,7 @@ test("uninstall help separates executable removal from optional disconnection", 
     "before uninstalling",
     "remote revocation can fail",
     "does not run removal commands",
+    "Settings → Apps → Installed apps",
   ])
     assert.ok(markup.includes(text), text);
   assert.doesNotMatch(markup, /<button|data-on:|rm -rf/);
