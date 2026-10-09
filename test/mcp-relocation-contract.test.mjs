@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { defaultFileSecurity } from "../dist/config/file-security.js";
+import { createMcpConnectionService } from "../dist/mcp/configuration.js";
 import {
   findClientsUsing,
   isOutsideApplications,
@@ -153,4 +155,77 @@ test("macOS warns outside Applications only", () => {
     isOutsideApplications("C:\\anything.exe", "win32", "C:\\Users\\m"),
     false,
   );
+});
+
+function spawnRecorder(calls, failures = new Set()) {
+  return (command, args) => {
+    calls.push([command, ...args].join(" "));
+    const child = new EventEmitter();
+    child.kill = () => {};
+    queueMicrotask(() => child.emit("close", failures.has(args[1]) ? 1 : 0));
+    return child;
+  };
+}
+
+test("relocation reports clients on the old command until none remain, and dismiss clears it", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "hq-relocation-"));
+  try {
+    let files = {};
+    const service = (command) =>
+      createMcpConnectionService(
+        { command, args: ["--mcp"] },
+        {},
+        spawnRecorder([]),
+        {
+          stateDir: folder,
+          security: defaultFileSecurity(),
+          executable: command,
+          host: {
+            ...host({}, {}, "linux"),
+            readText: async (path) => files[path],
+          },
+        },
+      );
+    assert.equal(await service("/old/hq").relocation(), undefined);
+    files = { "/Users/mario/.cursor/mcp.json": '{"command":"/old/hq"}' };
+    const moved = service("/new/hq");
+    assert.deepEqual(await moved.relocation(), {
+      previous: "/old/hq",
+      current: "/new/hq",
+      clients: ["cursor"],
+    });
+    await moved.dismissRelocation();
+    assert.equal(await service("/new/hq").relocation(), undefined);
+    // A later move shows it again.
+    files = { "/Users/mario/.cursor/mcp.json": '{"command":"/new/hq"}' };
+    assert.deepEqual((await service("/third/hq").relocation()).clients, [
+      "cursor",
+    ]);
+    // Nothing left on the old command clears the record by itself.
+    files = {};
+    assert.equal(await service("/third/hq").relocation(), undefined);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("replace removes, then adds, even when nothing was there to remove", async () => {
+  for (const [client, remove] of [
+    ["claude-code", "claude mcp remove --scope user novamira-hq"],
+    ["codex", "codex mcp remove novamira-hq"],
+  ]) {
+    const calls = [];
+    const service = createMcpConnectionService(
+      { command: "/new/hq", args: ["--mcp"] },
+      {},
+      spawnRecorder(calls, new Set(["remove"])),
+    );
+    assert.equal(
+      await service.connect(client, { replace: true }),
+      "configured",
+    );
+    assert.equal(calls[0], remove);
+    assert.match(calls[1], / mcp add /);
+    assert.ok(!calls.some((call) => call.includes("mcp get")));
+  }
 });

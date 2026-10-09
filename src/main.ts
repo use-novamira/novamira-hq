@@ -5,6 +5,7 @@ import type { Command } from "commander";
 import { randomUUID } from "node:crypto";
 import type { McpLaunch } from "./mcp-connection.js";
 import { createMcpConnectionService } from "./mcp/configuration.js";
+import { nodeDetectionHost } from "./mcp/relocation.js";
 import { createCommandHandlers } from "./cli/commands.js";
 import {
   createProgram,
@@ -259,6 +260,15 @@ export async function main(
       mcpConnection: createMcpConnectionService(
         overrides.mcpLaunch ?? DEFAULT_MCP_LAUNCH,
         environment,
+        undefined,
+        overrides.distribution === "desktop"
+          ? {
+              stateDir: paths.stateDir,
+              security,
+              executable: process.execPath,
+              host: nodeDetectionHost(environment),
+            }
+          : undefined,
       ),
       history,
       version: VERSION,

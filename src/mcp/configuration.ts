@@ -2,13 +2,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { spawn } from "node:child_process";
+import { join } from "node:path";
+import type { FileSecurity } from "../config/file-security.js";
 import { CliError } from "../errors.js";
 import { asRecord } from "../json.js";
 import type {
   McpClient,
   McpConnectionService,
   McpLaunch,
+  McpRelocation,
 } from "../mcp-connection.js";
+import {
+  findClientsUsing,
+  isOutsideApplications,
+  nextLaunchRecord,
+  readLaunchRecord,
+  writeLaunchRecord,
+  type DetectionHost,
+} from "./relocation.js";
 
 type SpawnProcess = typeof spawn;
 
@@ -65,10 +76,19 @@ function tomlString(value: string): string {
   return JSON.stringify(value).replace(/\\u0008/g, "\\b");
 }
 
+/** Desktop only: where the launch record lives and how clients are read. */
+export interface RelocationOptions {
+  readonly stateDir: string;
+  readonly security: FileSecurity;
+  readonly executable: string;
+  readonly host: DetectionHost;
+}
+
 export function createMcpConnectionService(
   base: McpLaunch,
   environment: NodeJS.ProcessEnv,
   spawnProcess: SpawnProcess = spawn,
+  relocation?: RelocationOptions,
 ): McpConnectionService {
   const configuration: McpConnectionService["configuration"] = () => {
     const launch = {
@@ -116,9 +136,13 @@ export function createMcpConnectionService(
       ].join("\n"),
     };
   };
+  const relocationMembers = relocation
+    ? relocationService(base.command, relocation)
+    : {};
   return {
+    ...relocationMembers,
     configuration,
-    async connect(client) {
+    async connect(client, options = {}) {
       const config = configuration();
       const launchEnvironment = JSON.parse(config.claude) as {
         mcpServers: Record<
@@ -158,7 +182,16 @@ export function createMcpConnectionService(
           });
         });
 
-      if (client !== "vscode" && (await run(["mcp", "get", "novamira-hq"])))
+      if (options.replace === true && client !== "vscode")
+        await run(
+          client === "claude-code"
+            ? ["mcp", "remove", "--scope", "user", "novamira-hq"]
+            : ["mcp", "remove", "novamira-hq"],
+        );
+      else if (
+        client !== "vscode" &&
+        (await run(["mcp", "get", "novamira-hq"]))
+      )
         return "existing";
       if (await run(connector.args))
         return client === "vscode" ? "sent" : "configured";
@@ -248,6 +281,43 @@ export function createMcpConnectionService(
             .join("\n") + "\n",
         );
       });
+    },
+  };
+}
+
+/** Remembers the launch command and reports clients left on the old one. */
+function relocationService(
+  current: string,
+  options: RelocationOptions,
+): Pick<
+  McpConnectionService,
+  "relocation" | "dismissRelocation" | "outsideApplications"
+> {
+  const record = join(options.stateDir, "mcp-launch.json");
+  return {
+    outsideApplications: isOutsideApplications(
+      options.executable,
+      options.host.platform,
+      options.host.home,
+    ),
+    async relocation(): Promise<McpRelocation | undefined> {
+      const next = nextLaunchRecord(await readLaunchRecord(record), current);
+      if (next.previous === undefined) {
+        await writeLaunchRecord(record, next, options.security);
+        return undefined;
+      }
+      const clients = await findClientsUsing(next.previous, options.host);
+      await writeLaunchRecord(
+        record,
+        clients.length > 0 ? next : { command: current },
+        options.security,
+      );
+      return clients.length > 0
+        ? { previous: next.previous, current, clients }
+        : undefined;
+    },
+    async dismissRelocation(): Promise<void> {
+      await writeLaunchRecord(record, { command: current }, options.security);
     },
   };
 }

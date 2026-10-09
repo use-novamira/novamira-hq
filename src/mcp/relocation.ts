@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Ovation S.r.l. <dev@novamira.ai>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { readFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { readdir, readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { posix, win32 } from "node:path";
 import { atomicWriteFile } from "../config/atomic-write.js";
 import type { FileSecurity } from "../config/file-security.js";
@@ -166,4 +168,36 @@ export async function findClientsUsing(
     DETECTION_ORDER.map((client) => checks[client]()),
   );
   return DETECTION_ORDER.filter((_, index) => found[index]);
+}
+
+/** Real files and client CLIs; output is bounded and never logged or stored. */
+export function nodeDetectionHost(
+  environment: NodeJS.ProcessEnv,
+): DetectionHost {
+  return {
+    platform: process.platform,
+    home: homedir(),
+    environment,
+    readText: (path) => readFile(path, "utf8").catch(() => undefined),
+    list: (directory) => readdir(directory).catch(() => []),
+    run: (command, args) =>
+      new Promise((resolve) => {
+        const child = spawn(command, [...args], {
+          shell: false,
+          env: environment,
+          stdio: ["ignore", "pipe", "ignore"],
+        });
+        let output = "";
+        child.stdout.on("data", (chunk: Buffer) => {
+          output += chunk.toString("utf8");
+          if (output.length > 65_536) child.kill("SIGKILL");
+        });
+        child.on("error", () => {
+          resolve(undefined);
+        });
+        child.on("close", (code) => {
+          resolve(code === 0 ? output : undefined);
+        });
+      }),
+  };
 }
