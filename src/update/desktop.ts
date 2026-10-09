@@ -34,7 +34,7 @@ export function desktopAsset(
   if (platform === "linux" && arch === "x64")
     return "novamira-hq-desktop-linux-x86_64.tar.gz";
   if (platform === "win32" && arch === "x64")
-    return "novamira-hq-desktop-windows-x86_64.exe";
+    return "novamira-hq-setup-windows-x86_64.exe";
   return undefined;
 }
 

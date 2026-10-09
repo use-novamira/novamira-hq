@@ -63,9 +63,11 @@ test("desktop channels select by SemVer and require a published platform artifac
     desktopAsset("darwin", "x64"),
     "novamira-hq-desktop-macos-x86_64.dmg",
   );
+  // Releases before the installer only know the portable name; the
+  // transition release carries both (release.yml), later ones only this.
   assert.equal(
     desktopAsset("win32", "x64"),
-    "novamira-hq-desktop-windows-x86_64.exe",
+    "novamira-hq-setup-windows-x86_64.exe",
   );
   assert.equal(desktopAsset("linux", "arm64"), undefined);
 });
