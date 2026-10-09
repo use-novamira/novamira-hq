@@ -8,9 +8,15 @@
   server by itself, so HQ gives you the configuration to paste into
   `~/.gemini/config/mcp_config.json`. Antigravity, the Antigravity IDE and the
   agy CLI all read that file.
+- Windows now has an installer. It installs Novamira HQ for your user account
+  in a fixed folder, adds it to the Start menu and to Installed apps, and
+  updates replace the app in the same place, so AI clients you configured keep
+  working. Uninstalling keeps your settings and credentials.
 
 ### Fixed
 
+- On Windows, opening Novamira HQ no longer leaves a console window open
+  beside the app.
 - On macOS, Claude Code started from a terminal no longer stops with
   "suspended (tty input)" when it starts HQ's connector, and moving the mouse
   no longer prints stray characters at the prompt. HQ's lookup of the

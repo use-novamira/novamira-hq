@@ -76,6 +76,11 @@ to exercise compiled offline site features and process cleanup.
 This normally uses a **precompiled** Deno runtime. It rebuilds HQ, but does not
 recompile the LGPL component. The following steps are needed to modify that code.
 
+On Windows, `node scripts/desktop-build.mjs --package` also builds the
+installer `dist-desktop/novamira-hq-setup-windows-x86_64.exe` with NSIS 3.13,
+downloaded from SourceForge and verified against the checksum in
+`scripts/windows-nsis.mjs`.
+
 ## Rebuild the runtime with modified library source
 
 Use separate fresh source checkouts, outside your HQ checkout:

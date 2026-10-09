@@ -8,7 +8,7 @@ Download the release for your platform:
 https://github.com/use-novamira/novamira-hq/releases
 
 macOS: open the DMG and move Novamira HQ.app to Applications.
-Windows: save the portable .exe in a permanent user-owned location and open it.
+Windows: run the installer (novamira-hq-setup-windows-x86_64.exe).
 Linux: extract the .tar.gz to a permanent user-owned location and run novamira-hq-desktop.
 
 Open Configure AI to connect your AI client through MCP. No skills are required.
