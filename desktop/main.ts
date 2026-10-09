@@ -28,6 +28,7 @@
 
 import {
   DESKTOP_RELEASE_SCRIPT,
+  hideOwnConsole,
   MCP_DOWNLOAD_SCRIPT,
   openDesktopRelease,
   openMcpDownload,
@@ -222,6 +223,7 @@ function stopServer(): void {
 
 /** The window role: spawn the server, wait for its URL, show it, reap it. */
 async function window(): Promise<number> {
+  hideOwnConsole();
   // A moved copy explicitly opened by the user becomes the selected app.
   // Registration conflicts must never prevent the dashboard from starting.
   try {
