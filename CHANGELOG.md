@@ -8,6 +8,11 @@
   server by itself, so HQ gives you the configuration to paste into
   `~/.gemini/config/mcp_config.json`. Antigravity, the Antigravity IDE and the
   agy CLI all read that file.
+- When Novamira HQ runs from a different place than before (moved,
+  reinstalled, or installed after using the portable Windows app), Configure
+  your AI lists the AI clients that still start the old location and offers
+  the fix for each one. On macOS it also warns when Novamira HQ runs outside
+  Applications.
 
 ### Fixed
 
