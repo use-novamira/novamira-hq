@@ -124,3 +124,22 @@ test("--package builds the installer on Windows from the staged legal files", as
   ])
     assert.ok(windows.includes(name), name);
 });
+
+test("package acceptance installs, upgrades a running copy and uninstalls", async () => {
+  const acceptance = await readFile(
+    new URL("../scripts/desktop-artifact-acceptance.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.ok(
+    acceptance.includes("dist-desktop/novamira-hq-setup-windows-x86_64.exe"),
+  );
+  const start = acceptance.indexOf('endsWith("-setup-windows-x86_64.exe")');
+  assert.ok(start >= 0, "installer branch exists");
+  const windows = acceptance.slice(start);
+  assert.ok(windows.includes('"/S", `/D=${target}`'));
+  assert.ok(windows.includes('["--mcp"]'));
+  assert.ok(windows.includes("Uninstall.exe"));
+  assert.ok(windows.includes("`_?=${target}`"));
+  assert.ok(windows.includes("acceptance-sentinel"));
+  assert.ok(windows.includes("desktop-smoke.mjs"));
+});
