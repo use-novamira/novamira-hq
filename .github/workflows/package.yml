@@ -116,8 +116,8 @@ jobs:
       - run: bun run desktop:build
       - name: Smoke-test the compiled server role
         run: node scripts/desktop-smoke.mjs
-      - name: Package Linux application
-        if: runner.os == 'Linux'
+      - name: Package Linux archive or Windows installer
+        if: runner.os != 'macOS'
         run: node scripts/desktop-build.mjs --package
       - name: Accept desktop installation artifact
         if: runner.os != 'macOS'

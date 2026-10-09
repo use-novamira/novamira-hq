@@ -103,12 +103,21 @@ test("Linux and Windows desktop assets carry their icons and are proved to run",
 
   // Both executables, and Linux's tarball beside its bare one.
   assert.match(desktop, /asset: novamira-hq-desktop-linux-x86_64\n/);
-  assert.match(desktop, /asset: novamira-hq-desktop-windows-x86_64\.exe\n/);
+  assert.match(desktop, /asset: novamira-hq-setup-windows-x86_64\.exe\n/);
+  // Transition copy for versions that know only the portable name. Remove it,
+  // with this assertion, in the release after the first installer release.
+  assert.match(desktop, /archive: novamira-hq-desktop-windows-x86_64\.exe\n/);
+  assert.ok(
+    desktop.includes(
+      'cp "dist-desktop/novamira-hq-setup-windows-x86_64.exe" "dist-desktop/novamira-hq-desktop-windows-x86_64.exe"',
+    ),
+  );
   assert.match(desktop, /archive: novamira-hq-desktop-linux-x86_64\.tar\.gz/);
 
   // The Windows icon is embedded by the compile; the Linux one travels in the
   // archive, which is the whole reason `--package` exists.
-  assert.match(desktop, /node scripts\/desktop-build\.mjs --package/);
+  assert.match(desktop, /run: node scripts\/desktop-build\.mjs --package\n/);
+  assert.doesNotMatch(desktop, /desktop-build\.mjs\n/);
   assert.match(desktop, /runner\.os == 'Linux'/);
 
   // Every compiled executable this release publishes is run before it is

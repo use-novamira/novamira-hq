@@ -71,8 +71,8 @@ jobs:
             binary: novamira-hq-desktop
             archive: novamira-hq-desktop-linux-x86_64.tar.gz
           - os: windows-latest
-            asset: novamira-hq-desktop-windows-x86_64.exe
-            binary: novamira-hq-desktop.exe
+            asset: novamira-hq-setup-windows-x86_64.exe
+            binary: novamira-hq-setup-windows-x86_64.exe
             archive: novamira-hq-desktop-windows-x86_64.exe
     runs-on: ${{ matrix.os }}
     steps:
@@ -90,13 +90,16 @@ jobs:
           deno-version: v2.9.6
       - run: bun install --frozen-lockfile --ignore-scripts
       - run: bun run build
-      - if: runner.os == 'Linux'
-        run: node scripts/desktop-build.mjs --package
-      - if: runner.os != 'Linux'
-        run: node scripts/desktop-build.mjs
+      - run: node scripts/desktop-build.mjs --package
       - run: bun run desktop:acceptance
-      - shell: bash
+      - if: runner.os == 'Linux'
+        shell: bash
         run: mv "dist-desktop/${{ matrix.binary }}" "dist-desktop/${{ matrix.asset }}"
+      # Versions before the installer look for the portable name. Transition
+      # release only: remove this step and the archive name in the next one.
+      - if: runner.os == 'Windows'
+        shell: bash
+        run: cp "dist-desktop/novamira-hq-setup-windows-x86_64.exe" "dist-desktop/novamira-hq-desktop-windows-x86_64.exe"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ matrix.asset }}-release
