@@ -19,13 +19,16 @@
 // pay for.
 
 import { spawnSync } from "node:child_process";
-import { cp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
+import { access, cp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { arch, argv, exit, platform, stderr, stdout } from "node:process";
 import { fileURLToPath, URL } from "node:url";
 
 import { generateIcons, HICOLOR_SIZES, ICON_NAME } from "./desktop-icons.mjs";
-import { installWindowsWebview } from "./windows-native.mjs";
+import {
+  installWindowsWebview,
+  WINDOWS_WEBVIEW_HASHES,
+} from "./windows-native.mjs";
 import { installNsis } from "./windows-nsis.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -86,51 +89,30 @@ const icons = await generateIcons({
 });
 stdout.write(`Generated ${icons.length} desktop icons in ${iconDir}\n`);
 
-if (platform === "win32") {
-  await installWindowsWebview(join(outDir, "native-windows"));
+// `--reuse-compiled` packages the executable a previous run left in
+// `dist-desktop/` instead of compiling again. The Windows release signs that
+// executable between the two runs, and a recompile would replace the signed
+// file with an unsigned one.
+const reuseCompiled = argv.includes("--reuse-compiled");
+if (reuseCompiled && !argv.includes("--package")) {
+  fail("--reuse-compiled only applies together with --package");
 }
 
-run("deno", [
-  "task",
-  "--cwd",
-  join(root, "desktop"),
-  platform === "win32" ? "compile:windows" : "compile",
-]);
+// `--reuse-native` compiles with the Windows native libraries a previous
+// `scripts/windows-native.mjs` run left in `dist-desktop/native-windows/`. The
+// release signs `webview.dll` there after its checksum is verified, so the
+// executable embeds the signed copy instead of downloading a fresh unsigned one.
+const reuseNative = argv.includes("--reuse-native");
+if (reuseNative && (platform !== "win32" || reuseCompiled)) {
+  fail("--reuse-native only applies to a Windows compile");
+}
 
 const binary =
   platform === "win32" ? "novamira-hq-desktop.exe" : "novamira-hq-desktop";
 
-run("deno", [
-  "compile",
-  "--config",
-  "desktop/deno.json",
-  "--allow-all",
-  "--include",
-  "dist/integration",
-  "--output",
-  join(
-    outDir,
-    platform === "win32" ? "spawn-acceptance.exe" : "spawn-acceptance",
-  ),
-  "desktop/spawn-acceptance.ts",
-]);
-
-run("deno", [
-  "compile",
-  "--config",
-  "desktop/deno.json",
-  "--allow-all",
-  "--include",
-  "dist",
-  "--include",
-  "skills",
-  "--output",
-  join(
-    outDir,
-    platform === "win32" ? "registrar-acceptance.exe" : "registrar-acceptance",
-  ),
-  "desktop/registrar-acceptance.ts",
-]);
+if (!reuseCompiled) {
+  await compileDesktop();
+}
 
 if (argv.includes("--package")) {
   if (platform === "linux") await packageLinux();
@@ -139,6 +121,59 @@ if (argv.includes("--package")) {
 }
 
 stdout.write(`Compiled ${join(outDir, binary)}\n`);
+
+async function compileDesktop() {
+  if (platform === "win32") {
+    if (reuseNative) {
+      for (const filename of Object.keys(WINDOWS_WEBVIEW_HASHES)) {
+        await access(join(outDir, "native-windows", filename)).catch(() =>
+          fail(`--reuse-native needs dist-desktop/native-windows/${filename}`),
+        );
+      }
+    } else await installWindowsWebview(join(outDir, "native-windows"));
+  }
+
+  run("deno", [
+    "task",
+    "--cwd",
+    join(root, "desktop"),
+    platform === "win32" ? "compile:windows" : "compile",
+  ]);
+
+  run("deno", [
+    "compile",
+    "--config",
+    "desktop/deno.json",
+    "--allow-all",
+    "--include",
+    "dist/integration",
+    "--output",
+    join(
+      outDir,
+      platform === "win32" ? "spawn-acceptance.exe" : "spawn-acceptance",
+    ),
+    "desktop/spawn-acceptance.ts",
+  ]);
+
+  run("deno", [
+    "compile",
+    "--config",
+    "desktop/deno.json",
+    "--allow-all",
+    "--include",
+    "dist",
+    "--include",
+    "skills",
+    "--output",
+    join(
+      outDir,
+      platform === "win32"
+        ? "registrar-acceptance.exe"
+        : "registrar-acceptance",
+    ),
+    "desktop/registrar-acceptance.ts",
+  ]);
+}
 
 /**
  * The Linux release archive: the executable, the freedesktop entry that names

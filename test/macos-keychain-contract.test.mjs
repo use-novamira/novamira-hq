@@ -188,7 +188,10 @@ test("signed helper ships inside desktop without granting it JIT exceptions", as
   assert.match(signer, /Contents\/Helpers\/Novamira HQ Credentials\.app/);
   assert.match(signer, /stapler staple "\$helper"/);
   assert.equal(manifest.private, true);
-  assert.match(release, /needs: \[prepare, desktop, desktop-macos\]/);
+  assert.match(
+    release,
+    /needs: \[prepare, desktop, desktop-windows, desktop-macos\]/,
+  );
   assert.match(release, /\.keychain\.zip/);
   assert.doesNotMatch(release, /npm publish/);
 });

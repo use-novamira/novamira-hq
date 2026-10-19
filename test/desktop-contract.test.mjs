@@ -36,7 +36,7 @@ test("CI desktop toolchains are pinned to the reviewed Deno version", async () =
   for (const [workflow, count] of [
     ["package.yml", 1],
     ["macos-signing.yml", 1],
-    ["release.yml", 2],
+    ["release.yml", 3],
   ]) {
     const text = await readFile(
       join(root, ".github", "workflows", workflow),

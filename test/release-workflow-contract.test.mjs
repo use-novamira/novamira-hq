@@ -42,10 +42,124 @@ test("release metadata selects prerelease and stable desktop releases", async ()
 });
 
 test("publication remains desktop-only", () => {
-  assert.doesNotMatch(
-    workflow,
-    /npm publish|NPM_BOOTSTRAP_TOKEN|id-token: write/,
+  assert.doesNotMatch(workflow, /npm publish|NPM_BOOTSTRAP_TOKEN/);
+  // The only OIDC tokens the release may mint are the Windows signing jobs'.
+  const jobs = workflow.split(/\n  (?=[a-z-]+:\n)/);
+  const minting = jobs.filter((job) => job.includes("id-token: write"));
+  assert.deepEqual(
+    minting.map((job) => job.slice(0, job.indexOf(":"))),
+    ["sign-windows-native", "sign-windows-exe", "sign-windows-setup"],
   );
+});
+
+test("Windows signing jobs run no repository code", () => {
+  const jobs = workflow.split(/\n  (?=[a-z-]+:\n)/);
+  const named = (name) => jobs.find((job) => job.startsWith(`${name}:\n`));
+  const signing = jobs.filter(
+    (job) =>
+      job.includes("secrets.AZURE_") ||
+      job.includes("environment: windows-signing") ||
+      job.includes("artifact-signing-action"),
+  );
+  assert.deepEqual(
+    signing.map((job) => job.slice(0, job.indexOf(":"))),
+    ["sign-windows-native", "sign-windows-exe", "sign-windows-setup"],
+  );
+  for (const job of signing) {
+    assert.match(job, /\n    environment: windows-signing\n/);
+    assert.match(job, /\n    permissions:\n      id-token: write\n    steps:/);
+    // Anyone who runs code here can mint the token and sign with it, so the
+    // job only downloads, signs and uploads, with actions pinned to a commit.
+    assert.doesNotMatch(
+      job,
+      /\brun:|actions\/checkout|uses: \S*\/setup-|shell:/,
+    );
+    const actions = [...job.matchAll(/uses: (\S+)/g)].map((match) => match[1]);
+    assert.deepEqual(actions, [
+      "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+      "azure/login@053f7285eb20bf5469ef084617b0b24d3cec53fc",
+      "azure/artifact-signing-action@208f8af4bf26cf2af8597424e3cb5582801523ba",
+      "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+    ]);
+    // No long-lived credential: Azure trusts the environment's OIDC token.
+    assert.doesNotMatch(job, /client-secret|certificate-path|creds:/);
+    assert.match(job, /certificate-profile-name: ovation-public-trust\n/);
+    assert.match(job, /timestamp-digest: SHA256\n/);
+  }
+
+  // Sign the library, compile it in, sign the executable, package it, sign
+  // the installer, then verify all three before the smoke test and upload.
+  const chain = [
+    ["windows-native", "prepare, acceptance", "windows-native-unsigned"],
+    ["sign-windows-native", "windows-native", "windows-native-signed"],
+    ["windows-compile", "prepare, sign-windows-native", "windows-exe-unsigned"],
+    ["sign-windows-exe", "windows-compile", "windows-exe-signed"],
+    ["windows-package", "prepare, sign-windows-exe", "windows-setup-unsigned"],
+    ["sign-windows-setup", "windows-package", "windows-setup-signed"],
+  ];
+  for (const [name, needs, uploads] of chain) {
+    const job = named(name);
+    assert.ok(job, name);
+    assert.ok(job.includes(`    needs: [${needs}]\n`), `${name} needs`);
+    assert.ok(job.includes(`          name: ${uploads}\n`), `${name} uploads`);
+  }
+  assert.match(
+    named("windows-native"),
+    /run: node scripts\/windows-native\.mjs dist-desktop\/native-windows\n/,
+  );
+  assert.match(named("sign-windows-native"), /\\signing\\webview\.dll\n/);
+  assert.match(
+    named("windows-compile"),
+    /run: node scripts\/desktop-build\.mjs --reuse-native\n/,
+  );
+  assert.match(
+    named("sign-windows-exe"),
+    /\\signing\\novamira-hq-desktop\.exe\n/,
+  );
+  assert.match(
+    named("windows-package"),
+    /run: node scripts\/desktop-build\.mjs --package --reuse-compiled\n/,
+  );
+  assert.match(
+    named("sign-windows-setup"),
+    /\\signing\\novamira-hq-setup-windows-x86_64\.exe\n/,
+  );
+
+  const windows = named("desktop-windows");
+  assert.doesNotMatch(windows, /id-token|secrets\.|environment:/);
+  assert.match(
+    windows,
+    /needs: \[prepare, sign-windows-native, sign-windows-exe, sign-windows-setup\]/,
+  );
+  for (const artifact of [
+    "windows-native-signed",
+    "windows-exe-signed",
+    "windows-setup-signed",
+  ])
+    assert.ok(windows.includes(`          name: ${artifact}\n`), artifact);
+  const verify = windows.indexOf("Get-AuthenticodeSignature");
+  const smoke = windows.indexOf("desktop-smoke.mjs");
+  const accept = windows.indexOf("desktop:acceptance");
+  const upload = windows.indexOf("actions/upload-artifact");
+  assert.ok(
+    verify > 0 && verify < smoke && smoke < accept && accept < upload,
+    "verify, smoke, accept, upload",
+  );
+  assert.match(windows, /TimeStamperCertificate/);
+  assert.match(
+    windows,
+    /foreach \(\$file in "dist-desktop\/native-windows\/webview\.dll", "dist-desktop\/novamira-hq-desktop\.exe", "dist-desktop\/\$env:ASSET"\)/,
+  );
+  // The publishing job waits for it and downloads what it uploads; nothing
+  // unsigned matches the pattern it downloads.
+  assert.match(windows, /name: novamira-hq-desktop-windows-x86_64-release\n/);
+  assert.ok(
+    !/name: novamira-hq-desktop-.*-release/.test(
+      chain.map(([name]) => named(name)).join("\n"),
+    ),
+  );
+  const release = named("github-release");
+  assert.match(release, /needs: \[prepare, desktop, desktop-windows, /);
 });
 
 test("legal review exception is limited to the explicitly accepted first beta", () => {
@@ -103,7 +217,7 @@ test("Linux and Windows desktop assets carry their icons and are proved to run",
 
   // Both executables, and Linux's tarball beside its bare one.
   assert.match(desktop, /asset: novamira-hq-desktop-linux-x86_64\n/);
-  assert.match(desktop, /asset: novamira-hq-setup-windows-x86_64\.exe\n/);
+  assert.ok(!desktop.includes("windows"), "Windows signs in its own job");
   // The portable Windows name was a one-release transition: only the
   // installer ships, and a leg without an archive uploads its asset alone.
   assert.ok(!desktop.includes("novamira-hq-desktop-windows-x86_64.exe"));
@@ -126,10 +240,7 @@ test("Linux and Windows desktop assets carry their icons and are proved to run",
   const artifacts = [...desktop.matchAll(/artifact: (\S+)\n/g)].map(
     (match) => match[1],
   );
-  assert.deepEqual(artifacts, [
-    "novamira-hq-desktop-linux-x86_64",
-    "novamira-hq-desktop-windows-x86_64",
-  ]);
+  assert.deepEqual(artifacts, ["novamira-hq-desktop-linux-x86_64"]);
 
   // Every compiled executable this release publishes is run before it is
   // uploaded, on the platform that compiled it.

@@ -71,10 +71,6 @@ jobs:
             asset: novamira-hq-desktop-linux-x86_64
             binary: novamira-hq-desktop
             archive: novamira-hq-desktop-linux-x86_64.tar.gz
-          - os: windows-latest
-            artifact: novamira-hq-desktop-windows-x86_64
-            asset: novamira-hq-setup-windows-x86_64.exe
-            binary: novamira-hq-setup-windows-x86_64.exe
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -103,6 +99,234 @@ jobs:
           path: |
             dist-desktop/${{ matrix.asset }}
             dist-desktop/${{ matrix.archive || matrix.asset }}
+          if-no-files-found: error
+
+  windows-native:
+    # Windows signing. Whoever runs code in a job that can mint the OIDC token
+    # can sign with Ovation's certificate, so the jobs that hold it run no
+    # repository code, install no dependency and check nothing out: they only
+    # download one artifact of this run, sign it with pinned actions and upload
+    # it. Building, packaging and testing happen in jobs without the token.
+    # Each signing job deploys to the windows-signing environment, whose rules
+    # (v* tags only) and the Azure federated credential bound to its name keep
+    # every other ref, workflow, fork and pull request away from the token.
+    needs: [prepare, acceptance]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+      # Download and checksum the native webview libraries. Upstream ships
+      # webview.dll unsigned, and the app writes it to a temporary folder and
+      # loads it at every launch, so it is signed before the executable embeds
+      # it. WebView2Loader.dll already carries Microsoft's signature.
+      - run: node scripts/windows-native.mjs dist-desktop/native-windows
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: windows-native-unsigned
+          path: dist-desktop/native-windows/
+          if-no-files-found: error
+
+  sign-windows-native:
+    needs: [windows-native]
+    name: sign / webview.dll
+    runs-on: windows-latest
+    environment: windows-signing
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-native-unsigned
+          path: signing
+      - uses: azure/login@053f7285eb20bf5469ef084617b0b24d3cec53fc # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: azure/artifact-signing-action@208f8af4bf26cf2af8597424e3cb5582801523ba # v2.0.0
+        with:
+          endpoint: https://plc.codesigning.azure.net/
+          signing-account-name: Novamira
+          certificate-profile-name: ovation-public-trust
+          files: ${{ github.workspace }}\signing\webview.dll
+          file-digest: SHA256
+          timestamp-digest: SHA256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: windows-native-signed
+          path: signing/
+          if-no-files-found: error
+
+  windows-compile:
+    needs: [prepare, sign-windows-native]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.2.19
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
+        with:
+          deno-version: v2.9.6
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run build
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-native-signed
+          path: dist-desktop/native-windows
+      # Compile only, embedding the signed library.
+      - run: node scripts/desktop-build.mjs --reuse-native
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: windows-exe-unsigned
+          path: dist-desktop/novamira-hq-desktop.exe
+          if-no-files-found: error
+
+  sign-windows-exe:
+    needs: [windows-compile]
+    name: sign / novamira-hq-desktop.exe
+    runs-on: windows-latest
+    environment: windows-signing
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-exe-unsigned
+          path: signing
+      - uses: azure/login@053f7285eb20bf5469ef084617b0b24d3cec53fc # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: azure/artifact-signing-action@208f8af4bf26cf2af8597424e3cb5582801523ba # v2.0.0
+        with:
+          endpoint: https://plc.codesigning.azure.net/
+          signing-account-name: Novamira
+          certificate-profile-name: ovation-public-trust
+          files: ${{ github.workspace }}\signing\novamira-hq-desktop.exe
+          file-digest: SHA256
+          timestamp-digest: SHA256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: windows-exe-signed
+          path: signing/
+          if-no-files-found: error
+
+  windows-package:
+    needs: [prepare, sign-windows-exe]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.2.19
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run build
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-exe-signed
+          path: dist-desktop
+      # `--reuse-compiled` embeds the signed executable instead of recompiling.
+      - run: node scripts/desktop-build.mjs --package --reuse-compiled
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: windows-setup-unsigned
+          path: dist-desktop/novamira-hq-setup-windows-x86_64.exe
+          if-no-files-found: error
+
+  sign-windows-setup:
+    needs: [windows-package]
+    name: sign / novamira-hq-setup-windows-x86_64.exe
+    runs-on: windows-latest
+    environment: windows-signing
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-setup-unsigned
+          path: signing
+      - uses: azure/login@053f7285eb20bf5469ef084617b0b24d3cec53fc # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: azure/artifact-signing-action@208f8af4bf26cf2af8597424e3cb5582801523ba # v2.0.0
+        with:
+          endpoint: https://plc.codesigning.azure.net/
+          signing-account-name: Novamira
+          certificate-profile-name: ovation-public-trust
+          files: ${{ github.workspace }}\signing\novamira-hq-setup-windows-x86_64.exe
+          file-digest: SHA256
+          timestamp-digest: SHA256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: windows-setup-signed
+          path: signing/
+          if-no-files-found: error
+
+  desktop-windows:
+    needs: [prepare, sign-windows-native, sign-windows-exe, sign-windows-setup]
+    name: desktop / novamira-hq-setup-windows-x86_64.exe
+    runs-on: windows-latest
+    env:
+      ASSET: novamira-hq-setup-windows-x86_64.exe
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.2.19
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run build
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-native-signed
+          path: dist-desktop/native-windows
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-exe-signed
+          path: dist-desktop
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-setup-signed
+          path: dist-desktop
+      - name: Require valid Authenticode signatures from Ovation S.r.l.
+        shell: pwsh
+        run: |
+          foreach ($file in "dist-desktop/native-windows/webview.dll", "dist-desktop/novamira-hq-desktop.exe", "dist-desktop/$env:ASSET") {
+            $signature = Get-AuthenticodeSignature $file
+            if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Subject -notlike "*O=Ovation S.r.l.*") {
+              throw "$file is not validly signed by Ovation S.r.l.: $($signature.Status)"
+            }
+            if ($null -eq $signature.TimeStamperCertificate) { throw "$file has no timestamp" }
+          }
+      - run: node scripts/desktop-smoke.mjs dist-desktop/novamira-hq-desktop.exe
+      - run: bun run desktop:acceptance
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          # Named for the pattern github-release downloads.
+          name: novamira-hq-desktop-windows-x86_64-release
+          path: dist-desktop/${{ env.ASSET }}
           if-no-files-found: error
 
   desktop-macos:
@@ -169,7 +393,7 @@ jobs:
           if-no-files-found: error
 
   github-release:
-    needs: [prepare, desktop, desktop-macos]
+    needs: [prepare, desktop, desktop-windows, desktop-macos]
     runs-on: ubuntu-latest
     environment: desktop-release
     permissions:
