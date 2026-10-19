@@ -168,6 +168,21 @@ test("legal review exception is limited to the explicitly accepted first beta", 
   assert.equal((workflow.match(/continue-on-error:/g) ?? []).length, 1);
 });
 
+/** The unsigned artifact never lands on the checkout the signer runs from. */
+function assertSignerTakesOnlyItsInputs(job) {
+  assert.match(
+    job,
+    /name: \$\{\{ matrix\.asset \}\}-unsigned\n {10}path: \$\{\{ runner\.temp \}\}\/unsigned\n/,
+  );
+  assert.doesNotMatch(job, /\n {10}path: \.\n/);
+  assert.match(job, /test ! -L "\$unsigned\/\$file"/);
+  assert.match(job, /-type f -o -type l \\\) \| wc -l\)" -eq 2/);
+  assert.ok(
+    job.indexOf('cp "$unsigned/dist-desktop/$ASSET"') <
+      job.indexOf("bash scripts/macos-sign.sh"),
+  );
+}
+
 test("macOS builds, signs and verifies in separate jobs", () => {
   const jobs = workflow.split(/\n  (?=[a-z-]+:\n)/);
   const named = (name) => jobs.find((job) => job.startsWith(`${name}:\n`));
@@ -213,11 +228,9 @@ test("macOS builds, signs and verifies in separate jobs", () => {
         /\n {6}- (?:name: [^\n]+\n {8}env:[\s\S]*?)?run: ([^\n]+)/g,
       ),
     ].map((match) => match[1]),
-    [
-      'chmod +x "dist-desktop/$ASSET"',
-      'bash scripts/macos-sign.sh "dist-desktop/$ASSET"',
-    ],
+    ["|", 'bash scripts/macos-sign.sh "dist-desktop/$ASSET"'],
   );
+  assertSignerTakesOnlyItsInputs(sign);
 
   // Both macOS architectures, each compiled natively and signed on its own
   // runner, and each publishing its bare executable and its `.app.zip`.
@@ -410,6 +423,7 @@ test("signing can be proved on demand, without publishing anything", () => {
     verificationSigning[0],
     /bun |deno|npm |setup-bun|setup-deno|desktop:build/,
   );
+  assertSignerTakesOnlyItsInputs(verificationSigning[0]);
   assert.match(verification, /runner: macos-15-intel/);
   assert.match(verification, /novamira-hq-desktop-macos-x86_64/);
   // Here a missing secret is a failure: the release job's warning fallback
