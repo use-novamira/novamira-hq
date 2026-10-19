@@ -13,9 +13,9 @@
 
 ### Changed
 
-- The Windows installer and Novamira HQ for Windows are now signed by
-  Ovation S.r.l., so Windows and antivirus software can verify where they
-  come from.
+- The Windows installer and Novamira HQ for Windows are now signed by our
+  company, Ovation S.r.l., so Windows and antivirus software can verify
+  where they come from.
 
 ## 1.0.0-beta6 - 2026-10-13
 
