@@ -68,8 +68,7 @@ test("Windows signing jobs run no repository code", () => {
   for (const job of signing) {
     assert.match(job, /\n    environment: windows-signing\n/);
     assert.match(job, /\n    permissions:\n      id-token: write\n    steps:/);
-    // Anyone who runs code here can mint the token and sign with it, so the
-    // job only downloads, signs and uploads, with actions pinned to a commit.
+    // Download, sign and upload, with actions pinned to a commit.
     assert.doesNotMatch(
       job,
       /\brun:|actions\/checkout|uses: \S*\/setup-|shell:/,
@@ -81,7 +80,6 @@ test("Windows signing jobs run no repository code", () => {
       "azure/artifact-signing-action@208f8af4bf26cf2af8597424e3cb5582801523ba",
       "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     ]);
-    // No long-lived credential: Azure trusts the environment's OIDC token.
     assert.doesNotMatch(job, /client-secret|certificate-path|creds:/);
     assert.match(job, /certificate-profile-name: ovation-public-trust\n/);
     assert.match(job, /timestamp-digest: SHA256\n/);
@@ -170,16 +168,21 @@ test("legal review exception is limited to the explicitly accepted first beta", 
   assert.equal((workflow.match(/continue-on-error:/g) ?? []).length, 1);
 });
 
-test("macOS signing secrets are reachable from the signing job alone", () => {
+test("macOS builds, signs and verifies in separate jobs", () => {
   const jobs = workflow.split(/\n  (?=[a-z-]+:\n)/);
-  const signing = jobs.filter((job) => job.includes("secrets.APPLE_"));
-  assert.equal(signing.length, 1, "one job may see the Apple secrets");
-  assert.ok(signing[0].startsWith("desktop-macos:"));
-  assert.match(signing[0], /environment: macos-signing/);
-  assert.match(signing[0], /bash scripts\/macos-sign\.sh/);
-  // Signing precedes npm publication, which includes the universal helper.
-  // The npm-release approval gate protects publication, not compilation.
-  assert.match(signing[0], /needs: \[prepare, acceptance\]/);
+  const named = (name) => jobs.find((job) => job.startsWith(`${name}:\n`));
+  const signing = jobs.filter(
+    (job) =>
+      job.includes("secrets.APPLE_") ||
+      job.includes("environment: macos-signing"),
+  );
+  assert.deepEqual(
+    signing.map((job) => job.slice(0, job.indexOf(":"))),
+    ["sign-macos"],
+  );
+  const sign = signing[0];
+  assert.match(sign, /needs: \[prepare, macos-build\]/);
+  assert.match(sign, /bash scripts\/macos-sign\.sh "dist-desktop\/\$ASSET"/);
   for (const secret of [
     "APPLE_CERT_P12_BASE64",
     "APPLE_CERT_PASSWORD",
@@ -189,25 +192,74 @@ test("macOS signing secrets are reachable from the signing job alone", () => {
     "APPLE_API_ISSUER_ID",
   ]) {
     assert.ok(signer.includes(secret), `the signer requires ${secret}`);
-    assert.ok(
-      signing[0].includes(`secrets.${secret}`),
-      `the job must pass ${secret}`,
-    );
+    assert.ok(sign.includes(`secrets.${secret}`), `the job passes ${secret}`);
   }
+  assert.doesNotMatch(
+    sign,
+    /bun |deno|npm |setup-bun|setup-deno|desktop:build/,
+  );
+  assert.deepEqual(
+    [...sign.matchAll(/uses: (\S+)/g)].map((match) => match[1]),
+    [
+      "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09",
+      "actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444",
+      "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+      "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+    ],
+  );
+  assert.deepEqual(
+    [
+      ...sign.matchAll(
+        /\n {6}- (?:name: [^\n]+\n {8}env:[\s\S]*?)?run: ([^\n]+)/g,
+      ),
+    ].map((match) => match[1]),
+    [
+      'chmod +x "dist-desktop/$ASSET"',
+      'bash scripts/macos-sign.sh "dist-desktop/$ASSET"',
+    ],
+  );
+
   // Both macOS architectures, each compiled natively and signed on its own
   // runner, and each publishing its bare executable and its `.app.zip`.
-  assert.match(signing[0], /runner: macos-latest/);
-  assert.match(signing[0], /runner: macos-15-intel/);
-  assert.match(signing[0], /novamira-hq-desktop-macos-arm64/);
-  assert.match(signing[0], /novamira-hq-desktop-macos-x86_64/);
-  assert.match(signing[0], /\$ASSET\.app\.zip/);
+  for (const name of ["macos-build", "sign-macos", "desktop-macos"]) {
+    const job = named(name);
+    assert.match(job, /runner: macos-latest/, name);
+    assert.match(job, /runner: macos-15-intel/, name);
+    assert.match(job, /novamira-hq-desktop-macos-arm64/, name);
+    assert.match(job, /novamira-hq-desktop-macos-x86_64/, name);
+  }
+  const build = named("macos-build");
+  assert.match(build, /needs: \[prepare, acceptance\]/);
+  assert.match(build, /run: bun run desktop:build\n/);
+  assert.match(build, /name: \$\{\{ matrix\.asset \}\}-unsigned\n/);
+  assert.match(sign, /name: \$\{\{ matrix\.asset \}\}-unsigned\n/);
+  assert.match(sign, /name: \$\{\{ matrix\.asset \}\}-signed\n/);
+
+  const verify = named("desktop-macos");
+  assert.match(verify, /needs: \[prepare, sign-macos\]/);
+  assert.match(verify, /name: \$\{\{ matrix\.asset \}\}-signed\n/);
+  assert.match(verify, /\$ASSET\.app\.zip/);
+  assert.match(verify, /xcrun stapler validate/);
   assert.match(
-    signing[0],
+    verify,
     /node scripts\/desktop-smoke\.mjs "dist-desktop\/\$ASSET"/,
   );
-  assert.match(signing[0], /xcrun stapler validate/);
+  const steps = [
+    "xcrun stapler validate",
+    "node --test test/macos-keychain-contract.test.mjs",
+    "desktop-smoke.mjs",
+    "desktop-artifact-acceptance.mjs",
+    "actions/upload-artifact",
+  ].map((step) => verify.indexOf(step));
+  assert.ok(
+    steps.every(
+      (at, index) => at > 0 && (index === 0 || steps[index - 1] < at),
+    ),
+    "verify, test, smoke, accept, upload",
+  );
+  assert.match(verify, /name: \$\{\{ matrix\.asset \}\}-release\n/);
   // The unsigned matrix must not have grown a macOS leg back.
-  const unsigned = jobs.find((job) => job.startsWith("desktop:"));
+  const unsigned = named("desktop");
   assert.ok(!unsigned.includes("macos-latest"), "macOS signs in its own job");
 });
 
@@ -346,6 +398,18 @@ test("signing can be proved on demand, without publishing anything", () => {
   // the release job, so a release cannot be the first time Intel is signed.
   assert.match(verification, /environment: macos-signing/);
   assert.match(verification, /bash scripts\/macos-sign\.sh/);
+  const verificationJobs = verification.split(/\n  (?=[a-z-]+:\n)/);
+  const verificationSigning = verificationJobs.filter(
+    (job) =>
+      job.includes("secrets.APPLE_") ||
+      job.includes("environment: macos-signing"),
+  );
+  assert.equal(verificationSigning.length, 1);
+  assert.ok(verificationSigning[0].startsWith("sign:\n"));
+  assert.doesNotMatch(
+    verificationSigning[0],
+    /bun |deno|npm |setup-bun|setup-deno|desktop:build/,
+  );
   assert.match(verification, /runner: macos-15-intel/);
   assert.match(verification, /novamira-hq-desktop-macos-x86_64/);
   // Here a missing secret is a failure: the release job's warning fallback
