@@ -41,6 +41,15 @@ test("release metadata selects prerelease and stable desktop releases", async ()
   assert.match(stable.stdout, /^prerelease=false$/m);
 });
 
+/** The actions a job uses, in order, each pinned to a full commit SHA. */
+function pinnedActions(job) {
+  return [...job.matchAll(/uses: (\S+)/g)].map(([, action]) => {
+    const [name, ref] = action.split("@");
+    assert.match(ref, /^[0-9a-f]{40}$/, `${name} is pinned to a commit`);
+    return name;
+  });
+}
+
 test("publication remains desktop-only", () => {
   assert.doesNotMatch(workflow, /npm publish|NPM_BOOTSTRAP_TOKEN/);
   // The only OIDC tokens the release may mint are the Windows signing jobs'.
@@ -73,12 +82,11 @@ test("Windows signing jobs run no repository code", () => {
       job,
       /\brun:|actions\/checkout|uses: \S*\/setup-|shell:/,
     );
-    const actions = [...job.matchAll(/uses: (\S+)/g)].map((match) => match[1]);
-    assert.deepEqual(actions, [
-      "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
-      "azure/login@053f7285eb20bf5469ef084617b0b24d3cec53fc",
-      "azure/artifact-signing-action@208f8af4bf26cf2af8597424e3cb5582801523ba",
-      "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+    assert.deepEqual(pinnedActions(job), [
+      "actions/download-artifact",
+      "azure/login",
+      "azure/artifact-signing-action",
+      "actions/upload-artifact",
     ]);
     assert.doesNotMatch(job, /client-secret|certificate-path|creds:/);
     assert.match(job, /certificate-profile-name: ovation-public-trust\n/);
@@ -213,15 +221,12 @@ test("macOS builds, signs and verifies in separate jobs", () => {
     sign,
     /bun |deno|npm |setup-bun|setup-deno|desktop:build/,
   );
-  assert.deepEqual(
-    [...sign.matchAll(/uses: (\S+)/g)].map((match) => match[1]),
-    [
-      "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09",
-      "actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444",
-      "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
-      "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
-    ],
-  );
+  assert.deepEqual(pinnedActions(sign), [
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/download-artifact",
+    "actions/upload-artifact",
+  ]);
   assert.deepEqual(
     [
       ...sign.matchAll(
