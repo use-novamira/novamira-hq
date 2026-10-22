@@ -212,6 +212,13 @@ test("hostinger lists sites", async () => {
         meta: { current_page: 1, per_page: 50, total: 1 },
       }),
     },
+    {
+      expected: "GET /api/agency-hosting/v1/websites?page=1&per_page=50",
+      body: JSON.stringify({
+        data: [],
+        meta: { current_page: 1, per_page: 50, total: 0 },
+      }),
+    },
   ]);
   try {
     const sites = await client(server.baseUrl).listSites({
@@ -241,6 +248,13 @@ test("hostinger lists sites returns an empty array", async () => {
   const server = await startServer([
     {
       expected: "GET /api/hosting/v1/websites?page=1&per_page=50",
+      body: JSON.stringify({
+        data: [],
+        meta: { current_page: 1, per_page: 50, total: 0 },
+      }),
+    },
+    {
+      expected: "GET /api/agency-hosting/v1/websites?page=1&per_page=50",
       body: JSON.stringify({
         data: [],
         meta: { current_page: 1, per_page: 50, total: 0 },
@@ -375,7 +389,8 @@ test("hostinger reports its capability table", async () => {
     assert.deepEqual(byName.get("sites.list"), {
       name: "sites.list",
       supported: true,
-      notes: "uses GET /api/hosting/v1/websites",
+      notes:
+        "uses classic and Agency website inventories; an explicit username limits the result to classic hosting",
     });
     assert.deepEqual(byName.get("ops.get"), {
       name: "ops.get",
@@ -995,6 +1010,158 @@ test("hostinger wp-cli results stay observable by default", async () => {
     // Go's HostingerClient does not implement WPCLIResultObserver.
     assert.equal(hostinger.wpCliResultsObservable, undefined);
     assert.equal(hostinger.provider, "hostinger");
+  } finally {
+    await server.finish();
+  }
+});
+
+test("hostinger Agency listing uses authenticated HTTP and paginates beyond 50 sites", async () => {
+  const agencyRow = (i) => ({
+    id: `fixture-${i}`,
+    platform: "h5g",
+    state: "active",
+    details: {
+      domains: [{ fqdn: `site-${i}.example.test` }],
+      wordpress: { password: "fixture-secret-must-not-be-returned" },
+      remote_access: { token: "fixture-secret-must-not-be-returned" },
+    },
+  });
+  const server = await startServer([
+    {
+      expected: "GET /api/hosting/v1/websites?page=1&per_page=50",
+      body: JSON.stringify({
+        data: [],
+        meta: { current_page: 1, per_page: 50, total: 0 },
+      }),
+    },
+    {
+      expected: "GET /api/agency-hosting/v1/websites?page=1&per_page=50",
+      body: JSON.stringify({
+        data: Array.from({ length: 50 }, (_, i) => agencyRow(i)),
+        meta: { current_page: 1, per_page: 50, total: 51 },
+      }),
+    },
+    {
+      expected: "GET /api/agency-hosting/v1/websites?page=2&per_page=50",
+      body: JSON.stringify({
+        data: [agencyRow(50)],
+        meta: { current_page: 2, per_page: 50, total: 51 },
+      }),
+    },
+  ]);
+  try {
+    const sites = await client(server.baseUrl).listSites({
+      includeEnvironments: true,
+    });
+    assert.equal(sites.length, 51);
+    assert.equal(sites[50].id, "agency:fixture-50");
+    assert.equal(
+      sites[50].environments[0].primaryDomain,
+      "site-50.example.test",
+    );
+    assert.ok(
+      !JSON.stringify(sites).includes("fixture-secret-must-not-be-returned"),
+    );
+    assert.ok(!JSON.stringify(sites).includes(TOKEN));
+  } finally {
+    await server.finish();
+  }
+});
+
+test("hostinger surfaces Agency HTTP failures and redacts echoed credentials", async () => {
+  for (const [status, code] of [
+    [401, "credential_invalid"],
+    [403, "credential_invalid"],
+    [404, "not_found"],
+    [429, "rate_limited"],
+    [500, "provider_error"],
+  ]) {
+    const server = await startServer([
+      {
+        expected: "GET /api/hosting/v1/websites?page=1&per_page=50",
+        body: JSON.stringify({
+          data: [
+            {
+              domain: "classic.example.test",
+              username: "u1",
+              is_enabled: true,
+            },
+          ],
+          meta: { current_page: 1, per_page: 50, total: 1 },
+        }),
+      },
+      {
+        expected: "GET /api/agency-hosting/v1/websites?page=1&per_page=50",
+        status,
+        body: JSON.stringify({ message: `Rejected credential ${TOKEN}` }),
+      },
+    ]);
+    try {
+      await assert.rejects(client(server.baseUrl).listSites(), (error) => {
+        assert.equal(error.code, code);
+        assert.equal(error.details.status, status);
+        assert.equal(error.details.path, "/api/agency-hosting/v1/websites");
+        assert.ok(!error.message.includes(TOKEN));
+        assert.ok(!JSON.stringify(error).includes(TOKEN));
+        return true;
+      });
+    } finally {
+      await server.finish();
+    }
+  }
+});
+
+test("hostinger does not hide classic API authentication failure behind Agency fallback", async () => {
+  const server = await startServer([
+    {
+      expected: "GET /api/hosting/v1/websites?page=1&per_page=50",
+      status: 401,
+      body: '{"message":"Unauthenticated"}',
+    },
+  ]);
+  try {
+    await assert.rejects(client(server.baseUrl).listSites(), {
+      code: "credential_invalid",
+    });
+  } finally {
+    await server.finish();
+  }
+});
+
+test("hostinger Agency inventory redacts credentials echoed into display metadata", async () => {
+  const server = await startServer([
+    {
+      expected: "GET /api/hosting/v1/websites?page=1&per_page=50",
+      body: JSON.stringify({
+        data: [],
+        meta: { current_page: 1, per_page: 50, total: 0 },
+      }),
+    },
+    {
+      expected: "GET /api/agency-hosting/v1/websites?page=1&per_page=50",
+      body: JSON.stringify({
+        data: [
+          {
+            id: "fixture",
+            platform: "h5g",
+            state: "active",
+            details: {
+              description: `Site ${TOKEN} fixture-wp-password`,
+              wordpress: { password: "fixture-wp-password" },
+            },
+          },
+        ],
+        meta: { current_page: 1, per_page: 50, total: 1 },
+      }),
+    },
+  ]);
+  try {
+    const sites = await client(server.baseUrl).listSites({
+      includeEnvironments: true,
+    });
+    assert.equal(sites[0].id, "agency:fixture");
+    assert.ok(!JSON.stringify(sites).includes(TOKEN));
+    assert.ok(!JSON.stringify(sites).includes("fixture-wp-password"));
   } finally {
     await server.finish();
   }

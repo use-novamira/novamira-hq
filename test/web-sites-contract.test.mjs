@@ -137,6 +137,7 @@ const CONFIG = {
 
 const ENVIRONMENT = {
   KINSTA_API_KEY: "kinsta-fake",
+  HOSTINGER_API_TOKEN: "hostinger-fake",
   PANTHEON_MACHINE_TOKEN: "pantheon-fake",
   CPANEL_API_TOKEN: "cpanel-fake-not-a-real-secret",
   WHM_API_TOKEN: "whm-fake-not-a-real-secret",
@@ -310,6 +311,7 @@ async function fixture(options = {}) {
   const hosting = createHostingClientFactory({
     store,
     registry: {
+      hostinger: () => client("hostinger", options.hostingerSites ?? []),
       kinsta: () => client("kinsta", options.kinstaSites ?? KINSTA_SITES),
       pantheon: () =>
         client("pantheon", options.pantheonSites ?? PANTHEON_SITES),
@@ -1664,4 +1666,60 @@ test("21: invalid rename values spawn nothing", async () => {
     assert.deepEqual(recorder.order, ["toast/outer"], newName);
     assert.ok(recorder.find("toast").markup.includes("danger"), newName);
   }
+});
+
+test("Hostinger Agency Connect skips unsupported provisioning; classic setup stays available", async () => {
+  const config = {
+    version: 1,
+    hostingProfiles: {
+      host: {
+        provider: "hostinger",
+        credential: { type: "env", name: "HOSTINGER_API_TOKEN" },
+      },
+    },
+    pushes: {},
+  };
+  const hostingerSites = ["agency:example", "classic.example.test"].map(
+    (id) => ({
+      id,
+      name: id,
+      displayName: id,
+      status: "active",
+      primaryDomain: "wp.example.test",
+      environments: [env(id, { primaryDomain: "wp.example.test" })],
+    }),
+  );
+  const { markup, server, connectCalls, listCalls } = await resultMarkup({
+    config,
+    hostingerSites,
+  });
+  const agencyButton = /<button[^>]*title="Hostinger Agency:[^>]*>/.exec(
+    markup,
+  )?.[0];
+  assert.ok(
+    agencyButton,
+    "Agency connection explains the manual installation step",
+  );
+  const agencyTarget = decodeURIComponent(agencyButton);
+  assert.match(agencyTarget, /url=https:\/\/wp.example.test/);
+  assert.doesNotMatch(agencyTarget, /hosting_profile=|[?&]env=/);
+  assert.match(markup, /hosting_profile=host/);
+  assert.equal(markup.split("hosting_profile=host").length - 1, 1);
+
+  // Dispatch the generated Agency action through the real dashboard handler.
+  // The fixture refuses credential-store access or outbound setup requests.
+  const action = /@post\(&quot;(.*?)&quot;/.exec(agencyButton)?.[1];
+  assert.ok(action, "Agency Connect has a dashboard action");
+  const target = JSON.parse('"' + action.replaceAll("&amp;", "&") + '"');
+  const before = listCalls.length;
+  const { recorder } = await sse(
+    server,
+    authorized(target, {
+      method: "POST",
+      body: JSON.stringify({ token: TOKEN }),
+    }),
+  );
+  assert.deepEqual(connectCalls, ["https://wp.example.test"]);
+  assert.equal(listCalls.length, before, "Connect uses the warm inventory");
+  assert.match(recorder.find("toast").markup, /Authorization completed/);
 });

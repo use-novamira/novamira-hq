@@ -21,6 +21,12 @@
 
 import { Buffer } from "node:buffer";
 import {
+  AGENCY_PREFIX,
+  getAgencySite,
+  listAgencySites,
+  rejectAgencyOperation,
+} from "./hostinger-agency.js";
+import {
   setupHostingerNovamira,
   hostingerPluginInventory,
 } from "./hostinger-setup.js";
@@ -84,12 +90,20 @@ const CAPABILITIES: readonly ProviderCapabilityInput[] = [
   [
     "novamira.setup",
     true,
-    "Installs Novamira through a bounded ZIP-upload setup; no public API WP-CLI required",
+    "Classic hosting only: installs Novamira through a bounded ZIP-upload setup. Agency sites require manual plugin installation and connection by URL.",
   ],
   ["providers.validate", true],
   ["providers.capabilities", true],
-  ["sites.list", true, "uses GET /api/hosting/v1/websites"],
-  ["sites.get", true, "uses GET /api/hosting/v1/websites filtered by domain"],
+  [
+    "sites.list",
+    true,
+    "uses classic and Agency website inventories; an explicit username limits the result to classic hosting",
+  ],
+  [
+    "sites.get",
+    true,
+    "Classic sites are looked up by domain; Agency sites by their agency: ID",
+  ],
   ["envs.list", true, NOTE_SYNTHETIC_ENV],
   ["envs.get", true, NOTE_SYNTHETIC_ENV],
   ["ops.get", false, NOTE_NOT_MAPPED],
@@ -139,7 +153,7 @@ const CAPABILITIES: readonly ProviderCapabilityInput[] = [
   [
     "wp.plugins.list",
     true,
-    "Uses the verified WordPress installation plugin inventory",
+    "Classic hosting only: uses the verified WordPress installation plugin inventory",
   ],
   [
     "wp.plugins.install",
@@ -312,12 +326,20 @@ class HostingerClient implements ProviderClient {
     ];
     if (username !== undefined && username !== "")
       query.push(["username", username]);
-    return (await this.#listWebsites(query)).map((website) =>
+    const classic = (await this.#listWebsites(query)).map((website) =>
       websiteToSite(website, includeEnvironments),
     );
+    // An explicit classic username is a scope, not an Agency account ID.
+    if (username) return classic;
+    return [
+      ...classic,
+      ...(await listAgencySites(this.#http, includeEnvironments)),
+    ];
   }
 
   async getSite(siteId: string): Promise<HostingSite> {
+    if (siteId.startsWith(AGENCY_PREFIX))
+      return getAgencySite(this.#http, siteId);
     const websites = await this.#listWebsites([
       ["page", "1"],
       ["per_page", PAGE_SIZE],
@@ -331,6 +353,10 @@ class HostingerClient implements ProviderClient {
   }
 
   async listEnvironments(siteId: string): Promise<HostingEnvironment[]> {
+    if (siteId.startsWith(AGENCY_PREFIX))
+      return [
+        ...((await getAgencySite(this.#http, siteId)).environments ?? []),
+      ];
     const websites = await this.#listWebsites([
       ["page", "1"],
       ["per_page", PAGE_SIZE],
@@ -357,6 +383,7 @@ class HostingerClient implements ProviderClient {
   }
 
   async read(request: ReadRequest): Promise<unknown> {
+    rejectAgencyOperation(request);
     switch (request.kind) {
       case "plugins":
         return hostingerPluginInventory(this.#http, request.envId);
@@ -415,6 +442,7 @@ class HostingerClient implements ProviderClient {
   }
 
   async action(request: ActionRequest): Promise<ActionResult> {
+    rejectAgencyOperation(request);
     switch (request.kind) {
       case "setup-novamira":
         return setupHostingerNovamira(this.#http, this.#transferFetch, request);
