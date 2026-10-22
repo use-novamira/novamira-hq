@@ -646,7 +646,9 @@ function renderConnectButton(
   );
   return html`<button class="button tiny" type="button"${attr(
     "title",
-    `Check Novamira, then authorize access in your browser. novamira-hq site-cli auth login ${address}`,
+    group.provider === "hostinger" && env.id.startsWith("agency:")
+      ? "Hostinger Agency: for WordPress sites, install and activate Novamira first, then connect by URL. Automatic hosting setup is not available."
+      : `Check Novamira, then authorize access in your browser. novamira-hq site-cli auth login ${address}`,
   )}${ds.indicator(busy)}${ds.attrs({ disabled: signal(busy) })}${ds.on("click", action)}><span${ds.classes({ hidden: signal(busy) })}>Connect</span><span class="loading-inline ds-toggle"${ds.classes({ open: signal(busy) })} role="status">Connecting…</span></button>`;
 }
 
@@ -656,7 +658,8 @@ function setupSupported(
 ): boolean {
   return (
     NOVAMIRA_SETUP_PROVIDERS.has(provider) &&
-    (provider !== "plesk" || env.id.startsWith("wp:"))
+    (provider !== "plesk" || env.id.startsWith("wp:")) &&
+    (provider !== "hostinger" || !env.id.startsWith("agency:"))
   );
 }
 
