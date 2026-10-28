@@ -97,7 +97,7 @@ const CAPABILITIES: readonly ProviderCapabilityInput[] = [
   [
     "sites.list",
     true,
-    "uses classic and Agency website inventories; an explicit username limits the result to classic hosting",
+    "uses classic and Agency website inventories; a username filters classic hosting only",
   ],
   [
     "sites.get",
@@ -329,8 +329,8 @@ class HostingerClient implements ProviderClient {
     const classic = (await this.#listWebsites(query)).map((website) =>
       websiteToSite(website, includeEnvironments),
     );
-    // An explicit classic username is a scope, not an Agency account ID.
-    if (username) return classic;
+    // The username scopes classic hosting only; Agency is detected for every
+    // token, so a username saved by `--company auto` cannot hide Agency sites.
     return [
       ...classic,
       ...(await listAgencySites(this.#http, includeEnvironments)),

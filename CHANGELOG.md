@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Hostinger Agency hosting websites now appear in Sites next to regular
+  Hostinger hosting, detected automatically with the same API token. Hostinger
+  does not let HQ install plugins on Agency sites, so install and activate
+  Novamira in WordPress, turn on AI Abilities, then use Connect. Accounts
+  without Agency hosting keep listing their sites as before. Thanks to
+  AGENTUR.STUDIO for reporting this and contributing the fix (#17, #23).
+
 ## 1.0.0-beta8 - 2026-10-20
 
 ### Added

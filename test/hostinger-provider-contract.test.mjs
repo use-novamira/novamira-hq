@@ -390,7 +390,7 @@ test("hostinger reports its capability table", async () => {
       name: "sites.list",
       supported: true,
       notes:
-        "uses classic and Agency website inventories; an explicit username limits the result to classic hosting",
+        "uses classic and Agency website inventories; a username filters classic hosting only",
     });
     assert.deepEqual(byName.get("ops.get"), {
       name: "ops.get",
@@ -429,6 +429,13 @@ test("hostinger list sites scopes by username and follows pagination", async () 
         meta: { current_page: 2, per_page: 50, total: 51 },
       }),
     },
+    {
+      expected: "GET /api/agency-hosting/v1/websites?page=1&per_page=50",
+      body: JSON.stringify({
+        data: [],
+        meta: { current_page: 1, per_page: 50, total: 0 },
+      }),
+    },
   ]);
   try {
     const sites = await client(server.baseUrl, {
@@ -450,6 +457,13 @@ test("hostinger list sites prefers the requested company id", async () => {
     {
       expected:
         "GET /api/hosting/v1/websites?page=1&per_page=50&username=requested",
+      body: JSON.stringify({
+        data: [],
+        meta: { current_page: 1, per_page: 50, total: 0 },
+      }),
+    },
+    {
+      expected: "GET /api/agency-hosting/v1/websites?page=1&per_page=50",
       body: JSON.stringify({
         data: [],
         meta: { current_page: 1, per_page: 50, total: 0 },
@@ -1071,8 +1085,6 @@ test("hostinger Agency listing uses authenticated HTTP and paginates beyond 50 s
 test("hostinger surfaces Agency HTTP failures and redacts echoed credentials", async () => {
   for (const [status, code] of [
     [401, "credential_invalid"],
-    [403, "credential_invalid"],
-    [404, "not_found"],
     [429, "rate_limited"],
     [500, "provider_error"],
   ]) {
@@ -1105,6 +1117,43 @@ test("hostinger surfaces Agency HTTP failures and redacts echoed credentials", a
         assert.ok(!JSON.stringify(error).includes(TOKEN));
         return true;
       });
+    } finally {
+      await server.finish();
+    }
+  }
+});
+
+test("hostinger treats Agency 403/404 as an account without Agency hosting", async () => {
+  for (const [status, body] of [
+    [403, '{"message":"Forbidden"}'],
+    [404, "<html>Not Found</html>"],
+  ]) {
+    const server = await startServer([
+      {
+        expected: "GET /api/hosting/v1/websites?page=1&per_page=50",
+        body: JSON.stringify({
+          data: [
+            {
+              domain: "classic.example.test",
+              username: "u1",
+              is_enabled: true,
+            },
+          ],
+          meta: { current_page: 1, per_page: 50, total: 1 },
+        }),
+      },
+      {
+        expected: "GET /api/agency-hosting/v1/websites?page=1&per_page=50",
+        status,
+        body,
+      },
+    ]);
+    try {
+      const sites = await client(server.baseUrl).listSites();
+      assert.deepEqual(
+        sites.map((site) => site.id),
+        ["classic.example.test"],
+      );
     } finally {
       await server.finish();
     }
