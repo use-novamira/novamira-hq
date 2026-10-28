@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.0-beta9 - 2026-10-28
 
 ### Tweak
 
