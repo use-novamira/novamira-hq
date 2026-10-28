@@ -1,7 +1,7 @@
 {
-  "reviewedAt": "2026-10-20",
+  "reviewedAt": "2026-10-28",
   "scope": "All npm lock entries, including development tools; not a binary SBOM. License identifiers are declarations from installed package manifests.",
-  "lockSha256": "218b965d66ad9b39b065e7915ee152027d815f21bc75715eb55572b7852a1c15",
+  "lockSha256": "4f5ec232c91f248851542b14929326d871b753e62ace715228ec6a713a3a71f3",
   "packages": [
     {
       "name": "@novamira/cli",
@@ -100,52 +100,52 @@
     },
     {
       "name": "@typescript-eslint/eslint-plugin",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "license": "MIT"
     },
     {
       "name": "@typescript-eslint/parser",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "license": "MIT"
     },
     {
       "name": "@typescript-eslint/project-service",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "license": "MIT"
     },
     {
       "name": "@typescript-eslint/scope-manager",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "license": "MIT"
     },
     {
       "name": "@typescript-eslint/tsconfig-utils",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "license": "MIT"
     },
     {
       "name": "@typescript-eslint/type-utils",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "license": "MIT"
     },
     {
       "name": "@typescript-eslint/types",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "license": "MIT"
     },
     {
       "name": "@typescript-eslint/typescript-estree",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "license": "MIT"
     },
     {
       "name": "@typescript-eslint/utils",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "license": "MIT"
     },
     {
       "name": "@typescript-eslint/visitor-keys",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "license": "MIT"
     },
     {
@@ -515,7 +515,7 @@
     },
     {
       "name": "typescript-eslint",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "license": "MIT"
     },
     {
