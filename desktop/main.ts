@@ -35,6 +35,7 @@ import {
   prepareBundledWebview,
   prepareCommandPath,
 } from "./runtime.ts";
+import { connectorSpawn } from "./connector-spawn.ts";
 import { installMacMenus } from "./macos-menu.ts";
 import process from "node:process";
 import {
@@ -127,6 +128,7 @@ if (isCommandLauncher) {
       command: Deno.execPath(),
       args: [...serverArgs(), "--mcp"],
     }),
+    mcpConnectorSpawn: connectorSpawn,
   });
 } else if (Deno.args[0] === SERVE_FLAG) {
   await serve();
@@ -170,6 +172,7 @@ async function serve(): Promise<void> {
         command: Deno.execPath(),
         args: [...serverArgs(), "--mcp"],
       }),
+      mcpConnectorSpawn: connectorSpawn,
     },
   );
   Deno.exit(code);

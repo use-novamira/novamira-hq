@@ -89,6 +89,47 @@ export interface DetectionHost {
   exists(path: string): Promise<boolean>;
 }
 
+/**
+ * Whether the client's `novamira-hq` entry carries a `--v8-flags=` argument:
+ * Deno's Node shim wrote `--v8-flags=--mcp` for `--mcp` when desktop setup
+ * passed HQ's own executable path (fixed in desktop by `Deno.Command`). Read
+ * from the configuration file, because `claude mcp get` first waits on a
+ * connection such an entry can never complete.
+ */
+export async function hasRewrittenLaunch(
+  client: "claude-code" | "codex",
+  host: DetectionHost,
+): Promise<boolean> {
+  const path = host.platform === "win32" ? win32 : posix;
+  const env = host.environment;
+  if (client === "claude-code") {
+    const text = await host.readText(
+      path.join(env.CLAUDE_CONFIG_DIR ?? host.home, ".claude.json"),
+    );
+    let servers: Record<string, unknown> | undefined;
+    try {
+      servers = asRecord(asRecord(JSON.parse(text ?? "null"))?.mcpServers);
+    } catch {
+      return false;
+    }
+    const args = asRecord(servers?.["novamira-hq"])?.args;
+    return (
+      Array.isArray(args) &&
+      args.some(
+        (arg) => typeof arg === "string" && arg.startsWith("--v8-flags="),
+      )
+    );
+  }
+  const text = await host.readText(
+    path.join(env.CODEX_HOME ?? path.join(host.home, ".codex"), "config.toml"),
+  );
+  const section =
+    /^\[mcp_servers\.(?:"novamira-hq"|novamira-hq)\][^\S\n]*$([\s\S]*?)(?=^\[|(?![\s\S]))/m.exec(
+      text ?? "",
+    )?.[1];
+  return /^args\s*=.*["']--v8-flags=/m.test(section ?? "");
+}
+
 /** Windows paths appear with escaped backslashes in JSON and TOML files. */
 export function mentions(text: string, command: string): boolean {
   return (
