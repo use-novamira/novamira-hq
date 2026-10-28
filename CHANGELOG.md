@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-### Added
+### Tweak
 
 - Hostinger Agency hosting websites now appear in Sites next to regular
   Hostinger hosting, detected automatically with the same API token. Hostinger
