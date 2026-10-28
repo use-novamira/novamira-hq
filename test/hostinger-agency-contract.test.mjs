@@ -169,12 +169,13 @@ test("Agency targets cannot enter classic provisioning or plugin endpoints", asy
   assert.equal(http.calls.length, 0);
 });
 
-test("classic account scope never requests Agency inventory", async () => {
+test("a classic username scopes classic hosting and still lists Agency", async () => {
   for (const scope of ["profile", "request"]) {
     const http = mock([
       page([
         { domain: "classic.example.com", username: "u1", is_enabled: true },
       ]),
+      page([row("one")]),
     ]);
     const scoped = createHostingerClient({
       secret: new SecretValue("test-placeholder", "env", "env:TEST"),
@@ -188,11 +189,13 @@ test("classic account scope never requests Agency inventory", async () => {
     );
     assert.deepEqual(
       sites.map((s) => s.id),
-      ["classic.example.com"],
+      ["classic.example.com", "agency:one"],
     );
-    assert.equal(http.calls.length, 1);
+    assert.equal(http.calls.length, 2);
     assert.ok(http.calls[0].path.endsWith("/api/hosting/v1/websites"));
     assert.deepEqual(http.calls[0].query.at(-1), ["username", "u1"]);
+    assert.ok(http.calls[1].path.endsWith("/api/agency-hosting/v1/websites"));
+    assert.ok(!http.calls[1].query.some(([key]) => key === "username"));
   }
 });
 

@@ -12,12 +12,21 @@ import type { HostingSite } from "../types.js";
 export const AGENCY_PREFIX = "agency:";
 const PAGE_SIZE = 50;
 const MAX_PAGES = 2_500;
+// Hostinger tokens carry no scopes: after classic listing succeeded with the
+// same token, 403/404 means the account has no Agency hosting, not a failure.
+const NO_AGENCY_STATUSES = [403, 404];
 
 function invalid(message: string): never {
   throw new CliError(
     "provider_error",
     `Hostinger Agency inventory: ${message}`,
   );
+}
+
+function noAgency(error: unknown): boolean {
+  const status =
+    error instanceof CliError ? asRecord(error.details)?.status : undefined;
+  return typeof status === "number" && NO_AGENCY_STATUSES.includes(status);
 }
 
 function text(value: unknown): string {
@@ -83,13 +92,19 @@ export async function listAgencySites(
   let expectedTotal: number | undefined;
   let expectedPageSize: number | undefined;
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const payload = await http.json({
-      path: `${http.baseUrl.replace(/\/+$/, "")}/api/agency-hosting/v1/websites`,
-      query: [
-        ["page", String(page)],
-        ["per_page", String(PAGE_SIZE)],
-      ],
-    });
+    let payload: unknown;
+    try {
+      payload = await http.json({
+        path: `${http.baseUrl.replace(/\/+$/, "")}/api/agency-hosting/v1/websites`,
+        query: [
+          ["page", String(page)],
+          ["per_page", String(PAGE_SIZE)],
+        ],
+      });
+    } catch (error) {
+      if (page === 1 && noAgency(error)) return [];
+      throw error;
+    }
     // Agency metadata may contain WordPress details. Scrub echoed credentials
     // before mapping free-form titles, then expose only the inventory fields.
     const response = asRecord(redact(payload, collectSensitiveValues(payload)));
