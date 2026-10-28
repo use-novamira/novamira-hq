@@ -1328,6 +1328,17 @@ test("35b: ?new=cli opens the custom CLI-site form", async () => {
   assert.ok(!markup.includes("Search by name or domain"));
 });
 
+test("the manual Site URL field accepts a bare domain instead of demanding a scheme", async () => {
+  const server = await dashboard();
+  const field = /<input[^>]*cliSites\.url[^>]*>/.exec(
+    await page(server, "/sites?new=cli"),
+  )?.[0];
+  assert.ok(field, "the manual form has a Site URL field");
+  assert.match(field, /type="text"/);
+  assert.match(field, /placeholder="example\.com"/);
+  assert.match(field, /required/);
+});
+
 test("AI connection links prefill only validated public URLs and never trigger a connection", async () => {
   const server = await dashboard();
   const form = await page(
