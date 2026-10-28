@@ -1512,6 +1512,18 @@ test("19: adding a CLI site sends the optional custom name", async () => {
   assert.ok(!recorder.find("toast").markup.includes("Connected."));
 });
 
+test("adding a CLI site accepts a bare domain and connects over https", async () => {
+  const { server, connectCalls } = await fixture();
+  await sse(
+    server,
+    authorized("/_dashboard/site-profiles/connect?unified=true", {
+      method: "POST",
+      body: JSON.stringify({ cliSites: { url: "  cindy.example.co.il  " } }),
+    }),
+  );
+  assert.deepEqual(connectCalls, ["https://cindy.example.co.il"]);
+});
+
 test("a completed CLI login shows success without refreshing every site status", async () => {
   const { server, connectCalls, inventoryCalls, listCalls } = await fixture();
   await sse(server, sitesRequest());

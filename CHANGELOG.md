@@ -13,6 +13,9 @@
 
 ### Fixed
 
+- A site can be added manually by typing just its domain, such as
+  example.com. HQ connects over https://, where the form previously refused
+  the address with "Please enter a URL" until a scheme was typed.
 - One-click setup of Claude Code and Codex works again when the
   `novamira-hq` terminal command is not enabled, as on a fresh Windows
   install. Before, they were registered with `--v8-flags=--mcp` instead of

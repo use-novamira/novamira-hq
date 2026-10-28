@@ -293,9 +293,9 @@ export function renderConnectForm(
     open && "open",
   )}${ds.classes({ open: signal("cliSites.open") })}${ds.onSubmit(
     submit,
-  )}${ds.indicator("cliSites.loading")}><div class="panel-head"><div><h2>Add site manually</h2><p>Your browser will open so you can authorize the connection. The connection will be saved on your computer.</p></div></div><div class="form-grid"><label><span>Site URL</span><input type="url"${ds.bind(
+  )}${ds.indicator("cliSites.loading")}><div class="panel-head"><div><h2>Add site manually</h2><p>Your browser will open so you can authorize the connection. The connection will be saved on your computer.</p></div></div><div class="form-grid"><label><span>Site URL</span><input type="text"${ds.bind(
     "cliSites.url",
-  )} placeholder="https://example.com" required${disabled}${busyDisabled}></label><label><span>Custom name <small>(optional)</small></span><input type="text"${ds.bind(
+  )} placeholder="example.com" autocapitalize="off" spellcheck="false" required${disabled}${busyDisabled}><small class="field-help">The address of your site, such as example.com. https:// is added unless you type another scheme.</small></label><label><span>Custom name <small>(optional)</small></span><input type="text"${ds.bind(
     "cliSites.name",
   )} placeholder="Defaults to the domain" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" maxlength="64"${disabled}${busyDisabled}><small class="field-help">Letters, digits, dots, underscores, and hyphens.</small></label></div><div class="button-row"><button class="button primary" type="submit"${disabled}${busyDisabled}><span${ds.classes({ hidden: busy })}>Connect</span><span class="ds-toggle"${ds.classes({ open: busy })}>Connecting…</span></button></div><p class="field-help ds-toggle"${ds.classes({ open: busy })} role="status">Waiting for authorization in your browser and saving the connection. Keep this page open.</p></form>`;
 }
