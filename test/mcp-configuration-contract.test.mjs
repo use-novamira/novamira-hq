@@ -312,6 +312,37 @@ test("one-click ChatGPT setup checks first, then uses the official codex command
   assert.equal(calls[1].options.stdio, "ignore");
 });
 
+test("client setup runs through the connector seam and keeps the launch argv", async () => {
+  const connector = [];
+  const fakeSpawn = (command, args, options) => {
+    connector.push({ command, args, options });
+    const child = new EventEmitter();
+    child.kill = () => true;
+    queueMicrotask(() => child.emit("close", connector.length === 1 ? 1 : 0));
+    return child;
+  };
+  const service = createMcpConnectionService(
+    { command: "C:\\HQ\\novamira-hq-desktop.exe", args: ["--mcp"] },
+    {},
+    () => {
+      throw new Error("client setup must not use the general spawn");
+    },
+    undefined,
+    fakeSpawn,
+  );
+  assert.equal(await service.connect("claude-code"), "configured");
+  assert.deepEqual(connector[1].args, [
+    "mcp",
+    "add",
+    "--scope",
+    "user",
+    "novamira-hq",
+    "--",
+    "C:\\HQ\\novamira-hq-desktop.exe",
+    "--mcp",
+  ]);
+});
+
 test("standalone desktop never delegates its updater to npm", async () => {
   const updates = createDashboardUpdates({
     distribution: "desktop",

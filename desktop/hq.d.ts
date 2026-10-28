@@ -23,5 +23,6 @@ export function main(
       readonly command: string;
       readonly args: readonly string[];
     };
+    readonly mcpConnectorSpawn?: unknown;
   },
 ): Promise<number>;

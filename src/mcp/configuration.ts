@@ -16,6 +16,7 @@ import type {
 import {
   DETECTED_CLIENTS,
   findClientsUsing,
+  hasRewrittenLaunch,
   isOutsideApplications,
   nextLaunchRecord,
   readLaunchRecord,
@@ -26,6 +27,21 @@ import {
 } from "./relocation.js";
 
 type SpawnProcess = typeof spawn;
+
+/** The part of `spawn` that configuring a client's MCP settings needs. */
+export type ConnectorSpawn = (
+  command: string,
+  args: readonly string[],
+  options: {
+    readonly shell: false;
+    readonly env: NodeJS.ProcessEnv;
+    readonly stdio: "ignore";
+  },
+) => {
+  on(event: "error", listener: () => void): unknown;
+  on(event: "close", listener: (code: number | null) => void): unknown;
+  kill(signal: "SIGKILL"): unknown;
+};
 
 function connectorArgv(
   client: McpClient,
@@ -93,6 +109,9 @@ export function createMcpConnectionService(
   environment: NodeJS.ProcessEnv,
   spawnProcess: SpawnProcess = spawn,
   relocation?: RelocationOptions,
+  // Desktop passes a `Deno.Command` runner: Deno's `node:child_process`
+  // rewrites arguments after one equal to its own executable path.
+  connectorSpawn: ConnectorSpawn = spawnProcess,
 ): McpConnectionService {
   const configuration: McpConnectionService["configuration"] = () => {
     const launch = {
@@ -162,7 +181,7 @@ export function createMcpConnectionService(
       );
       const run = (args: readonly string[]): Promise<boolean> =>
         new Promise((resolve) => {
-          const child = spawnProcess(connector.command, [...args], {
+          const child = connectorSpawn(connector.command, [...args], {
             shell: false,
             env: environment,
             stdio: "ignore",
@@ -186,7 +205,16 @@ export function createMcpConnectionService(
           });
         });
 
-      if (options.replace === true && client !== "vscode")
+      // A desktop entry broken by Deno's argument rewriting is replaced, not
+      // reported as an existing configuration the user cannot use.
+      const rewritten =
+        relocation !== undefined &&
+        client !== "vscode" &&
+        (await hasRewrittenLaunch(
+          client === "claude-code" ? "claude-code" : "codex",
+          relocation.host,
+        ));
+      if ((options.replace === true || rewritten) && client !== "vscode")
         await run(
           client === "claude-code"
             ? ["mcp", "remove", "--scope", "user", "novamira-hq"]

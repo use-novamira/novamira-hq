@@ -11,6 +11,7 @@ import { defaultFileSecurity } from "../dist/config/file-security.js";
 import { createMcpConnectionService } from "../dist/mcp/configuration.js";
 import {
   findClientsUsing,
+  hasRewrittenLaunch,
   isOutsideApplications,
   mentions,
   nextLaunchRecord,
@@ -378,4 +379,65 @@ test("Windows npm shims are run through cmd.exe with fixed arguments", async () 
     "/c",
     "claude mcp get novamira-hq",
   ]);
+});
+
+const CLAUDE_JSON = "C:\\Users\\Mario Rossi\\.claude.json";
+const CODEX_TOML = "C:\\Users\\Mario Rossi\\.codex\\config.toml";
+const claudeEntry = (args) =>
+  JSON.stringify({
+    mcpServers: { "novamira-hq": { type: "stdio", command: OLD, args } },
+  });
+const codexEntry = (args, name = "novamira-hq") =>
+  `[mcp_servers.${name}]\ncommand = ${JSON.stringify(OLD)}\nargs = ${JSON.stringify(args)}\n\n[mcp_servers.other]\nargs = ["--v8-flags=--x"]\n`;
+
+test("an entry with Deno's rewritten --v8-flags launch is recognized in each client file", async () => {
+  const broken = ["--v8-flags=--mcp"];
+  for (const [client, files, expected] of [
+    ["claude-code", { [CLAUDE_JSON]: claudeEntry(broken) }, true],
+    ["claude-code", { [CLAUDE_JSON]: claudeEntry(["--mcp"]) }, false],
+    ["claude-code", { [CLAUDE_JSON]: "not json" }, false],
+    ["claude-code", {}, false],
+    ["codex", { [CODEX_TOML]: codexEntry(broken) }, true],
+    ["codex", { [CODEX_TOML]: codexEntry(broken, '"novamira-hq"') }, true],
+    ["codex", { [CODEX_TOML]: codexEntry(["--mcp"]) }, false],
+    ["codex", {}, false],
+  ])
+    assert.equal(
+      await hasRewrittenLaunch(client, host(files)),
+      expected,
+      `${client} ${JSON.stringify(files)}`,
+    );
+});
+
+test("setup replaces a rewritten entry but leaves a healthy one alone", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "hq-rewritten-"));
+  try {
+    for (const [args, expected] of [
+      [["--v8-flags=--mcp"], "configured"],
+      [["--mcp"], "existing"],
+    ]) {
+      const calls = [];
+      const service = createMcpConnectionService(
+        { command: OLD, args: ["--mcp"] },
+        {},
+        spawnRecorder(calls),
+        {
+          stateDir: folder,
+          security: defaultFileSecurity(),
+          executable: OLD,
+          host: host({ [CLAUDE_JSON]: claudeEntry(args) }),
+        },
+      );
+      assert.equal(await service.connect("claude-code"), expected);
+      if (expected === "configured") {
+        assert.equal(calls[0], "claude mcp remove --scope user novamira-hq");
+        assert.match(calls[1], / mcp add .* --mcp$/);
+        assert.ok(!calls.some((call) => call.includes("mcp get")));
+      } else {
+        assert.deepEqual(calls, ["claude mcp get novamira-hq"]);
+      }
+    }
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
 });

@@ -4,7 +4,10 @@
 import type { Command } from "commander";
 import { randomUUID } from "node:crypto";
 import type { McpLaunch } from "./mcp-connection.js";
-import { createMcpConnectionService } from "./mcp/configuration.js";
+import {
+  createMcpConnectionService,
+  type ConnectorSpawn,
+} from "./mcp/configuration.js";
 import { nodeDetectionHost } from "./mcp/relocation.js";
 import { createCommandHandlers } from "./cli/commands.js";
 import {
@@ -89,6 +92,8 @@ export interface MainOverrides {
   readonly siteCliLaunch?: SiteCliResolution;
   readonly dashboard?: import("./cli/dashboard.js").DashboardCommandOverrides;
   readonly mcpLaunch?: McpLaunch;
+  /** Runs AI client CLIs while configuring MCP; desktop avoids Deno's Node shim. */
+  readonly mcpConnectorSpawn?: ConnectorSpawn;
   readonly distribution?: "source" | "desktop";
   readonly historyChannel?: HistoryChannel;
   /**
@@ -269,6 +274,7 @@ export async function main(
               host: nodeDetectionHost(environment),
             }
           : undefined,
+        overrides.mcpConnectorSpawn,
       ),
       history,
       version: VERSION,

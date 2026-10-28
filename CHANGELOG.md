@@ -11,6 +11,14 @@
   without Agency hosting keep listing their sites as before. Thanks to
   AGENTUR.STUDIO for contributing the tweak.
 
+### Fixed
+
+- One-click setup of Claude Code and Codex works again when the
+  `novamira-hq` terminal command is not enabled, as on a fresh Windows
+  install. Before, they were registered with `--v8-flags=--mcp` instead of
+  `--mcp` and could not connect to HQ. Setting the client up again from HQ now
+  replaces such a broken entry instead of reporting that one already exists.
+
 ## 1.0.0-beta8 - 2026-10-20
 
 ### Added

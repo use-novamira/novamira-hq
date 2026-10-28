@@ -6,6 +6,7 @@
 import process from "node:process";
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+import { connectorSpawn } from "./connector-spawn.ts";
 
 const mode = Deno.args[0];
 if (mode === "wait") {
@@ -22,6 +23,8 @@ if (mode === "wait") {
   });
   child.unref();
   setInterval(() => {}, 1000);
+} else if (mode === "record") {
+  await Deno.writeTextFile(Deno.args[1], JSON.stringify(Deno.args.slice(2)));
 } else if (mode === "stubborn") {
   if (Deno.build.os !== "windows") {
     process.on("SIGTERM", () => {});
@@ -106,7 +109,42 @@ if (mode === "wait") {
   } finally {
     await Deno.remove(temporary, { recursive: true });
   }
+  // AI client CLIs receive HQ's own path followed by `--mcp`. Deno's Node
+  // shim would rewrite that as `--v8-flags=--mcp`; the connector must not.
+  const recorderDir = await Deno.makeTempDir();
+  try {
+    const recorder = `${recorderDir}/recorder${
+      Deno.build.os === "windows" ? ".exe" : ""
+    }`;
+    await Deno.copyFile(Deno.execPath(), recorder);
+    const record = `${recorderDir}/args.json`;
+    const code = await new Promise((resolve) => {
+      const child = connectorSpawn(
+        recorder,
+        ["record", record, Deno.execPath(), "--mcp"],
+        { env: process.env },
+      );
+      child.on("error", () => resolve("error"));
+      child.on("close", resolve);
+    });
+    expect(code === 0, "connector child exited");
+    expect(
+      await Deno.readTextFile(record) ===
+        JSON.stringify([Deno.execPath(), "--mcp"]),
+      "connector arguments reached the client unchanged",
+    );
+  } finally {
+    // Windows keeps an exited executable locked for a moment.
+    for (let attempt = 0; attempt < 50; attempt++) {
+      try {
+        await Deno.remove(recorderDir, { recursive: true });
+        break;
+      } catch {
+        await delay(100);
+      }
+    }
+  }
   console.log(
-    "embedded spawn: input, timeout, bounds, cancellation, and descendant cleanup passed",
+    "embedded spawn: input, timeout, bounds, cancellation, descendant cleanup and connector arguments passed",
   );
 }
