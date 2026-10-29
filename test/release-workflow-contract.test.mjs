@@ -365,6 +365,29 @@ test("Linux and Windows desktop assets carry their icons and are proved to run",
     /node scripts\/release-notes\.mjs "\$\{RELEASE_TAG#v\}" > "\$RUNNER_TEMP\/notes\.md"\n/,
   );
   assert.equal(release.split('--notes-file "$RUNNER_TEMP/notes.md"').length, 3);
+  // HQ's license and the LGPL text stay loose; the other legal files, the
+  // macOS copies included, ship in one licenses archive.
+  assert.match(
+    release,
+    /cp install\.sh install\.ps1 LICENSE release-assets\/\n/,
+  );
+  assert.match(
+    release,
+    /cp legal\/licenses\/lgpl-2\.1\.txt release-assets\/LGPL-2\.1\.txt\n/,
+  );
+  assert.match(
+    release,
+    /mv "release-assets\/\$asset\.\$file" "\$licenses\/"\n/,
+  );
+  assert.match(
+    release,
+    /release-assets\/novamira-hq-licenses\.zip" licenses\)/,
+  );
+  assert.ok(
+    release.indexOf("novamira-hq-licenses.zip") <
+      release.indexOf("sha256sum * > SHA256SUMS"),
+    "the licenses archive must be in the checksums",
+  );
   assert.match(desktop, /name: \$\{\{ matrix\.artifact \}\}-release\n/);
   const artifacts = [...desktop.matchAll(/artifact: (\S+)\n/g)].map(
     (match) => match[1],

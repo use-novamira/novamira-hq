@@ -551,9 +551,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
         run: |
-          cp install.sh install.ps1 LICENSE legal/SOURCE-OFFER.txt license-docs/build-from-source.md release-assets/
+          cp install.sh install.ps1 LICENSE release-assets/
           cp legal/licenses/lgpl-2.1.txt release-assets/LGPL-2.1.txt
-          cp release-assets/novamira-hq-desktop-macos-arm64.THIRD-PARTY-NOTICES.txt release-assets/THIRD-PARTY-NOTICES.txt
+          # The other legal files ship together in one archive; every package
+          # and the app's About page also carry them.
+          licenses="$RUNNER_TEMP/licenses/licenses"
+          mkdir -p "$licenses"
+          cp LICENSE legal/SOURCE-OFFER.txt license-docs/build-from-source.md "$licenses/"
+          cp legal/licenses/lgpl-2.1.txt "$licenses/LGPL-2.1.txt"
+          cp release-assets/novamira-hq-desktop-macos-arm64.THIRD-PARTY-NOTICES.txt "$licenses/THIRD-PARTY-NOTICES.txt"
+          for asset in novamira-hq-desktop-macos-arm64 novamira-hq-desktop-macos-x86_64; do
+            for file in SOURCE-OFFER.txt build-from-source.md LGPL-2.1.txt THIRD-PARTY-NOTICES.txt; do
+              mv "release-assets/$asset.$file" "$licenses/"
+            done
+          done
+          (cd "$RUNNER_TEMP/licenses" && zip -qrX "$GITHUB_WORKSPACE/release-assets/novamira-hq-licenses.zip" licenses)
           node scripts/release-notes.mjs "${RELEASE_TAG#v}" > "$RUNNER_TEMP/notes.md"
           cd release-assets
           sha256sum * > SHA256SUMS
