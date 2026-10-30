@@ -3,10 +3,17 @@
 
 import { CliError } from "../errors.js";
 import type { ProviderClient } from "../hosting/client.js";
+import type { OperationStatus } from "../hosting/types.js";
 import { asRecord } from "../json.js";
 import { compareSemverStrings, isSemver } from "../semver.js";
 import { MINIMUM_NOVAMIRA_VERSION } from "./compatibility.js";
-import { runWpCliForOutput, type PollBudget } from "./wp-cli.js";
+import { NOVAMIRA_PLUGIN_SLUG, pluginIsInstalledCommand } from "./plugin.js";
+import {
+  contextualize,
+  runWpCli,
+  runWpCliForOutput,
+  type PollBudget,
+} from "./wp-cli.js";
 
 export const EXISTING_NOVAMIRA_COMMAND =
   "wp plugin list --name=novamira --format=json";
@@ -36,6 +43,44 @@ function rows(output: string): readonly unknown[] {
       "Cannot safely inspect the existing Novamira installation. No installation or option changes were made.",
     );
   return value as unknown[];
+}
+
+/**
+ * The one inspection that survives a provider keeping only WP-CLI's exit status
+ * (Kinsta): `wp plugin is-installed` writes nothing and answers through that
+ * status alone. The version and the AI Abilities options stay unread, so the
+ * public compatibility read after setup is what verifies them.
+ *
+ * A failed probe means "absent". If it failed for another reason, the install
+ * that follows refuses the existing directory and reports the already-installed
+ * hint, so the worst outcome is a failed run that changed nothing.
+ */
+export async function novamiraInstalledByExitStatus(
+  client: ProviderClient,
+  envId: string,
+  budget: PollBudget,
+): Promise<boolean> {
+  let status: OperationStatus | undefined;
+  try {
+    status = await runWpCli(
+      client,
+      envId,
+      pluginIsInstalledCommand(NOVAMIRA_PLUGIN_SLUG),
+      budget,
+    );
+  } catch (error) {
+    throw contextualize(
+      error,
+      "Failed to check for an existing Novamira installation",
+    );
+  }
+  // A synchronous answer carries no exit status to read.
+  if (status === undefined)
+    throw new CliError(
+      "provider_error",
+      "Cannot safely inspect the existing Novamira installation. No installation or option changes were made.",
+    );
+  return !status.failed;
 }
 
 /** Read-only provider WP-CLI inspection; no site REST or site credential. */

@@ -243,7 +243,8 @@ export const ENVIRONMENT_PUSH_PROVIDERS: ReadonlySet<ProviderKind> =
  * (`pressable.ts:525`), which `provisionNovamira` refuses outright
  * (`src/provisioning/setup.ts`) because a plugin install whose result cannot be
  * observed cannot be verified. Go arrived at the same three names by hard-coding
- * them. Hostinger uses a bounded API ZIP setup and activation receipt;
+ * them. Kinsta reports the exit status but no output (`wpCliOutputObservable`),
+ * which setup handles with exit-status probes and the public compatibility read. Hostinger uses a bounded API ZIP setup and activation receipt;
  * Cloudways uses WP Manager ZIP upload and verified plugin inventory; SandyWP
  * uploads the ZIP through its plugin deploy job and checks its plugin folder.
  */

@@ -560,6 +560,16 @@ class KinstaClient implements ProviderClient {
     };
   }
 
+  /**
+   * A finished `run-wp-cli-command` operation is `{status, message}` and
+   * nothing else: success carries no stdout, and a non-zero exit becomes a body
+   * status of 500 whose `data` says only "Server Error". The exit status is the
+   * one thing HQ can learn from a Kinsta WP-CLI run.
+   */
+  wpCliOutputObservable(): boolean {
+    return false;
+  }
+
   /* ---------------------------------------------------------------------- */
   /* internals                                                              */
   /* ---------------------------------------------------------------------- */

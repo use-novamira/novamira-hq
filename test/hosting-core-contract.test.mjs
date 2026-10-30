@@ -27,6 +27,7 @@ import {
   unsupportedActionRequest,
   unsupportedOperation,
   unsupportedReadRequest,
+  wpCliOutputObservable,
   wpCliResultsObservable,
   wpCliWithoutBinary,
 } from "../dist/hosting/client.js";
@@ -496,6 +497,25 @@ test("neutral hosting helpers keep the Go semantics", () => {
     wpCliResultsObservable({
       provider: "rocketnet",
       wpCliResultsObservable: () => false,
+    }),
+    false,
+  );
+
+  // Output is a subset of results: a provider whose results cannot be observed
+  // has no output to read either, whatever it claims about output alone.
+  assert.equal(wpCliOutputObservable({ provider: "kinsta" }), true);
+  assert.equal(
+    wpCliOutputObservable({
+      provider: "kinsta",
+      wpCliOutputObservable: () => false,
+    }),
+    false,
+  );
+  assert.equal(
+    wpCliOutputObservable({
+      provider: "rocketnet",
+      wpCliResultsObservable: () => false,
+      wpCliOutputObservable: () => true,
     }),
     false,
   );

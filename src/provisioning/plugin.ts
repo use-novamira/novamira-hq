@@ -31,7 +31,10 @@
 import { posix } from "node:path";
 
 import { CliError } from "../errors.js";
-import type { ProviderClient } from "../hosting/client.js";
+import {
+  wpCliOutputObservable,
+  type ProviderClient,
+} from "../hosting/client.js";
 import { shellJoin } from "../hosting/shell.js";
 import type { OperationStatus } from "../hosting/types.js";
 import { asRecord } from "../json.js";
@@ -366,6 +369,39 @@ export interface ActivationPlan {
   readonly network: boolean;
 }
 
+/** The exit-status probe {@link installedPluginIsActive} runs without output. */
+export function pluginIsActiveCommand(slug: string, network: boolean): string {
+  const parts = ["wp", "plugin", "is-active", slug];
+  if (network) parts.push("--network");
+  return shellJoin(parts);
+}
+
+/**
+ * Where the provider keeps only the exit status, `wp plugin is-active` answers
+ * through that status alone: a failed run means "not active", and activating a
+ * plugin that turns out to be active is a WP-CLI success, so the worst a wrong
+ * "no" costs is one redundant `wp plugin activate`.
+ */
+async function pluginIsActiveByExitStatus(
+  client: ProviderClient,
+  envId: string,
+  activation: ActivationPlan,
+  budget: PollBudget,
+): Promise<boolean> {
+  let status: OperationStatus | undefined;
+  try {
+    status = await runWpCli(
+      client,
+      envId,
+      pluginIsActiveCommand(activation.slug, activation.network),
+      budget,
+    );
+  } catch (error) {
+    throw contextualize(error, "Failed to check plugin status after install");
+  }
+  return status !== undefined && !status.failed;
+}
+
 /**
  * Go's `installedPluginIsActive`. The output is matched as a substring and is
  * deliberately NOT echo-stripped: `wp plugin status` prints a block, and the
@@ -377,6 +413,8 @@ export async function installedPluginIsActive(
   activation: ActivationPlan,
   budget: PollBudget,
 ): Promise<boolean> {
+  if (!wpCliOutputObservable(client))
+    return pluginIsActiveByExitStatus(client, envId, activation, budget);
   const command = shellJoin(["wp", "plugin", "status", activation.slug]);
   let status: OperationStatus | undefined;
   try {

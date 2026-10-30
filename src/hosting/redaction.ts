@@ -87,6 +87,11 @@ export function secretSafeProviderClient(
           wpCliResultsObservable: () =>
             client.wpCliResultsObservable?.() ?? true,
         }),
+    ...(client.wpCliOutputObservable === undefined
+      ? {}
+      : {
+          wpCliOutputObservable: () => client.wpCliOutputObservable?.() ?? true,
+        }),
   };
   OPERATION_SECRETS.set(safeClient, operationSecrets);
   return safeClient;

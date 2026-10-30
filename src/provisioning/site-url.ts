@@ -52,7 +52,8 @@ export interface InsecureHttpEnvironment {
 }
 
 /** Where the raw value came from; only used for the diagnostic. */
-export type SiteUrlSource = "--url" | "wp option get home";
+export type SiteUrlSource =
+  "--url" | "wp option get home" | "provider primary domain";
 
 const IPV4_LOOPBACK = /^127(?:\.\d{1,3}){3}$/;
 

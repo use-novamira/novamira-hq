@@ -63,6 +63,11 @@ export function historyClient(
           wpCliResultsObservable: () =>
             client.wpCliResultsObservable?.() ?? true,
         }),
+    ...(client.wpCliOutputObservable === undefined
+      ? {}
+      : {
+          wpCliOutputObservable: () => client.wpCliOutputObservable?.() ?? true,
+        }),
     async action(request) {
       const body = asRecord("body" in request ? request.body : undefined) ?? {};
       const secrets = collectSensitiveValues(body);

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Novamira setup works on Kinsta. It used to stop every time with "Failed to
+  determine the PHP version before plugin install.", because Kinsta reports
+  whether a WP-CLI command succeeded but never what it printed. Setup now
+  checks for an existing plugin and its activation from command results
+  alone, takes the site URL from the environment's primary domain, and leaves
+  the PHP check to WordPress, which refuses to install Novamira on PHP older
+  than 8.0. For the same reason, `--ignore-requirements` is not accepted for
+  Kinsta setup.
+
 ## 1.0.0-beta9 - 2026-10-28
 
 ### Tweak

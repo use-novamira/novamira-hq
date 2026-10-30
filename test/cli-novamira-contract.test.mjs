@@ -246,7 +246,13 @@ function operationStatus(operationId, overrides = {}) {
  * line, and an unscripted command is an error rather than a default, so a test
  * that asserts "these commands and no others" cannot pass by accident.
  */
-function fakeClient({ wpCli = {}, operations = {}, observable } = {}) {
+function fakeClient({
+  wpCli = {},
+  operations = {},
+  observable,
+  outputObservable,
+  sites,
+} = {}) {
   wpCli = {
     [EXISTING_NOVAMIRA_COMMAND]: sync({ data: { result: "[]" } }),
     [EXISTING_AI_DOMAIN_COMMAND]: sync({ data: { result: "[]" } }),
@@ -256,12 +262,15 @@ function fakeClient({ wpCli = {}, operations = {}, observable } = {}) {
     provider: "kinsta",
     actionRequests: [],
     operationIds: [],
+    listSitesCalls: [],
 
     async validate() {
       throw new Error("not used");
     },
-    async listSites() {
-      throw new Error("not used");
+    async listSites(options) {
+      if (sites === undefined) throw new Error("not used");
+      client.listSitesCalls.push(options);
+      return sites;
     },
     async getSite() {
       throw new Error("not used");
@@ -294,6 +303,8 @@ function fakeClient({ wpCli = {}, operations = {}, observable } = {}) {
   };
   if (observable !== undefined)
     client.wpCliResultsObservable = () => observable;
+  if (outputObservable !== undefined)
+    client.wpCliOutputObservable = () => outputObservable;
   /** Every WP-CLI command line the provider was asked to run, in order. */
   client.commands = () =>
     client.actionRequests.map((request) => request.body?.wp_command);
@@ -316,6 +327,72 @@ function happyScript({
     "wp option update novamira_ai_abilities_enabled 1": sync(),
     [`wp option update novamira_ai_abilities_domain ${host}`]: sync(),
   };
+}
+
+/**
+ * Kinsta's WP-CLI, as measured against the live API: every command is an
+ * operation, a zero exit finishes it with no output at all, and a non-zero exit
+ * fails it with a generic "Server Error" and no stderr. `commands` maps each
+ * command line to whether it exits zero.
+ */
+function exitStatusOnly(commands) {
+  const wpCli = {};
+  const operations = {};
+  for (const [command, succeeds] of Object.entries(commands)) {
+    const id = `op:${command}`;
+    wpCli[command] = asyncOperation(id);
+    operations[id] = succeeds
+      ? operationStatus(id, {
+          message: "Running a WP CLI command successfully finished.",
+          raw: {
+            status: 200,
+            message: "Running a WP CLI command successfully finished.",
+          },
+        })
+      : operationStatus(id, {
+          status: 500,
+          done: false,
+          failed: true,
+          message: "Operation failed! Please refer to `data` for more details.",
+          raw: {
+            status: 500,
+            message:
+              "Operation failed! Please refer to `data` for more details.",
+            data: { status: 500, message: "Server Error" },
+          },
+        });
+  }
+  return { wpCli, operations, outputObservable: false };
+}
+
+/** One Kinsta site whose environment `env-1` has `primaryDomain`. */
+function sitesWithEnvironment(primaryDomain) {
+  return [
+    {
+      id: "site-1",
+      name: "site",
+      displayName: "Site",
+      status: "live",
+      environments: [
+        {
+          id: "env-other",
+          name: "live",
+          displayName: "Live",
+          isBlocked: false,
+          isPremium: false,
+          primaryDomain: "other.example",
+        },
+        {
+          id: "env-1",
+          name: "staging",
+          displayName: "Staging",
+          isBlocked: false,
+          isPremium: false,
+          ...(primaryDomain === undefined ? {} : { primaryDomain }),
+        },
+      ],
+    },
+  ];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1120,6 +1197,169 @@ test("--plugin-version, --force and --ignore-requirements shape the install line
 /* Negative: nothing may reach the provider                                   */
 /* -------------------------------------------------------------------------- */
 
+test("a provider that reports only exit status is set up without reading any output", async () => {
+  // Kinsta. No PHP read (WordPress refuses the install itself below Novamira's
+  // Requires PHP), presence and activation probed by exit status, the site URL
+  // taken from the environment's primary domain, and the public compatibility
+  // read as the proof that everything landed.
+  const client = fakeClient({
+    ...exitStatusOnly({
+      "wp plugin is-installed novamira": false,
+      "wp option get siteurl": true,
+      "wp plugin install novamira": true,
+      "wp plugin is-active novamira": false,
+      "wp plugin activate novamira": true,
+      "wp option update novamira_ai_abilities_enabled 1": true,
+      "wp option update novamira_ai_abilities_domain example.com": true,
+    }),
+    sites: sitesWithEnvironment("example.com"),
+  });
+  const { run } = harness({
+    client,
+    overrides: { fetch: servingMetadata(SITE_URL) },
+  });
+
+  const { envelope } = await run([
+    "setup",
+    "--env",
+    "env-1",
+    "--source",
+    "novamira",
+  ]);
+
+  assert.equal(envelope.ok, true, JSON.stringify(envelope.error));
+  assert.deepEqual(client.commands(), [
+    "wp plugin is-installed novamira",
+    "wp option get siteurl",
+    "wp plugin install novamira",
+    "wp plugin is-active novamira",
+    "wp plugin activate novamira",
+    "wp option update novamira_ai_abilities_enabled 1",
+    "wp option update novamira_ai_abilities_domain example.com",
+  ]);
+  assert.deepEqual(client.listSitesCalls, [{ includeEnvironments: true }]);
+  assert.equal(envelope.data.url, SITE_URL);
+  assert.equal(envelope.data.plugin.activated, true);
+  assert.deepEqual(envelope.data.ai_abilities, {
+    enabled: true,
+    domain: "example.com",
+  });
+  assert.equal(envelope.data.ready, true);
+});
+
+test("an existing installation behind exit-status-only WP-CLI is preserved and proven by the public read", async () => {
+  const client = fakeClient(
+    exitStatusOnly({
+      "wp plugin is-installed novamira": true,
+      "wp plugin is-active novamira": true,
+    }),
+  );
+  const { run } = harness({
+    client,
+    overrides: { fetch: servingMetadata(SITE_URL) },
+  });
+
+  const { envelope } = await run([
+    "setup",
+    "--env",
+    "env-1",
+    "--source",
+    "novamira",
+    "--url",
+    SITE_URL,
+  ]);
+
+  assert.equal(envelope.ok, true, JSON.stringify(envelope.error));
+  // Nothing installed, activated or rewritten.
+  assert.deepEqual(client.commands(), [
+    "wp plugin is-installed novamira",
+    "wp plugin is-active novamira",
+  ]);
+  // The discovery document is served only while AI Abilities are enabled for
+  // this domain, so the read that passed is what proves the setting.
+  assert.deepEqual(envelope.data.ai_abilities, {
+    enabled: true,
+    domain: "example.com",
+  });
+  assert.equal(envelope.data.ready, true);
+  assert.equal(envelope.meta.warnings, undefined);
+});
+
+test("unread AI Abilities on an existing installation are reported unverified when the public read is skipped", async () => {
+  const client = fakeClient(
+    exitStatusOnly({
+      "wp plugin is-installed novamira": true,
+      "wp plugin is-active novamira": true,
+    }),
+  );
+  const { run } = harness({ client, overrides: { fetch: forbiddenFetch() } });
+
+  const { envelope } = await run([
+    "setup",
+    "--env",
+    "env-1",
+    "--source",
+    "novamira",
+    "--url",
+    SITE_URL,
+    "--no-compat-check",
+  ]);
+
+  assert.equal(envelope.ok, true, JSON.stringify(envelope.error));
+  assert.deepEqual(envelope.data.ai_abilities, {
+    enabled: false,
+    domain: null,
+  });
+  assert.deepEqual(
+    envelope.meta.warnings.map((warning) => warning.code),
+    ["compatibility_not_checked", "ai_abilities_not_checked"],
+  );
+});
+
+test("--ignore-requirements is refused where HQ cannot read the PHP version", async () => {
+  // WordPress's own Requires PHP check is the only PHP gate such a provider
+  // has, and this flag is exactly what turns it off.
+  const client = fakeClient({
+    ...exitStatusOnly({}),
+    sites: sitesWithEnvironment("example.com"),
+  });
+  const { run } = harness({ client, overrides: { fetch: forbiddenFetch() } });
+
+  const { envelope } = await run([
+    "setup",
+    "--env",
+    "env-1",
+    "--source",
+    "novamira",
+    "--ignore-requirements",
+  ]);
+
+  assert.equal(envelope.error.code, "usage_error");
+  assert.equal(envelope.error.details.flag, "--ignore-requirements");
+  assert.deepEqual(client.actionRequests, []);
+  assert.deepEqual(client.listSitesCalls, []);
+});
+
+test("an environment with no primary domain needs --url before anything runs", async () => {
+  const client = fakeClient({
+    ...exitStatusOnly({}),
+    sites: sitesWithEnvironment(undefined),
+  });
+  const { run } = harness({ client, overrides: { fetch: forbiddenFetch() } });
+
+  const { envelope } = await run([
+    "setup",
+    "--env",
+    "env-1",
+    "--source",
+    "novamira",
+  ]);
+
+  assert.equal(envelope.error.code, "usage_error");
+  assert.equal(envelope.error.details.flag, "--url");
+  assert.deepEqual(client.actionRequests, []);
+});
+
 test("--env is required, and refused before any provider call", async () => {
   // 90.
   const client = fakeClient();
@@ -1132,10 +1372,11 @@ test("--env is required, and refused before any provider call", async () => {
   assert.deepEqual(client.actionRequests, []);
 });
 
-test("a provider whose WP-CLI output HQ cannot read is refused", async () => {
+test("a provider whose WP-CLI results HQ cannot observe is refused", async () => {
   // 91. Go refused this provider because it needed to capture an Application
   // Password out of the output. That reason is deleted; the gate remains,
-  // because HQ still reads the PHP version, the plugin status and the site URL.
+  // because an install whose success cannot be observed cannot be verified.
+  // Output alone is not required: Kinsta keeps only the exit status.
   const client = fakeClient({ observable: false });
   const { run } = harness({ client, overrides: { fetch: forbiddenFetch() } });
   const { envelope } = await run([
@@ -1147,7 +1388,7 @@ test("a provider whose WP-CLI output HQ cannot read is refused", async () => {
   ]);
 
   assert.equal(envelope.error.code, "provider_unsupported");
-  assert.match(envelope.error.message, /read the PHP version/);
+  assert.match(envelope.error.message, /succeeded/);
   assert.doesNotMatch(envelope.error.message, /application[- _]?password/i);
   assert.deepEqual(client.actionRequests, []);
 });

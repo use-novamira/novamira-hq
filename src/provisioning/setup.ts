@@ -45,6 +45,7 @@
 import { CliError, asCliError } from "../errors.js";
 import { runHostingWorkflow } from "../operation-context.js";
 import {
+  wpCliOutputObservable,
   wpCliResultsObservable,
   type ProviderClient,
 } from "../hosting/client.js";
@@ -81,7 +82,11 @@ import {
   type NormalizedSite,
 } from "./site-url.js";
 import { contextualize, runWpCliForOutput, type PollBudget } from "./wp-cli.js";
-import { inspectExistingNovamira } from "./existing.js";
+import {
+  inspectExistingNovamira,
+  novamiraInstalledByExitStatus,
+  type ExistingNovamira,
+} from "./existing.js";
 import { provisionProviderApi } from "./provider-api.js";
 
 /* -------------------------------------------------------------------------- */
@@ -239,6 +244,30 @@ function withInstallRecord(
   });
 }
 
+/**
+ * The site URL of a provider whose WP-CLI keeps no output, so `wp option get
+ * home` cannot be read: the environment's primary domain from the provider's
+ * own inventory, the same address the dashboard's Connect button uses.
+ */
+async function primaryDomainSite(
+  client: ProviderClient,
+  envId: string,
+  environment: InsecureHttpEnvironment,
+): Promise<NormalizedSite> {
+  const sites = await client.listSites({ includeEnvironments: true });
+  const domain =
+    sites
+      .flatMap((site) => site.environments ?? [])
+      .find((env) => env.id === envId)?.primaryDomain ?? "";
+  if (domain.trim() === "")
+    throw new CliError(
+      "usage_error",
+      "This environment has no primary domain, and its provider does not return WP-CLI output to read the site URL from. Pass --url.",
+      { details: { flag: "--url" } },
+    );
+  return normalizeSiteUrl(domain, environment, "provider primary domain");
+}
+
 /* -------------------------------------------------------------------------- */
 /* The service                                                                */
 /* -------------------------------------------------------------------------- */
@@ -290,15 +319,27 @@ async function provisionNovamiraSteps(
 
   // Go refused a provider whose WP-CLI results it could not observe because it
   // needed to capture an Application Password out of them. That reason is
-  // deleted, but HQ still reads back the PHP version, the plugin's activation
-  // status and the site URL, so the gate itself stays.
+  // deleted, but a plugin install whose success cannot be observed still cannot
+  // be verified, so the gate itself stays.
   if (!wpCliResultsObservable(client)) {
     throw new CliError(
       "provider_unsupported",
-      "hosting novamira setup requires provider WP-CLI output so it can read the PHP version, confirm the plugin is active, and discover the site URL.",
+      "hosting novamira setup requires a provider that reports whether each WP-CLI command succeeded, so it can verify the install.",
       { details: { provider: client.provider } },
     );
   }
+
+  // Kinsta reports each WP-CLI run's exit status and nothing it printed. Setup
+  // still works there: presence and activation are asked through exit status,
+  // the site URL comes from the provider's inventory, the PHP requirement is
+  // left to WordPress, and the public compatibility read proves the rest.
+  const readsOutput = wpCliOutputObservable(client);
+  if (!readsOutput && request.ignoreRequirements === true)
+    throw new CliError(
+      "usage_error",
+      "--ignore-requirements is not available on this provider: it does not return WP-CLI output, so WordPress's own requirements check is the only PHP version check setup has.",
+      { details: { flag: "--ignore-requirements" } },
+    );
 
   const requestedUrl = request.url ?? "";
   let site: NormalizedSite | undefined =
@@ -338,30 +379,58 @@ async function provisionNovamiraSteps(
 
   /* -- Phase B: the provider sequence --------------------------------------- */
 
+  // B0. Without output there is no `wp option get home` to read at B6, so the
+  // site URL is resolved here instead, before anything changes on the site.
+  if (site === undefined && !readsOutput) {
+    report("info", "Resolving the site URL from the provider.");
+    site = await primaryDomainSite(client, envId, environment);
+    report("ok", "Site URL resolved.");
+  }
+
   // B1. The PHP gate, always before the install: it exists to prevent a doomed
-  // mutation, so a failure here must leave the site untouched.
-  report("info", "Checking PHP version.");
-  let phpOutput: string;
-  try {
-    phpOutput = await runWpCliForOutput(
-      client,
-      envId,
-      PHP_VERSION_COMMAND,
-      budget,
-    );
-  } catch (error) {
-    throw contextualize(
-      error,
-      "Failed to check the PHP version before plugin install",
+  // mutation, so a failure here must leave the site untouched. Without output
+  // the version cannot be read, and WordPress itself refuses to install a
+  // plugin whose `Requires PHP` the server does not meet, leaving it untouched.
+  if (readsOutput) {
+    report("info", "Checking PHP version.");
+    let phpOutput: string;
+    try {
+      phpOutput = await runWpCliForOutput(
+        client,
+        envId,
+        PHP_VERSION_COMMAND,
+        budget,
+      );
+    } catch (error) {
+      throw contextualize(
+        error,
+        "Failed to check the PHP version before plugin install",
+      );
+    }
+    const phpVersion = ensureNovamiraSetupPhp(phpOutput);
+    report("ok", `PHP ${phpVersion} is supported.`);
+  } else {
+    report(
+      "info",
+      "This provider does not return WP-CLI output, so WordPress enforces Novamira's PHP requirement during the install.",
     );
   }
-  const phpVersion = ensureNovamiraSetupPhp(phpOutput);
-  report("ok", `PHP ${phpVersion} is supported.`);
 
   report("info", "Inspecting existing Novamira before making changes.");
-  const existing = await inspectExistingNovamira(client, envId, budget);
+  let existing: ExistingNovamira | undefined;
+  // Present, with its version and AI Abilities options unread.
+  let installedUnread = false;
+  if (readsOutput)
+    existing = await inspectExistingNovamira(client, envId, budget);
+  else
+    installedUnread = await novamiraInstalledByExitStatus(
+      client,
+      envId,
+      budget,
+    );
+  const present = existing !== undefined || installedUnread;
 
-  if (existing === undefined || request.force === true) {
+  if (!present || request.force === true) {
     // B2. The DB-backed WP-CLI preflight, including its DB_HOST hint.
     const installLine = pluginInstallCommand(resolvedSource, {
       ...(request.pluginVersion === undefined
@@ -493,8 +562,10 @@ async function provisionNovamiraSteps(
   // B7/B8. The AI-Abilities options. B8's host goes through `shellJoin`: a
   // hostile hostname refused by `shellQuote` is the only thing standing between
   // untrusted site metadata and a provider's shell.
-  const enableAiAbilities = request.aiAbilities ?? existing === undefined;
-  const aiAbilities =
+  const enableAiAbilities = request.aiAbilities ?? !present;
+  // Settled by the compatibility read in Phase C, when it runs.
+  const aiUnread = installedUnread && !enableAiAbilities;
+  let aiAbilities =
     enableAiAbilities ||
     (existing?.aiEnabled === true && existing.aiDomain === site.host);
   if (enableAiAbilities) {
@@ -525,7 +596,7 @@ async function provisionNovamiraSteps(
       );
     }
     report("ok", "Novamira AI Abilities enabled.");
-  } else if (!aiAbilities) {
+  } else if (!aiAbilities && !aiUnread) {
     warnings.push({
       code: "ai_abilities_disabled",
       message:
@@ -560,7 +631,7 @@ async function provisionNovamiraSteps(
         metadataUrl: metadataUrl(site.siteUrl),
         pluginSlug: slug,
         pluginSource: resolvedSource,
-        aiAbilities,
+        aiAbilities: aiUnread ? null : aiAbilities,
       });
     }
     compatibility = {
@@ -572,6 +643,9 @@ async function provisionNovamiraSteps(
       minimumWordpressVersion: block.minimum_wordpress_version,
       features: block.features,
     };
+    // The document is served only while AI Abilities are enabled for this very
+    // domain, so a read that passed settles what no exit status could.
+    if (aiUnread) aiAbilities = true;
     ready = aiAbilities ? true : null;
     report(
       "ok",
@@ -583,6 +657,12 @@ async function provisionNovamiraSteps(
       message:
         "Site compatibility was not checked (--no-compat-check); novamira auth login may fail.",
     });
+    if (aiUnread)
+      warnings.push({
+        code: "ai_abilities_not_checked",
+        message:
+          "Existing AI Abilities settings were preserved and could not be read through this provider's WP-CLI.",
+      });
   }
 
   if (site.insecure) {
@@ -609,7 +689,10 @@ async function provisionNovamiraSteps(
     },
     aiAbilities: {
       enabled: aiAbilities,
-      domain: enableAiAbilities ? site.host : (existing?.aiDomain ?? null),
+      domain:
+        enableAiAbilities || (aiUnread && aiAbilities)
+          ? site.host
+          : (existing?.aiDomain ?? null),
     },
     compatibility,
     ready,

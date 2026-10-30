@@ -62,6 +62,7 @@ function fakeClient({
   wpCli = {},
   operations = {},
   observable,
+  outputObservable,
 } = {}) {
   const client = {
     provider: "kinsta",
@@ -111,6 +112,8 @@ function fakeClient({
   };
   if (observable !== undefined)
     client.wpCliResultsObservable = () => observable;
+  if (outputObservable !== undefined)
+    client.wpCliOutputObservable = () => outputObservable;
   return client;
 }
 
@@ -749,6 +752,47 @@ test("install activates in a second command when the plugin is not active yet", 
   // The activation operation replaces the install's in the reported envelope.
   assert.equal(envelope.data.operation_id, "op-activate");
   assert.equal(envelope.data.message, "Plugin activated.");
+});
+
+test("install asks wp plugin is-active by exit status where WP-CLI keeps no output", async () => {
+  // Kinsta: `wp plugin status` would finish with nothing to read, so the
+  // plugin would look inactive forever. The exit status of `is-active` is the
+  // answer that survives; here it says "active", so nothing is activated.
+  const client = fakeClient({
+    outputObservable: false,
+    wpCli: {
+      "wp option get siteurl": actionResult({ operationId: "op-preflight" }),
+      "wp plugin install novamira": actionResult({ operationId: "op-install" }),
+      "wp plugin is-active novamira": actionResult({
+        operationId: "op-active",
+      }),
+    },
+    operations: {
+      "op-preflight": operationStatus("op-preflight"),
+      "op-install": operationStatus("op-install"),
+      "op-active": operationStatus("op-active"),
+    },
+  });
+  const { run } = harness({ client });
+  const { envelope } = await run([
+    "wp",
+    "plugins",
+    "install",
+    "--env",
+    "env-1",
+    "--source",
+    "novamira",
+  ]);
+
+  assert.deepEqual(
+    client.actionRequests.map((request) => request.body.wp_command),
+    [
+      "wp option get siteurl",
+      "wp plugin install novamira",
+      "wp plugin is-active novamira",
+    ],
+  );
+  assert.equal(envelope.data.operation_id, "op-install");
 });
 
 test("install keeps --activate inline when WP-CLI results are not observable", async () => {

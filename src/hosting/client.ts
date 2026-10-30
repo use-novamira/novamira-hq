@@ -473,6 +473,14 @@ export interface ProviderClient {
    * omitting the method means "observable", the Go default.
    */
   wpCliResultsObservable?(): boolean;
+
+  /**
+   * Optional: whether a WP-CLI run that reports its success also reports what
+   * the command printed. Kinsta keeps only the exit status. Omitting the method
+   * means "readable"; it never makes output readable where
+   * {@link wpCliResultsObservable} says results are not.
+   */
+  wpCliOutputObservable?(): boolean;
 }
 
 /**
@@ -482,6 +490,13 @@ export interface ProviderClient {
  */
 export function wpCliResultsObservable(client: ProviderClient): boolean {
   return client.wpCliResultsObservable?.() ?? true;
+}
+
+/** Whether HQ can read what a WP-CLI command printed on this client. */
+export function wpCliOutputObservable(client: ProviderClient): boolean {
+  return (
+    wpCliResultsObservable(client) && (client.wpCliOutputObservable?.() ?? true)
+  );
 }
 
 /**

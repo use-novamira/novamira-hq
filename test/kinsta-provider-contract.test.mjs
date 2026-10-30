@@ -22,9 +22,14 @@ import test from "node:test";
 
 import { SecretValue } from "../dist/credentials/store.js";
 import { renderRaw } from "../dist/cli/print.js";
-import { wpCliResultsObservable } from "../dist/hosting/client.js";
+import {
+  wpCliOutputObservable,
+  wpCliResultsObservable,
+} from "../dist/hosting/client.js";
 import { createHttpClient } from "../dist/hosting/http-client.js";
 import { createKinstaClient } from "../dist/hosting/providers/kinsta.js";
+import { secretSafeProviderClient } from "../dist/hosting/redaction.js";
+import { historyClient } from "../dist/history/client.js";
 import {
   serializeActionResult,
   serializeHostingSite,
@@ -1036,8 +1041,45 @@ test("provider failures map onto the shared taxonomy and never leak the key", as
   );
 });
 
-test("Kinsta reports observable WP-CLI results", async () => {
+test("Kinsta reports WP-CLI exit status but never WP-CLI output", async () => {
+  // Measured against the live API: a finished `run-wp-cli-command` operation is
+  // `{"status":200,"message":...}` with no `data`, and a non-zero exit is a
+  // body status of 500 whose `data` says only "Server Error". Setup relies on
+  // the first claim surviving both wrappers every real client wears, in the
+  // order the factory applies them: history inside, secret-safe outside.
+  const history = {
+    begin: async () => "request-1",
+    finish: async () => {},
+    list: async () => [],
+  };
   await withKinsta([], SCOPED, async ({ client }) => {
-    assert.equal(wpCliResultsObservable(client), true);
+    for (const candidate of [
+      client,
+      secretSafeProviderClient(client),
+      secretSafeProviderClient(
+        historyClient(client, "kinsta-test", history, () => "cli"),
+      ),
+    ]) {
+      assert.equal(wpCliResultsObservable(candidate), true);
+      assert.equal(wpCliOutputObservable(candidate), false);
+    }
   });
+});
+
+test("a WP-CLI command that exits non-zero is a failed operation under HTTP 200", async () => {
+  // The exit status is the only channel Kinsta's WP-CLI keeps, so this shape,
+  // exactly as the live API returns it, must read as a failure.
+  await withKinsta(
+    [
+      {
+        body: '{"status":500,"message":"Operation failed! Please refer to `data` for more details.","data":{"status":500,"message":"Server Error"}}',
+      },
+    ],
+    SCOPED,
+    async ({ client }) => {
+      const status = await client.operationStatus("op-exit-1");
+      assert.equal(status.done, false);
+      assert.equal(status.failed, true);
+    },
+  );
 });
