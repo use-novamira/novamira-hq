@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.0-beta10 - 2026-10-30
 
 ### Fixed
 
