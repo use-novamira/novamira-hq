@@ -55,12 +55,12 @@
     {
       "id": "novamira-cli",
       "name": "@novamira/cli",
-      "version": "1.3.6",
+      "version": "1.4.0",
       "license": "AGPL-3.0-or-later",
       "scope": "npm runtime",
-      "source": "https://github.com/use-novamira/novamira-cli/tree/v1.3.6",
+      "source": "https://github.com/use-novamira/novamira-cli/tree/v1.4.0",
       "licenseFiles": [],
-      "notes": "Copyright (c) 2026 Ovation S.r.l. Included in npm and desktop, with guide data. The complete AGPL license appears above as HQ's LICENSE. Matching source is the public v1.3.6 tag. Its sole runtime dependency, commander, is inventoried separately."
+      "notes": "Copyright (c) 2026 Ovation S.r.l. Included in npm and desktop, with guide data. The complete AGPL license appears above as HQ's LICENSE. Matching source is the public v1.4.0 tag. Its sole runtime dependency, commander, is inventoried separately."
     },
     {
       "id": "commander",

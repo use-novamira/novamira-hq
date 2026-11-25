@@ -37,5 +37,5 @@ test("HQ is private and desktop artifact acceptance replaces public npm packagin
     manifest.scripts["desktop:acceptance"],
     /desktop-artifact-acceptance/,
   );
-  assert.equal(manifest.dependencies["@novamira/cli"], "1.3.6");
+  assert.equal(manifest.dependencies["@novamira/cli"], "1.4.0");
 });

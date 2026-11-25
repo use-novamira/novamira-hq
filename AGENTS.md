@@ -48,7 +48,7 @@ security boundaries are enforced by the focused contract tests in `test/`.
   Managed CLI invocations suppress update notices and independent self-update.
   Source builds and desktop must use the same exact public CLI release and required data;
   desktop uses its embedded `--site-cli` role, not an assumed Node executable.
-  The current bundled release is `@novamira/cli@1.3.6`; update the npm and Deno
+  The current bundled release is `@novamira/cli@1.4.0`; update the npm and Deno
   pins and integrity locks together. Only integration's child entry and desktop's
   site-CLI role may import the public `@novamira/cli/entry` export.
 - `src/skills/` is read-only and imports only Node builtins and `errors.js`.

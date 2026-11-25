@@ -47,7 +47,7 @@
     "keychain:build": "node scripts/macos-keychain-build.mjs"
   },
   "dependencies": {
-    "@novamira/cli": "1.3.6",
+    "@novamira/cli": "1.4.0",
     "@starfederation/datastar-sdk": "^1.0.0",
     "commander": "^14.0.0"
   },
