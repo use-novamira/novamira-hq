@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-beta11 - 2026-11-25
+
+### Changed
+
+- Novamira HQ works with Novamira v2 and its AI approvals.
+
 ## 1.0.0-beta10 - 2026-10-30
 
 ### Fixed
